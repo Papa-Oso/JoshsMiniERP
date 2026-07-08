@@ -38,6 +38,7 @@ Status legend:
 | Scheduler polish | Done | Windows startup script preview/install and Task Scheduler command preview/install are in place. |
 | Small SQL database | In progress | SQLite dependency, schema, status command, and JSON-to-SQLite migration command are in place. Runtime storage still defaults to JSON. |
 | SKU pairing audit | Done | `sku-audit` compares local SKUs with Shopify and eBay SKU catalogs. |
+| Shopify names/descriptions | In progress | App data model and refresh command are in place. Requires Shopify `read_products` scope approval and a fresh token before product details can populate. |
 
 ## Implemented Command Reference
 
@@ -58,6 +59,8 @@ npm run inv -- shopify-lookup NEON-MUG
 npm run inv -- shopify-map NEON-MUG --location "Main"
 npm run inv -- shopify-import --location "Main" --dry-run
 npm run inv -- shopify-import --location "Main"
+npm run inv -- shopify-refresh-details --dry-run
+npm run inv -- shopify-refresh-details
 ```
 
 Reconcile before live sync:

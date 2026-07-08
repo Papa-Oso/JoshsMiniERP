@@ -45,6 +45,7 @@ export async function listData() {
 export async function createItem(input: CreateItemInput) {
   const sku = clean(input.sku)?.toUpperCase();
   const name = clean(input.name);
+  const description = clean(input.description);
   const quantity = normalizeQuantity(Number(input.quantity));
   const safetyStock = Math.max(0, Number(input.safetyStock ?? 0));
 
@@ -61,6 +62,7 @@ export async function createItem(input: CreateItemInput) {
       id: randomUUID(),
       sku,
       name,
+      description,
       quantity,
       safetyStock,
       mappings: {},
@@ -91,6 +93,15 @@ export async function updateItem(id: string, input: UpdateItemInput) {
 
     const nextName = clean(input.name);
     if (nextName) item.name = nextName;
+
+    if (input.description !== undefined) {
+      const nextDescription = clean(input.description);
+      if (nextDescription) {
+        item.description = nextDescription;
+      } else {
+        delete item.description;
+      }
+    }
 
     if (input.safetyStock !== undefined) {
       item.safetyStock = Math.max(0, Number(input.safetyStock));

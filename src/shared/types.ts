@@ -34,6 +34,7 @@ export interface InventoryItem {
   id: string;
   sku: string;
   name: string;
+  description?: string;
   quantity: number;
   safetyStock: number;
   mappings: Partial<Record<Platform, PlatformMapping>>;
@@ -104,6 +105,7 @@ export interface DashboardPayload extends StoreData {
 export interface CreateItemInput {
   sku: string;
   name: string;
+  description?: string;
   quantity: number;
   safetyStock?: number;
 }
@@ -117,6 +119,7 @@ export interface AdjustInventoryInput {
 export interface UpdateItemInput {
   sku?: string;
   name?: string;
+  description?: string;
   safetyStock?: number;
   mappings?: Partial<Record<Platform, PlatformMapping>>;
 }

@@ -294,6 +294,19 @@ td {
   color: #f8f3ff;
 }
 
+.item-name,
+.item-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-description {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+}
+
 tr {
   min-height: 44px;
 }

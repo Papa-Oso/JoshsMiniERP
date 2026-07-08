@@ -74,6 +74,7 @@ function applyCsvRecord(data: StoreData, record: CsvRecord, dryRun: boolean): Cs
   try {
     const sku = requiredText(record, ["sku"], "SKU").toUpperCase();
     const name = optionalText(record, ["name", "title", "itemname"]);
+    const description = optionalText(record, ["description", "desc"]);
     const note = optionalText(record, ["note", "notes"]);
     const safetyStock = optionalInteger(record, ["safetystock", "safety"], "safetyStock");
     const absoluteQuantity = optionalInteger(
@@ -93,10 +94,10 @@ function applyCsvRecord(data: StoreData, record: CsvRecord, dryRun: boolean): Cs
 
     const item = data.items.find((candidate) => candidate.sku.toUpperCase() === sku);
     if (!item) {
-      return createFromCsv(data, record.line, sku, name, absoluteQuantity, delta, safetyStock, note, dryRun);
+      return createFromCsv(data, record.line, sku, name, description, absoluteQuantity, delta, safetyStock, note, dryRun);
     }
 
-    return updateFromCsv(data, record.line, item, name, absoluteQuantity, delta, safetyStock, note, dryRun);
+    return updateFromCsv(data, record.line, item, name, description, absoluteQuantity, delta, safetyStock, note, dryRun);
   } catch (error) {
     return {
       line: record.line,
@@ -112,6 +113,7 @@ function createFromCsv(
   line: number,
   sku: string,
   name: string | undefined,
+  description: string | undefined,
   absoluteQuantity: number | undefined,
   delta: number | undefined,
   safetyStock: number | undefined,
@@ -130,6 +132,7 @@ function createFromCsv(
     id: randomUUID(),
     sku,
     name,
+    description,
     quantity,
     safetyStock: safetyStock ?? 0,
     mappings: {},
@@ -154,6 +157,7 @@ function updateFromCsv(
   line: number,
   item: InventoryItem,
   name: string | undefined,
+  description: string | undefined,
   absoluteQuantity: number | undefined,
   delta: number | undefined,
   safetyStock: number | undefined,
@@ -166,6 +170,11 @@ function updateFromCsv(
 
   if (name && name !== item.name) {
     item.name = name;
+    metadataChanged = true;
+  }
+
+  if (description !== undefined && description !== item.description) {
+    item.description = description;
     metadataChanged = true;
   }
 

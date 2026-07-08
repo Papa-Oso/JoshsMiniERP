@@ -17,6 +17,7 @@ export const router = express.Router();
 const createItemSchema = z.object({
   sku: z.string().min(1),
   name: z.string().min(1),
+  description: z.string().optional(),
   quantity: z.coerce.number().int().min(0),
   safetyStock: z.coerce.number().int().min(0).optional()
 });
@@ -43,6 +44,7 @@ const mappingSchema = z.object({
 const updateItemSchema = z.object({
   sku: z.string().optional(),
   name: z.string().optional(),
+  description: z.string().optional(),
   safetyStock: z.coerce.number().int().min(0).optional(),
   mappings: z
     .object({

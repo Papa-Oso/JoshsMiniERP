@@ -86,7 +86,7 @@ function planShopifyImport(
       rows.push({
         sku,
         action: "skip",
-        name: variant.displayName,
+        name: shopifyTitle(variant),
         inventoryItemId: variant.inventoryItem.id,
         message: levelResult.message
       });
@@ -98,7 +98,7 @@ function planShopifyImport(
       rows.push({
         sku,
         action: "skip",
-        name: variant.displayName,
+        name: shopifyTitle(variant),
         inventoryItemId: variant.inventoryItem.id,
         locationId: levelResult.level.location.id,
         locationName: levelResult.level.location.name,
@@ -114,7 +114,7 @@ function planShopifyImport(
       rows.push({
         sku,
         action: "create",
-        name: variant.displayName,
+        name: shopifyTitle(variant),
         shopifyQuantity: quantity,
         inventoryItemId: variant.inventoryItem.id,
         locationId: levelResult.level.location.id,
@@ -123,7 +123,7 @@ function planShopifyImport(
       });
 
       if (apply) {
-        const created = createImportedItem(sku, variant.displayName, quantity, mapping, timestamp);
+        const created = createImportedItem(sku, shopifyTitle(variant), shopifyDescription(variant), quantity, mapping, timestamp);
         data.items.unshift(created);
         data.events.unshift(
           makeEvent(created, "create", quantity, quantity, "local", "Imported from Shopify inventory")
@@ -178,6 +178,7 @@ function planShopifyImport(
 function createImportedItem(
   sku: string,
   name: string,
+  description: string | undefined,
   quantity: number,
   mapping: PlatformMapping,
   timestamp: string
@@ -186,6 +187,7 @@ function createImportedItem(
     id: randomUUID(),
     sku,
     name,
+    description,
     quantity,
     safetyStock: 0,
     mappings: { shopify: mapping },
@@ -263,4 +265,28 @@ function chooseImportLevel(levels: ShopifyInventoryLevel[], filter?: string): Im
 
 function availableQuantity(level: ShopifyInventoryLevel) {
   return level.quantities.find((quantity) => quantity.name === "available")?.quantity;
+}
+
+function shopifyTitle(variant: ShopifySkuVariant) {
+  return variant.productTitle?.trim() || variant.displayName;
+}
+
+function shopifyDescription(variant: ShopifySkuVariant) {
+  return htmlToText(variant.descriptionHtml);
+}
+
+function htmlToText(value?: string | null) {
+  if (!value) return undefined;
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }

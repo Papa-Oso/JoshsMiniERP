@@ -9,6 +9,7 @@ import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } 
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
 import { reconcileInventory } from "./reconcile";
 import { auditSkuPairings } from "./skuAudit";
+import { refreshShopifyDetails } from "./shopifyDetails";
 import { importShopifySkus } from "./shopifyImport";
 import { migrateJsonToSqlite, sqliteStatus } from "./sqliteMigration";
 import { runInventorySync } from "./syncEngine";
@@ -56,6 +57,9 @@ try {
       break;
     case "shopify-import":
       await shopifyImportFromCli(args.slice(1));
+      break;
+    case "shopify-refresh-details":
+      await shopifyRefreshDetailsFromCli(args.slice(1));
       break;
     case "csv-import":
       await csvImportFromCli(args.slice(1));
@@ -319,6 +323,28 @@ async function shopifyImportFromCli(input: string[]) {
       local: row.localQuantity ?? "-",
       shopify: row.shopifyQuantity ?? "-",
       location: row.locationName ?? "-",
+      message: row.message
+    }))
+  );
+}
+
+async function shopifyRefreshDetailsFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const result = await refreshShopifyDetails({
+    dryRun: Boolean(flags["dry-run"]),
+    overwrite: Boolean(flags.overwrite)
+  });
+
+  console.log(
+    `${flags["dry-run"] ? "Dry run" : "Refreshed"} Shopify details: ${result.summary.updated} update, ${result.summary.skipped} skip from ${result.summary.shopifySkus} Shopify SKUs.`
+  );
+  console.table(
+    result.rows.map((row) => ({
+      sku: row.sku,
+      action: row.action,
+      previousName: row.previousName ?? "-",
+      nextName: row.nextName ?? "-",
+      description: row.nextDescription ? "yes" : "-",
       message: row.message
     }))
   );
@@ -648,7 +674,7 @@ function parseFlags(input: string[]) {
 }
 
 function isBooleanFlag(key: string) {
-  return ["disable", "dry-run", "enable", "install", "reconcile", "write"].includes(key);
+  return ["disable", "dry-run", "enable", "install", "overwrite", "reconcile", "write"].includes(key);
 }
 
 function stringFlag(value: string | boolean | undefined) {
@@ -737,6 +763,7 @@ Commands:
   npm run inv -- shopify-lookup <sku>
   npm run inv -- shopify-map <local-sku> [shopify-sku] [--location <name-or-id>]
   npm run inv -- shopify-import [--location <name-or-id>] [--dry-run] [--disable]
+  npm run inv -- shopify-refresh-details [--dry-run] [--overwrite]
   npm run inv -- ebay-auth-url
   npm run inv -- ebay-auth-callback "https://..."
   npm run inv -- ebay-refresh

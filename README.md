@@ -52,6 +52,8 @@ npm run inv -- shopify-lookup NEON-MUG
 npm run inv -- shopify-map NEON-MUG --location "Main"
 npm run inv -- shopify-import --location "Main" --dry-run
 npm run inv -- shopify-import --location "Main"
+npm run inv -- shopify-refresh-details --dry-run
+npm run inv -- shopify-refresh-details
 npm run inv -- schedule on 30
 npm run inv -- schedule off
 ```
@@ -79,6 +81,24 @@ npm run inv -- shopify-import --location "Main"
 ```
 
 `shopify-import` scans Shopify variants with SKUs. Missing local SKUs are created with Shopify's available quantity. Existing local SKUs keep their local count and get a Shopify mapping, so run `reconcile` before syncing when local and Shopify differ. If a SKU exists on multiple Shopify variants, the importer skips it until the SKU is unique.
+
+To refresh local names/descriptions from Shopify product details:
+
+```powershell
+npm run inv -- shopify-refresh-details --dry-run
+npm run inv -- shopify-refresh-details
+```
+
+This requires Shopify app scopes `read_products` plus the existing inventory scopes. By default it updates names only when the local name is still the SKU; pass `--overwrite` to replace custom local names.
+
+If the command says `read_products` is required, approve the updated Shopify app scopes and export a fresh token:
+
+```powershell
+npm run shopify:dev
+npm run shopify:export-session
+```
+
+Copy the new `SHOPIFY_ADMIN_ACCESS_TOKEN` into the root `.env`, then rerun `shopify-refresh-details`.
 
 Dry-run/reconcile commands pull live marketplace quantities and show what a sync would do without changing `data/inventory.json` or pushing inventory:
 
@@ -180,7 +200,7 @@ Shopify:
 - `SHOPIFY_API_VERSION`
 - Per SKU: Shopify inventory item ID/GID and location ID/GID
 
-Use the permanent `myshopify.com` shop domain for `SHOPIFY_SHOP_DOMAIN`, not a storefront custom domain like `joshswidgets.com`. Required app scopes are `read_inventory` and `write_inventory`.
+Use the permanent `myshopify.com` shop domain for `SHOPIFY_SHOP_DOMAIN`, not a storefront custom domain like `joshswidgets.com`. Required app scopes are `read_inventory`, `write_inventory`, `read_products`, and `read_locations`.
 
 After filling Shopify credentials in `.env`, test the real store connection before mapping inventory:
 

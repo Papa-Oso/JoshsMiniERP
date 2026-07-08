@@ -49,7 +49,17 @@ type SkuListQuery = {
       hasNextPage: boolean;
       endCursor: string | null;
     };
-    nodes: ShopifySkuVariant[];
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      displayName: string;
+      title?: string | null;
+      product?: {
+        title?: string | null;
+        descriptionHtml?: string | null;
+      } | null;
+      inventoryItem: ShopifyInventoryItem;
+    }>;
   };
 };
 
@@ -71,6 +81,25 @@ type InventoryItemsQuery = {
           };
           quantities: Array<{ name: string; quantity: number }>;
         }>;
+      };
+    }>;
+  };
+};
+
+type ProductDetailsQuery = {
+  productVariants: {
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor: string | null;
+    };
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      displayName: string;
+      title: string;
+      product: {
+        title: string;
+        descriptionHtml?: string | null;
       };
     }>;
   };
@@ -102,7 +131,17 @@ export interface ShopifySkuVariant {
   id: string;
   sku: string | null;
   displayName: string;
+  variantTitle?: string | null;
+  productTitle?: string | null;
+  descriptionHtml?: string | null;
   inventoryItem: ShopifyInventoryItem;
+}
+
+export interface ShopifySkuProductDetails {
+  sku: string;
+  title: string;
+  description?: string;
+  displayName: string;
 }
 
 const toShopifyGid = (type: "InventoryItem" | "Location", value: string) => {
@@ -292,6 +331,11 @@ export class ShopifyAdapter implements PlatformAdapter {
               id
               sku
               displayName
+              title
+              product {
+                title
+                descriptionHtml
+              }
               inventoryItem {
                 id
                 inventoryLevels(first: 10) {
@@ -314,11 +358,66 @@ export class ShopifyAdapter implements PlatformAdapter {
         { first: 100, after }
       );
 
-      variants.push(...payload.productVariants.nodes.filter((variant) => variant.sku?.trim()));
+      variants.push(
+        ...payload.productVariants.nodes
+          .filter((variant) => variant.sku?.trim())
+          .map((variant) => ({
+            id: variant.id,
+            sku: variant.sku,
+            displayName: variant.displayName,
+            variantTitle: variant.title,
+            productTitle: variant.product?.title,
+            descriptionHtml: variant.product?.descriptionHtml,
+            inventoryItem: variant.inventoryItem
+          }))
+      );
       after = payload.productVariants.pageInfo.hasNextPage ? payload.productVariants.pageInfo.endCursor : null;
     } while (after);
 
     return variants;
+  }
+
+  async listSkuProductDetails(): Promise<ShopifySkuProductDetails[]> {
+    const details: ShopifySkuProductDetails[] = [];
+    let after: string | null = null;
+
+    do {
+      const payload: ProductDetailsQuery = await this.graphql<ProductDetailsQuery>(
+        `query ListSkuProductDetails($first: Int!, $after: String) {
+          productVariants(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              sku
+              displayName
+              title
+              product {
+                title
+                descriptionHtml
+              }
+            }
+          }
+        }`,
+        { first: 100, after }
+      );
+
+      details.push(
+        ...payload.productVariants.nodes
+          .filter((variant) => variant.sku?.trim())
+          .map((variant) => ({
+            sku: variant.sku!.trim(),
+            title: variant.product.title || variant.displayName || variant.title,
+            description: htmlToText(variant.product.descriptionHtml),
+            displayName: variant.displayName
+          }))
+      );
+      after = payload.productVariants.pageInfo.hasNextPage ? payload.productVariants.pageInfo.endCursor : null;
+    } while (after);
+
+    return details;
   }
 
   private async listInventoryItemSkus() {
@@ -447,4 +546,20 @@ export class ShopifyAdapter implements PlatformAdapter {
 
 function isAccessDenied(error: unknown) {
   return error instanceof Error && /access denied/i.test(error.message);
+}
+
+function htmlToText(value?: string | null) {
+  if (!value) return undefined;
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }

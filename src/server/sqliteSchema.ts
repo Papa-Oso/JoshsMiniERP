@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   id TEXT PRIMARY KEY,
   sku TEXT NOT NULL UNIQUE COLLATE NOCASE,
   name TEXT NOT NULL,
+  description TEXT,
   quantity INTEGER NOT NULL CHECK (quantity >= 0),
   safety_stock INTEGER NOT NULL DEFAULT 0 CHECK (safety_stock >= 0),
   created_at TEXT NOT NULL,

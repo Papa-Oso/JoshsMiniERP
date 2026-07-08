@@ -204,7 +204,10 @@ export function App() {
                     onClick={() => setSelectedId(item.id)}
                   >
                     <td>{item.sku}</td>
-                    <td>{item.name}</td>
+                    <td>
+                      <div className="item-name">{item.name}</div>
+                      {item.description ? <div className="item-description">{item.description}</div> : null}
+                    </td>
                     <td className={item.quantity <= item.safetyStock ? "danger" : ""}>{item.quantity}</td>
                     <td>{enabledPlatforms(item)}</td>
                   </tr>

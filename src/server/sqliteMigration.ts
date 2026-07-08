@@ -116,6 +116,7 @@ function writeJsonDataToSqlite(db: Database.Database, data: StoreData) {
         id: item.id,
         sku: item.sku,
         name: item.name,
+        description: item.description ?? null,
         quantity: item.quantity,
         safety_stock: item.safetyStock,
         created_at: item.createdAt,
@@ -181,9 +182,9 @@ function prepareStatements(db: Database.Database) {
   return {
     item: db.prepare(`
       INSERT INTO inventory_items (
-        id, sku, name, quantity, safety_stock, created_at, updated_at
+        id, sku, name, description, quantity, safety_stock, created_at, updated_at
       ) VALUES (
-        @id, @sku, @name, @quantity, @safety_stock, @created_at, @updated_at
+        @id, @sku, @name, @description, @quantity, @safety_stock, @created_at, @updated_at
       )
     `),
     mapping: db.prepare(`
