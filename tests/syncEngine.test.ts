@@ -16,6 +16,7 @@ process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "test-token";
 process.env.SHOPIFY_API_VERSION = "2026-07";
 
 const { runInventorySync } = await import("../src/server/syncEngine.ts");
+const { updateItem } = await import("../src/server/inventoryService.ts");
 
 after(async () => {
   globalThis.fetch = originalFetch;
@@ -108,6 +109,34 @@ test("failed pushes do not make the same platform sale subtract twice", async ()
   assert.equal(secondRun.summary.salesDetected, 0);
   assert.equal(item.quantity, 9);
   assert.equal(item.mappings.shopify?.lastSyncedQuantity, 9);
+});
+
+test("changing mapping identity clears the previous sync baseline", async () => {
+  await writeStore(
+    seedStore({
+      quantity: 10,
+      lastSyncedQuantity: 10,
+      lastRemoteQuantity: 10
+    })
+  );
+
+  await updateItem("item-1", {
+    mappings: {
+      shopify: {
+        enabled: true,
+        inventoryItemId: "gid://shopify/InventoryItem/2",
+        locationId: "gid://shopify/Location/1"
+      }
+    }
+  });
+
+  const stored = await readStore();
+  const mapping = stored.items[0].mappings.shopify;
+
+  assert.equal(mapping?.lastSyncedQuantity, null);
+  assert.equal(mapping?.lastRemoteQuantity, null);
+  assert.equal(mapping?.lastSyncedAt, null);
+  assert.match(mapping?.warning ?? "", /mapping changed/);
 });
 
 async function writeStore(data: StoreData) {

@@ -40,6 +40,7 @@ npm run inv -- add NEON-MUG 15 "July restock"
 npm run inv -- subtract NEON-MUG 1 "personal use"
 npm run inv -- sync
 npm run inv -- shopify-lookup NEON-MUG
+npm run inv -- shopify-map NEON-MUG --location "Main"
 npm run inv -- schedule on 30
 npm run inv -- schedule off
 ```
@@ -50,6 +51,13 @@ Mapping examples:
 npm run inv -- map NEON-MUG etsy --listing-id 1234567890 --remote-sku NEON-MUG --enable
 npm run inv -- map NEON-MUG ebay --remote-sku NEON-MUG --offer-id 9876543210 --enable
 npm run inv -- map NEON-MUG shopify --inventory-item-id 123456789 --location-id 987654321 --enable
+```
+
+For Shopify, the helper command can find and save those IDs for a local SKU:
+
+```powershell
+npm run inv -- shopify-map NEON-MUG
+npm run inv -- shopify-map LOCAL-SKU SHOPIFY-SKU --location "Main"
 ```
 
 ## Shopify CLI
@@ -112,6 +120,7 @@ npm run inv -- shopify-lookup NEON-MUG
 ```
 
 `shopify-lookup` prints the Shopify inventory item GID, location GID/name, and current available quantity for matching variants. Use those IDs in the Shopify mapping command.
+`shopify-map` uses the same lookup and saves the Shopify mapping directly. If Shopify returns multiple locations, pass `--location` with the location name or ID.
 
 eBay:
 - `EBAY_ACCESS_TOKEN`

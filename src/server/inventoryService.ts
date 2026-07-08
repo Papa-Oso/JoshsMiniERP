@@ -11,7 +11,7 @@ import type {
   UpdateItemInput,
   UpdateScheduleInput
 } from "../shared/types";
-import { platforms } from "../shared/types";
+import { platformLabels, platforms } from "../shared/types";
 import { store } from "./store";
 
 const now = () => new Date().toISOString();
@@ -188,22 +188,46 @@ function mergeMappings(
   for (const platform of platforms) {
     if (!incoming[platform]) continue;
     const next = incoming[platform]!;
-    merged[platform] = {
-      ...(current[platform] ?? { enabled: false }),
+    const previous = current[platform] ?? { enabled: false };
+    const resolved: PlatformMapping = {
+      ...previous,
       enabled: Boolean(next.enabled),
-      remoteSku: clean(next.remoteSku),
-      listingId: clean(next.listingId),
-      inventoryItemId: clean(next.inventoryItemId),
-      locationId: clean(next.locationId),
-      offerId: clean(next.offerId),
-      lastSyncedQuantity: next.lastSyncedQuantity ?? current[platform]?.lastSyncedQuantity ?? null,
-      lastRemoteQuantity: next.lastRemoteQuantity ?? current[platform]?.lastRemoteQuantity ?? null,
-      lastSyncedAt: next.lastSyncedAt ?? current[platform]?.lastSyncedAt ?? null,
-      warning: next.warning ?? current[platform]?.warning ?? null
+      remoteSku: clean(next.remoteSku) ?? previous.remoteSku,
+      listingId: clean(next.listingId) ?? previous.listingId,
+      inventoryItemId: clean(next.inventoryItemId) ?? previous.inventoryItemId,
+      locationId: clean(next.locationId) ?? previous.locationId,
+      offerId: clean(next.offerId) ?? previous.offerId,
+      lastSyncedQuantity:
+        next.lastSyncedQuantity !== undefined ? next.lastSyncedQuantity : previous.lastSyncedQuantity ?? null,
+      lastRemoteQuantity:
+        next.lastRemoteQuantity !== undefined ? next.lastRemoteQuantity : previous.lastRemoteQuantity ?? null,
+      lastSyncedAt: next.lastSyncedAt !== undefined ? next.lastSyncedAt : previous.lastSyncedAt ?? null,
+      warning: next.warning !== undefined ? next.warning : previous.warning ?? null
+    };
+
+    if (mappingIdentityChanged(previous, resolved)) {
+      resolved.lastSyncedQuantity = null;
+      resolved.lastRemoteQuantity = null;
+      resolved.lastSyncedAt = null;
+      resolved.warning = `${platformLabels[platform]} mapping changed; next sync will capture a fresh baseline.`;
+    }
+
+    merged[platform] = {
+      ...resolved
     };
   }
 
   return merged;
+}
+
+function mappingIdentityChanged(previous: PlatformMapping, next: PlatformMapping) {
+  return (
+    previous.remoteSku !== next.remoteSku ||
+    previous.listingId !== next.listingId ||
+    previous.inventoryItemId !== next.inventoryItemId ||
+    previous.locationId !== next.locationId ||
+    previous.offerId !== next.offerId
+  );
 }
 
 function trimHistory(data: StoreData) {

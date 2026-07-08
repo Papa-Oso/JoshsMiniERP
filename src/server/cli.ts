@@ -4,6 +4,10 @@ import { ShopifyAdapter } from "./adapters/shopify";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
 import { runInventorySync } from "./syncEngine";
 
+type ShopifyLookupResult = Awaited<ReturnType<ShopifyAdapter["lookupSku"]>>;
+type ShopifyInventoryLevel =
+  ShopifyLookupResult["productVariants"]["nodes"][number]["inventoryItem"]["inventoryLevels"]["nodes"][number];
+
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -33,6 +37,9 @@ try {
       break;
     case "shopify-lookup":
       await shopifyLookupFromCli(args.slice(1));
+      break;
+    case "shopify-map":
+      await shopifyMapFromCli(args.slice(1));
       break;
     case "schedule":
       await scheduleFromCli(args.slice(1));
@@ -156,6 +163,58 @@ async function shopifyLookupFromCli(input: string[]) {
   }
 }
 
+async function shopifyMapFromCli(input: string[]) {
+  const [localSku, maybeShopifySku, ...rest] = input;
+  if (!localSku) {
+    throw new Error("Usage: npm run inv -- shopify-map <local-sku> [shopify-sku] [--location <name-or-id>]");
+  }
+
+  const shopifySku = maybeShopifySku && !maybeShopifySku.startsWith("--") ? maybeShopifySku : localSku;
+  const flags = parseFlags(maybeShopifySku && !maybeShopifySku.startsWith("--") ? rest : input.slice(1));
+  const locationFilter = stringFlag(flags.location);
+  const item = await findItemBySku(localSku);
+
+  const adapter = new ShopifyAdapter();
+  if (!adapter.isConfigured()) {
+    throw new Error(`Shopify is missing: ${adapter.missingEnv().join(", ")}`);
+  }
+
+  const result = await adapter.lookupSku(shopifySku);
+  const variants = result.productVariants.nodes;
+  if (variants.length === 0) {
+    throw new Error(`No Shopify variants found for SKU ${shopifySku}.`);
+  }
+  if (variants.length > 1) {
+    throw new Error(
+      [`Shopify SKU ${shopifySku} matched multiple variants. Use a more specific Shopify SKU:`]
+        .concat(variants.map((variant) => `- ${variant.displayName} (${variant.sku ?? "-"})`))
+        .join("\n")
+    );
+  }
+
+  const variant = variants[0];
+  const level = chooseShopifyLocation(variant.inventoryItem.inventoryLevels.nodes, locationFilter);
+  const available = level.quantities.find((quantity) => quantity.name === "available")?.quantity;
+  const current = item.mappings.shopify ?? { enabled: false };
+
+  await updateItem(item.id, {
+    mappings: {
+      shopify: {
+        ...current,
+        enabled: !flags.disable,
+        inventoryItemId: variant.inventoryItem.id,
+        locationId: level.location.id,
+        lastRemoteQuantity: typeof available === "number" ? available : current.lastRemoteQuantity
+      }
+    }
+  });
+
+  console.log(`${item.sku}: Shopify mapping saved.`);
+  console.log(`  Inventory item: ${variant.inventoryItem.id}`);
+  console.log(`  Location: ${level.location.name} (${level.location.id})`);
+  console.log(`  Available: ${typeof available === "number" ? available : "-"}`);
+}
+
 async function scheduleFromCli(input: string[]) {
   const [state, interval] = input;
   if (state !== "on" && state !== "off") {
@@ -197,6 +256,42 @@ function stringFlag(value: string | boolean | undefined) {
   return typeof value === "string" ? value : undefined;
 }
 
+function chooseShopifyLocation(levels: ShopifyInventoryLevel[], filter?: string) {
+  if (levels.length === 0) {
+    throw new Error("Shopify returned no inventory locations for this SKU.");
+  }
+
+  if (filter) {
+    const normalized = filter.toLowerCase();
+    const match = levels.find((level) => {
+      const locationId = level.location.id.toLowerCase();
+      return (
+        level.location.name.toLowerCase() === normalized ||
+        locationId === normalized ||
+        locationId.endsWith(`/${normalized}`)
+      );
+    });
+    if (!match) {
+      throw new Error(
+        [`No Shopify location matched ${filter}. Available locations:`]
+          .concat(levels.map((level) => `- ${level.location.name} (${level.location.id})`))
+          .join("\n")
+      );
+    }
+    return match;
+  }
+
+  if (levels.length > 1) {
+    throw new Error(
+      ["Shopify returned multiple locations. Rerun with --location <name-or-id>:"]
+        .concat(levels.map((level) => `- ${level.location.name} (${level.location.id})`))
+        .join("\n")
+    );
+  }
+
+  return levels[0];
+}
+
 function isPlatform(value: string): value is Platform {
   return platforms.includes(value as Platform);
 }
@@ -212,6 +307,7 @@ Commands:
   npm run inv -- sync
   npm run inv -- shopify-test
   npm run inv -- shopify-lookup <sku>
+  npm run inv -- shopify-map <local-sku> [shopify-sku] [--location <name-or-id>]
   npm run inv -- schedule <on|off> [intervalMinutes]
   npm run inv -- map <sku> etsy --listing-id <id> --remote-sku <sku> --enable
   npm run inv -- map <sku> ebay --remote-sku <sku> --offer-id <id> --enable
