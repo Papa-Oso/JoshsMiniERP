@@ -38,6 +38,10 @@ export async function runInventorySync(mode: SyncMode) {
 }
 
 async function runInventorySyncInternal(mode: SyncMode): Promise<SyncRun> {
+  return store.withLock(() => runInventorySyncLocked(mode));
+}
+
+async function runInventorySyncLocked(mode: SyncMode): Promise<SyncRun> {
   const startedAt = now();
   const messages: string[] = [];
   const summary: SyncSummary = {
