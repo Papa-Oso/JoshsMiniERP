@@ -1,6 +1,7 @@
 import type { Platform, PlatformMapping } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
 import { ShopifyAdapter } from "./adapters/shopify";
+import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
 import { runInventorySync } from "./syncEngine";
 
@@ -40,6 +41,15 @@ try {
       break;
     case "shopify-map":
       await shopifyMapFromCli(args.slice(1));
+      break;
+    case "etsy-auth-url":
+      await etsyAuthUrlFromCli();
+      break;
+    case "etsy-auth-callback":
+      await etsyAuthCallbackFromCli(args.slice(1));
+      break;
+    case "etsy-refresh":
+      await etsyRefreshFromCli();
       break;
     case "schedule":
       await scheduleFromCli(args.slice(1));
@@ -215,6 +225,35 @@ async function shopifyMapFromCli(input: string[]) {
   console.log(`  Available: ${typeof available === "number" ? available : "-"}`);
 }
 
+async function etsyAuthUrlFromCli() {
+  const auth = await createEtsyAuthorization();
+  console.log("Register this exact redirect URI in Etsy if you have not already:");
+  console.log(auth.redirectUri);
+  console.log("");
+  console.log(`Scopes: ${auth.scopes.join(" ")}`);
+  console.log("");
+  console.log("Open this URL after Etsy approves the app:");
+  console.log(auth.url);
+  console.log("");
+  console.log("After approval, paste the full final redirect URL into:");
+  console.log('npm run inv -- etsy-auth-callback "https://..."');
+}
+
+async function etsyAuthCallbackFromCli(input: string[]) {
+  const [callbackValue] = input;
+  if (!callbackValue) {
+    throw new Error('Usage: npm run inv -- etsy-auth-callback "https://your-redirect-url?code=...&state=..."');
+  }
+
+  const token = await completeEtsyAuthorization(callbackValue);
+  console.log(`Etsy OAuth saved. Access token expires in ${Math.round(token.expires_in / 60)} minutes.`);
+}
+
+async function etsyRefreshFromCli() {
+  const token = await refreshEtsyToken();
+  console.log(`Etsy token refreshed. Access token expires in ${Math.round(token.expires_in / 60)} minutes.`);
+}
+
 async function scheduleFromCli(input: string[]) {
   const [state, interval] = input;
   if (state !== "on" && state !== "off") {
@@ -308,6 +347,9 @@ Commands:
   npm run inv -- shopify-test
   npm run inv -- shopify-lookup <sku>
   npm run inv -- shopify-map <local-sku> [shopify-sku] [--location <name-or-id>]
+  npm run inv -- etsy-auth-url
+  npm run inv -- etsy-auth-callback "https://..."
+  npm run inv -- etsy-refresh
   npm run inv -- schedule <on|off> [intervalMinutes]
   npm run inv -- map <sku> etsy --listing-id <id> --remote-sku <sku> --enable
   npm run inv -- map <sku> ebay --remote-sku <sku> --offer-id <id> --enable

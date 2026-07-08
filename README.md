@@ -128,11 +128,41 @@ eBay:
 - Per SKU: eBay SKU, with offer ID recommended for live offers
 
 Etsy:
-- `ETSY_API_KEY`
-- `ETSY_ACCESS_TOKEN`
+- `ETSY_API_KEY` as `keystring:shared_secret`
+- `ETSY_CLIENT_ID` as the keystring
+- `ETSY_REDIRECT_URI` as the exact HTTPS redirect URI registered in Etsy
+- `ETSY_ACCESS_TOKEN`, `ETSY_REFRESH_TOKEN`, or the local token file created by the CLI OAuth helper
 - Per SKU: Etsy listing ID and SKU
 
 Etsy inventory updates require a unique product match and a single offering for the mapped SKU inside the listing inventory. If Etsy has multiple offerings for one SKU, give each sellable variation its own SKU before syncing.
+
+### Etsy OAuth
+
+New Etsy apps start as pending and cannot authenticate until Etsy approves the key. After the app status is active, add the keystring/shared secret and redirect URI to `.env`:
+
+```powershell
+ETSY_API_KEY=keystring:shared_secret
+ETSY_CLIENT_ID=keystring
+ETSY_REDIRECT_URI=https://joshswidgets.com/etsy/callback
+```
+
+Then run:
+
+```powershell
+npm run inv -- etsy-auth-url
+```
+
+Open the printed URL, approve `listings_r listings_w`, then copy the full final redirect URL from your browser and run:
+
+```powershell
+npm run inv -- etsy-auth-callback "https://joshswidgets.com/etsy/callback?code=...&state=..."
+```
+
+The tool saves Etsy tokens to `data/etsy-auth.json`, which is ignored by git. Refresh manually any time with:
+
+```powershell
+npm run inv -- etsy-refresh
+```
 
 ## Platform API Notes
 

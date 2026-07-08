@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 import type { PlatformStatus } from "../shared/types";
@@ -22,6 +23,10 @@ export interface AppConfig {
   etsy: {
     apiKey?: string;
     accessToken?: string;
+    refreshToken?: string;
+    clientId?: string;
+    redirectUri?: string;
+    tokenFile: string;
   };
 }
 
@@ -33,8 +38,11 @@ const placeholderValues = new Set([
   "your_client_id",
   "your_client_secret",
   "v^1.1#xxx",
+  "your_etsy_keystring:your_etsy_shared_secret",
   "your_etsy_keystring",
-  "your_etsy_oauth_token"
+  "your_etsy_oauth_token",
+  "your_etsy_refresh_token",
+  "https://your-domain.example/etsy/callback"
 ]);
 const readConfigured = (key: string) => {
   const value = read(key);
@@ -57,7 +65,11 @@ export const config: AppConfig = {
   },
   etsy: {
     apiKey: readConfigured("ETSY_API_KEY"),
-    accessToken: readConfigured("ETSY_ACCESS_TOKEN")
+    accessToken: readConfigured("ETSY_ACCESS_TOKEN"),
+    refreshToken: readConfigured("ETSY_REFRESH_TOKEN"),
+    clientId: readConfigured("ETSY_CLIENT_ID"),
+    redirectUri: readConfigured("ETSY_REDIRECT_URI"),
+    tokenFile: path.resolve(readConfigured("ETSY_TOKEN_FILE") ?? "data/etsy-auth.json")
   }
 };
 
@@ -66,13 +78,8 @@ export function getPlatformStatuses(): PlatformStatus[] {
     {
       platform: "etsy",
       label: platformLabels.etsy,
-      configured: Boolean(config.etsy.apiKey && config.etsy.accessToken),
-      missing: [
-        ["ETSY_API_KEY", config.etsy.apiKey],
-        ["ETSY_ACCESS_TOKEN", config.etsy.accessToken]
-      ]
-        .filter(([, value]) => !value)
-        .map(([key]) => key as string)
+      configured: Boolean(config.etsy.apiKey && etsyHasToken()),
+      missing: etsyMissingEnv()
     },
     {
       platform: "ebay",
@@ -100,5 +107,16 @@ function shopifyMissingEnv() {
   if (!config.shopify.accessToken && !(config.shopify.clientId && config.shopify.clientSecret)) {
     missing.push("SHOPIFY_ADMIN_ACCESS_TOKEN or SHOPIFY_CLIENT_ID/SHOPIFY_CLIENT_SECRET");
   }
+  return missing;
+}
+
+function etsyHasToken() {
+  return Boolean(config.etsy.accessToken || config.etsy.refreshToken || fs.existsSync(config.etsy.tokenFile));
+}
+
+function etsyMissingEnv() {
+  const missing: string[] = [];
+  if (!config.etsy.apiKey) missing.push("ETSY_API_KEY");
+  if (!etsyHasToken()) missing.push("ETSY_ACCESS_TOKEN or ETSY_REFRESH_TOKEN or Etsy OAuth token file");
   return missing;
 }

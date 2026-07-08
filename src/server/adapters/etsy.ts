@@ -1,6 +1,8 @@
+import fs from "node:fs";
 import { platformLabels } from "../../shared/types";
 import type { InventoryItem, PlatformMapping } from "../../shared/types";
 import { config } from "../config";
+import { getEtsyAccessToken } from "../etsyAuth";
 import type { PlatformAdapter, PushResult, RemoteQuantity } from "./types";
 import { mappingSku, readJson } from "./types";
 
@@ -34,16 +36,14 @@ export class EtsyAdapter implements PlatformAdapter {
   label = platformLabels.etsy;
 
   isConfigured() {
-    return Boolean(config.etsy.apiKey && config.etsy.accessToken);
+    return Boolean(config.etsy.apiKey && etsyHasToken());
   }
 
   missingEnv() {
-    return [
-      ["ETSY_API_KEY", config.etsy.apiKey],
-      ["ETSY_ACCESS_TOKEN", config.etsy.accessToken]
-    ]
-      .filter(([, value]) => !value)
-      .map(([key]) => key as string);
+    const missing: string[] = [];
+    if (!config.etsy.apiKey) missing.push("ETSY_API_KEY");
+    if (!etsyHasToken()) missing.push("ETSY_ACCESS_TOKEN or ETSY_REFRESH_TOKEN or Etsy OAuth token file");
+    return missing;
   }
 
   hasRequiredMapping(_item: InventoryItem, mapping: PlatformMapping) {
@@ -91,7 +91,7 @@ export class EtsyAdapter implements PlatformAdapter {
     const result = await readJson(
       await fetch(`${baseUrl}/listings/${encodeURIComponent(mapping.listingId!)}/inventory`, {
         method: "PUT",
-        headers: this.headers(),
+        headers: await this.headers(),
         body: JSON.stringify(payload)
       })
     );
@@ -101,7 +101,7 @@ export class EtsyAdapter implements PlatformAdapter {
   private async getInventory(mapping: PlatformMapping) {
     return readJson<EtsyInventory>(
       await fetch(`${baseUrl}/listings/${encodeURIComponent(mapping.listingId!)}/inventory`, {
-        headers: this.headers()
+        headers: await this.headers()
       })
     );
   }
@@ -128,11 +128,15 @@ export class EtsyAdapter implements PlatformAdapter {
     return offerings[0];
   }
 
-  private headers() {
+  private async headers() {
     return {
-      Authorization: `Bearer ${config.etsy.accessToken}`,
+      Authorization: `Bearer ${await getEtsyAccessToken()}`,
       "Content-Type": "application/json",
       "x-api-key": config.etsy.apiKey!
     };
   }
+}
+
+function etsyHasToken() {
+  return Boolean(config.etsy.accessToken || config.etsy.refreshToken || fs.existsSync(config.etsy.tokenFile));
 }
