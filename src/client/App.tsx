@@ -157,7 +157,7 @@ export function App() {
 
   async function handleMappingSave() {
     if (!selectedItem) return;
-    await runAction(() => api.updateItem(selectedItem.id, { mappings: mappingDraft }), "Mappings saved.");
+    await runAction(() => api.updateItem(selectedItem.id, { mappings: mappingDraft }), "Store links saved.");
   }
 
   function updateMapping(platform: Platform, patch: Partial<PlatformMapping>) {
@@ -440,7 +440,7 @@ export function App() {
       </section>
 
       <section className="lower-grid">
-        <Panel title="Mappings" icon={<Link2 size={18} />}>
+        <Panel title="Store Links" icon={<Link2 size={18} />}>
           {selectedItem ? (
             <div className="mapping-grid">
               {platforms.map((platform) => (
@@ -453,7 +453,7 @@ export function App() {
               ))}
               <button className="icon-button primary mapping-save" type="button" disabled={busy} onClick={handleMappingSave}>
                 <Save size={18} />
-                Save Mappings
+                Save Store Links
               </button>
             </div>
           ) : (
@@ -544,50 +544,22 @@ function MappingFields({
   mapping: PlatformMapping;
   onChange: (patch: Partial<PlatformMapping>) => void;
 }) {
+  const target = mappingTarget(platform, mapping);
+
   return (
     <fieldset className="mapping-block">
-      <legend>{platformLabels[platform]}</legend>
-      <label className="switch-row">
-        <span>Enabled</span>
+      <div className="mapping-row">
+        <div className="mapping-row-copy">
+          <legend>{platformLabels[platform]}</legend>
+          <span>{mapping.enabled ? `Linked to ${target}` : "Not linked"}</span>
+        </div>
         <input
           type="checkbox"
+          aria-label={`${platformLabels[platform]} link enabled`}
           checked={mapping.enabled}
           onChange={(event) => onChange({ enabled: event.target.checked })}
         />
-      </label>
-      {platform !== "shopify" ? (
-        <label>
-          SKU
-          <input value={mapping.remoteSku ?? ""} onChange={(event) => onChange({ remoteSku: event.target.value })} />
-        </label>
-      ) : null}
-      {platform === "etsy" ? (
-        <label>
-          Listing ID
-          <input value={mapping.listingId ?? ""} onChange={(event) => onChange({ listingId: event.target.value })} />
-        </label>
-      ) : null}
-      {platform === "ebay" ? (
-        <label>
-          Offer ID
-          <input value={mapping.offerId ?? ""} onChange={(event) => onChange({ offerId: event.target.value })} />
-        </label>
-      ) : null}
-      {platform === "shopify" ? (
-        <>
-          <label>
-            Inventory Item ID/GID
-            <input
-              value={mapping.inventoryItemId ?? ""}
-              onChange={(event) => onChange({ inventoryItemId: event.target.value })}
-            />
-          </label>
-          <label>
-            Location ID/GID
-            <input value={mapping.locationId ?? ""} onChange={(event) => onChange({ locationId: event.target.value })} />
-          </label>
-        </>
-      ) : null}
+      </div>
       {mapping.enabled ? (
         <div className="mapping-meta">
           <div>
@@ -604,9 +576,58 @@ function MappingFields({
           </div>
         </div>
       ) : null}
+      <details className="mapping-details">
+        <summary>Link details</summary>
+        {platform !== "shopify" ? (
+          <label>
+            Store SKU
+            <input value={mapping.remoteSku ?? ""} onChange={(event) => onChange({ remoteSku: event.target.value })} />
+          </label>
+        ) : null}
+        {platform === "etsy" ? (
+          <label>
+            Listing ID
+            <input value={mapping.listingId ?? ""} onChange={(event) => onChange({ listingId: event.target.value })} />
+          </label>
+        ) : null}
+        {platform === "ebay" ? (
+          <label>
+            Offer ID
+            <input value={mapping.offerId ?? ""} onChange={(event) => onChange({ offerId: event.target.value })} />
+          </label>
+        ) : null}
+        {platform === "shopify" ? (
+          <>
+            <label>
+              Inventory Item ID/GID
+              <input
+                value={mapping.inventoryItemId ?? ""}
+                onChange={(event) => onChange({ inventoryItemId: event.target.value })}
+              />
+            </label>
+            <label>
+              Location ID/GID
+              <input value={mapping.locationId ?? ""} onChange={(event) => onChange({ locationId: event.target.value })} />
+            </label>
+          </>
+        ) : null}
+      </details>
       {mapping.warning ? <p className="mapping-warning">{mapping.warning}</p> : null}
     </fieldset>
   );
+}
+
+function mappingTarget(platform: Platform, mapping: PlatformMapping) {
+  if (platform === "shopify") return shortId(mapping.inventoryItemId) ?? "Shopify item";
+  if (platform === "etsy") return mapping.listingId || mapping.remoteSku || "Etsy listing";
+  if (platform === "ebay") return mapping.offerId || mapping.remoteSku || "eBay offer";
+  return mapping.remoteSku || "store item";
+}
+
+function shortId(value?: string) {
+  if (!value) return undefined;
+  const parts = value.split("/");
+  return parts.at(-1) || value;
 }
 
 function formatDate(value?: string | null) {

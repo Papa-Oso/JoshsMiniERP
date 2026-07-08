@@ -156,7 +156,7 @@ h2 {
 
 .lower-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
+  grid-template-columns: minmax(320px, 0.72fr) minmax(460px, 1.28fr);
   gap: var(--panel-gap);
   margin-top: var(--panel-gap);
 }
@@ -620,52 +620,93 @@ tbody tr.selected {
 
 .mapping-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(210px, 1fr));
-  gap: 14px;
+  gap: 8px;
 }
 
 .mapping-block {
   min-width: 0;
   margin: 0;
-  padding: 0;
+  padding: 8px 0;
   border: 0;
-  border-top: 1px solid rgba(85, 247, 255, 0.28);
+  border-bottom: 1px solid rgba(199, 188, 228, 0.12);
 }
 
-.mapping-block legend {
-  padding: 0 0 10px;
-  color: var(--pink);
+.mapping-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mapping-row-copy {
+  min-width: 0;
+}
+
+.mapping-row-copy legend {
+  padding: 0;
+  color: #fff;
   font-weight: 900;
+}
+
+.mapping-row-copy span {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-row input[type="checkbox"] {
+  width: 42px;
+  min-height: 24px;
+  flex: 0 0 auto;
+  accent-color: var(--pink);
 }
 
 .mapping-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 2px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(199, 188, 228, 0.12);
+  margin-top: 8px;
 }
 
 .mapping-meta strong {
   display: block;
-  min-height: 18px;
   margin-top: 2px;
   color: #fff;
   font-size: 0.78rem;
   overflow-wrap: anywhere;
 }
 
+.mapping-details {
+  margin-top: 8px;
+}
+
+.mapping-details summary {
+  color: var(--cyan);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.mapping-details label {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
 .mapping-warning {
-  margin-top: 10px;
+  margin-top: 8px;
   color: var(--yellow);
   font-size: 0.82rem;
   overflow-wrap: anywhere;
 }
 
 .mapping-save {
-  grid-column: 1 / -1;
-  justify-self: end;
+  justify-self: stretch;
+  margin-top: 2px;
 }
 
 .activity-list {
@@ -716,10 +757,6 @@ tbody tr.selected {
   .lower-grid,
   .mapping-grid {
     grid-template-columns: 1fr;
-  }
-
-  .mapping-save {
-    justify-self: stretch;
   }
 }
 
