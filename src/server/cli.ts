@@ -31,6 +31,9 @@ try {
     case "shopify-test":
       await shopifyTestFromCli();
       break;
+    case "shopify-lookup":
+      await shopifyLookupFromCli(args.slice(1));
+      break;
     case "schedule":
       await scheduleFromCli(args.slice(1));
       break;
@@ -127,6 +130,32 @@ async function shopifyTestFromCli() {
   console.log(`Shopify connected: ${result.shop.name} (${result.shop.myshopifyDomain})`);
 }
 
+async function shopifyLookupFromCli(input: string[]) {
+  const [sku] = input;
+  if (!sku) throw new Error("Usage: npm run inv -- shopify-lookup <sku>");
+
+  const adapter = new ShopifyAdapter();
+  if (!adapter.isConfigured()) {
+    throw new Error(`Shopify is missing: ${adapter.missingEnv().join(", ")}`);
+  }
+
+  const result = await adapter.lookupSku(sku);
+  if (result.productVariants.nodes.length === 0) {
+    console.log(`No Shopify variants found for SKU ${sku}.`);
+    return;
+  }
+
+  for (const variant of result.productVariants.nodes) {
+    console.log(`${variant.displayName}`);
+    console.log(`  SKU: ${variant.sku ?? "-"}`);
+    console.log(`  Inventory item: ${variant.inventoryItem.id}`);
+    for (const level of variant.inventoryItem.inventoryLevels.nodes) {
+      const available = level.quantities.find((quantity) => quantity.name === "available")?.quantity ?? "-";
+      console.log(`  Location: ${level.location.name} (${level.location.id}) available=${available}`);
+    }
+  }
+}
+
 async function scheduleFromCli(input: string[]) {
   const [state, interval] = input;
   if (state !== "on" && state !== "off") {
@@ -182,6 +211,7 @@ Commands:
   npm run inv -- subtract <sku> <quantity> [note]
   npm run inv -- sync
   npm run inv -- shopify-test
+  npm run inv -- shopify-lookup <sku>
   npm run inv -- schedule <on|off> [intervalMinutes]
   npm run inv -- map <sku> etsy --listing-id <id> --remote-sku <sku> --enable
   npm run inv -- map <sku> ebay --remote-sku <sku> --offer-id <id> --enable

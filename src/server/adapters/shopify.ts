@@ -32,6 +32,29 @@ type ShopQuery = {
   };
 };
 
+type SkuLookupQuery = {
+  productVariants: {
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      displayName: string;
+      inventoryItem: {
+        id: string;
+        inventoryLevels: {
+          nodes: Array<{
+            id: string;
+            location: {
+              id: string;
+              name: string;
+            };
+            quantities: Array<{ name: string; quantity: number }>;
+          }>;
+        };
+      };
+    }>;
+  };
+};
+
 type ClientCredentialsToken = {
   access_token: string;
   scope?: string;
@@ -163,6 +186,38 @@ export class ShopifyAdapter implements PlatformAdapter {
         shop {
           name
           myshopifyDomain
+        }
+      }`,
+      {}
+    );
+  }
+
+  async lookupSku(sku: string) {
+    const escapedSku = sku.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return this.graphql<SkuLookupQuery>(
+      `query LookupSku {
+        productVariants(first: 10, query: "sku:${escapedSku}") {
+          nodes {
+            id
+            sku
+            displayName
+            inventoryItem {
+              id
+              inventoryLevels(first: 10) {
+                nodes {
+                  id
+                  location {
+                    id
+                    name
+                  }
+                  quantities(names: ["available"]) {
+                    name
+                    quantity
+                  }
+                }
+              }
+            }
+          }
         }
       }`,
       {}
