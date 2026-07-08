@@ -9,6 +9,7 @@
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "test": "tsx --test tests/**/*.test.ts",
     "start": "tsx src/server/index.ts",
     "inv": "tsx src/server/cli.ts",
     "shopify": "shopify",

@@ -141,6 +141,8 @@ async function applySalesAndPlanPushes(
         current.units += sold;
         current.notes.push(`${platformLabels[reading.platform]} sold ${sold}`);
         salesByItem.set(item.id, current);
+        mapping.lastSyncedQuantity = reading.quantity;
+        mapping.lastSyncedAt = now();
       }
 
       if (reading.quantity > lastSynced) {
