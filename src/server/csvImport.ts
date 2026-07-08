@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import type { InventoryItem, StoreData } from "../shared/types";
+import { defaultMaxInventory } from "../shared/types";
 import { makeEvent } from "./inventoryService";
 import { store } from "./store";
 
@@ -77,6 +78,11 @@ function applyCsvRecord(data: StoreData, record: CsvRecord, dryRun: boolean): Cs
     const description = optionalText(record, ["description", "desc"]);
     const note = optionalText(record, ["note", "notes"]);
     const safetyStock = optionalInteger(record, ["safetystock", "safety"], "safetyStock");
+    const maxInventory = optionalPositiveInteger(
+      record,
+      ["maxinventory", "maxstock", "capacity"],
+      "maxInventory"
+    );
     const absoluteQuantity = optionalInteger(
       record,
       ["quantity", "qty", "onhand", "onhandquantity"],
@@ -94,10 +100,34 @@ function applyCsvRecord(data: StoreData, record: CsvRecord, dryRun: boolean): Cs
 
     const item = data.items.find((candidate) => candidate.sku.toUpperCase() === sku);
     if (!item) {
-      return createFromCsv(data, record.line, sku, name, description, absoluteQuantity, delta, safetyStock, note, dryRun);
+      return createFromCsv(
+        data,
+        record.line,
+        sku,
+        name,
+        description,
+        absoluteQuantity,
+        delta,
+        safetyStock,
+        maxInventory,
+        note,
+        dryRun
+      );
     }
 
-    return updateFromCsv(data, record.line, item, name, description, absoluteQuantity, delta, safetyStock, note, dryRun);
+    return updateFromCsv(
+      data,
+      record.line,
+      item,
+      name,
+      description,
+      absoluteQuantity,
+      delta,
+      safetyStock,
+      maxInventory,
+      note,
+      dryRun
+    );
   } catch (error) {
     return {
       line: record.line,
@@ -117,6 +147,7 @@ function createFromCsv(
   absoluteQuantity: number | undefined,
   delta: number | undefined,
   safetyStock: number | undefined,
+  maxInventory: number | undefined,
   note: string | undefined,
   dryRun: boolean
 ): CsvImportRowResult {
@@ -135,6 +166,8 @@ function createFromCsv(
     description,
     quantity,
     safetyStock: safetyStock ?? 0,
+    maxInventory: maxInventory ?? defaultMaxInventory,
+    active: true,
     mappings: {},
     createdAt: timestamp,
     updatedAt: timestamp
@@ -161,6 +194,7 @@ function updateFromCsv(
   absoluteQuantity: number | undefined,
   delta: number | undefined,
   safetyStock: number | undefined,
+  maxInventory: number | undefined,
   note: string | undefined,
   dryRun: boolean
 ): CsvImportRowResult {
@@ -180,6 +214,11 @@ function updateFromCsv(
 
   if (safetyStock !== undefined && safetyStock !== item.safetyStock) {
     item.safetyStock = safetyStock;
+    metadataChanged = true;
+  }
+
+  if (maxInventory !== undefined && maxInventory !== item.maxInventory) {
+    item.maxInventory = maxInventory;
     metadataChanged = true;
   }
 
@@ -358,6 +397,14 @@ function optionalInteger(record: CsvRecord, keys: string[], label: string) {
     throw new Error(`${label} cannot be negative.`);
   }
   return parsed;
+}
+
+function optionalPositiveInteger(record: CsvRecord, keys: string[], label: string) {
+  const value = optionalInteger(record, keys, label);
+  if (value !== undefined && value < 1) {
+    throw new Error(`${label} must be at least 1.`);
+  }
+  return value;
 }
 
 function normalizeHeader(value: string) {

@@ -14,7 +14,7 @@ import type {
   StoreData,
   SyncRun
 } from "../shared/types";
-import { platforms } from "../shared/types";
+import { defaultMaxInventory, platforms } from "../shared/types";
 import { config } from "./config";
 
 const { Pool } = pg;
@@ -263,7 +263,7 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
   private async readWithClient(client: PoolClient): Promise<StoreData> {
     const itemRows = (
       await client.query<ItemRow>(`
-        SELECT id, sku, name, description, quantity, safety_stock, created_at, updated_at
+        SELECT id, sku, name, description, quantity, safety_stock, max_inventory, active, created_at, updated_at
         FROM inventory_items
         ORDER BY created_at DESC, sku ASC
       `)
@@ -331,6 +331,8 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
         description: optionalString(row.description),
         quantity: integer(row.quantity),
         safetyStock: integer(row.safety_stock),
+        maxInventory: integer(row.max_inventory),
+        active: row.active !== false,
         mappings: {},
         createdAt: isoString(row.created_at),
         updatedAt: isoString(row.updated_at)
@@ -371,8 +373,8 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
       await client.query(
         `
           INSERT INTO inventory_items (
-            id, sku, name, description, quantity, safety_stock, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            id, sku, name, description, quantity, safety_stock, max_inventory, active, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `,
         [
           item.id,
@@ -381,6 +383,8 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
           item.description ?? null,
           item.quantity,
           item.safetyStock,
+          storedMaxInventory(item.maxInventory),
+          item.active !== false,
           item.createdAt,
           item.updatedAt
         ]
@@ -522,6 +526,8 @@ interface ItemRow {
   description: string | null;
   quantity: number;
   safety_stock: number;
+  max_inventory: number;
+  active: boolean;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -646,6 +652,11 @@ function nullableInteger(value: unknown) {
   return value === null || value === undefined ? null : integer(value);
 }
 
+function storedMaxInventory(value: unknown) {
+  const maxInventory = integer(value);
+  return Number.isInteger(maxInventory) && maxInventory >= 1 ? maxInventory : defaultMaxInventory;
+}
+
 function optionalString(value: unknown) {
   if (value === null || value === undefined || value === "") return undefined;
   return String(value);
@@ -679,9 +690,17 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   description TEXT,
   quantity INTEGER NOT NULL CHECK (quantity >= 0),
   safety_stock INTEGER NOT NULL DEFAULT 0 CHECK (safety_stock >= 0),
+  max_inventory INTEGER NOT NULL DEFAULT 100 CHECK (max_inventory >= 1),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE inventory_items
+  ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE inventory_items
+  ADD COLUMN IF NOT EXISTS max_inventory INTEGER NOT NULL DEFAULT 100 CHECK (max_inventory >= 1);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_items_sku_lower
   ON inventory_items (LOWER(sku));

@@ -8,6 +8,8 @@ export const platformLabels: Record<Platform, string> = {
   shopify: "Shopify"
 };
 
+export const defaultMaxInventory = 100;
+
 export type InventoryEventType =
   | "create"
   | "batch_add"
@@ -37,6 +39,8 @@ export interface InventoryItem {
   description?: string;
   quantity: number;
   safetyStock: number;
+  maxInventory: number;
+  active: boolean;
   mappings: Partial<Record<Platform, PlatformMapping>>;
   createdAt: string;
   updatedAt: string;
@@ -108,6 +112,7 @@ export interface CreateItemInput {
   description?: string;
   quantity: number;
   safetyStock?: number;
+  maxInventory?: number;
 }
 
 export interface AdjustInventoryInput {
@@ -121,10 +126,108 @@ export interface UpdateItemInput {
   name?: string;
   description?: string;
   safetyStock?: number;
+  maxInventory?: number;
+  active?: boolean;
   mappings?: Partial<Record<Platform, PlatformMapping>>;
 }
 
 export interface UpdateScheduleInput {
   enabled?: boolean;
   intervalMinutes?: number;
+}
+
+export type PrintEventType = "print_batch" | "package_use" | "correction";
+
+export interface PrintInstruction {
+  id: string;
+  label: string;
+  matchTerms: string[];
+  title: string;
+  body: string;
+  onHand: number;
+  lowAlert: number;
+  perPage: number;
+  updatedAt: string;
+}
+
+export interface PrintEvent {
+  id: string;
+  instructionId: string;
+  type: PrintEventType;
+  delta: number;
+  quantityAfter: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PrintingPayload {
+  instructions: PrintInstruction[];
+  instructionMatches: SkuInstructionMatch[];
+  events: PrintEvent[];
+  defaults: {
+    labelBatchSize: number;
+    instructionPages: number;
+    instructionPerPage: number;
+  };
+}
+
+export type InstructionMatchMode = "auto" | "instruction" | "none";
+
+export interface SkuInstructionMatch {
+  sku: string;
+  mode: InstructionMatchMode;
+  instructionId?: string;
+  updatedAt: string;
+}
+
+export interface UpdateInstructionInput {
+  title?: string;
+  body?: string;
+  lowAlert?: number;
+}
+
+export interface UpdateInstructionMatchInput {
+  mode: InstructionMatchMode;
+  instructionId?: string;
+}
+
+export interface UploadInstructionInput {
+  filename: string;
+  contentBase64: string;
+  label?: string;
+  sku?: string;
+}
+
+export interface UploadInstructionResult {
+  instruction: PrintInstruction;
+  asset: PrintAsset;
+}
+
+export interface UploadLabelInput {
+  sku: string;
+  filename: string;
+  contentBase64: string;
+}
+
+export interface UploadLabelResult {
+  asset: PrintAsset;
+}
+
+export interface AdjustInstructionInput {
+  delta: number;
+  type?: PrintEventType;
+  note?: string;
+}
+
+export type PrintAssetKind = "label" | "instruction";
+
+export interface PrintAsset {
+  id: string;
+  kind: PrintAssetKind;
+  filename: string;
+  displayName: string;
+  path: string;
+  sku?: string;
+  instructionId?: string;
+  exists: boolean;
 }

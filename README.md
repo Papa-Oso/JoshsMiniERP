@@ -14,13 +14,7 @@ npm run dev
 
 Open `http://127.0.0.1:5175`. The API runs on `http://127.0.0.1:5174`.
 
-For embedded Shopify app development, start a Postgres database first or set `DATABASE_URL` to an existing Postgres database. With Docker installed, the local helper is:
-
-```powershell
-npm run dev:db
-```
-
-Then run:
+For embedded Shopify app development, set `DATABASE_URL` to an existing Postgres database, then run:
 
 ```powershell
 npm run shopify:dev:full
@@ -155,12 +149,12 @@ npm run inv -- sku-audit --platform ebay
 Postgres storage:
 
 ```powershell
-docker compose up -d postgres
+$env:DATABASE_URL="postgresql://erp_user:<password>@127.0.0.1:5432/erp"
 npm run inv -- migrate-postgres --dry-run
 npm run inv -- migrate-postgres
 ```
 
-The app still uses `STORE_DRIVER=json` by default for quick local testing. Set `STORE_DRIVER=postgres` and `DATABASE_URL` to use native Postgres tables. `migrate-postgres` copies the current JSON inventory into Postgres and writes a JSON backup first. It refuses to overwrite a non-empty Postgres database unless you pass `--force`.
+The app still uses `STORE_DRIVER=json` by default for local testing. Set `STORE_DRIVER=postgres` and `DATABASE_URL` to use native Postgres tables. `migrate-postgres` copies the current JSON inventory into Postgres and writes a JSON backup first. It refuses to overwrite a non-empty Postgres database unless you pass `--force`.
 
 To run the Postgres store contract test against a disposable/local database:
 

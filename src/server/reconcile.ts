@@ -47,15 +47,16 @@ export async function reconcileInventory(options: ReconcileOptions = {}): Promis
   const selectedPlatforms = options.platform ? [options.platform] : platforms;
   const rows: ReconcileRow[] = [];
   const readings: PullReading[] = [];
+  const activeItems = data.items.filter((item) => item.active !== false);
   const summary: SyncSummary = {
-    itemsChecked: data.items.length,
+    itemsChecked: activeItems.length,
     salesDetected: 0,
     pushes: 0,
     warnings: 0,
     errors: 0
   };
 
-  for (const item of data.items) {
+  for (const item of activeItems) {
     for (const platform of selectedPlatforms) {
       const mapping = item.mappings[platform];
       if (!mapping?.enabled) continue;

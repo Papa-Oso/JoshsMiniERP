@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { InventoryItem, PlatformMapping, StoreData } from "../shared/types";
+import { defaultMaxInventory } from "../shared/types";
 import { ShopifyAdapter } from "./adapters/shopify";
 import type { ShopifyInventoryLevel, ShopifySkuVariant } from "./adapters/shopify";
 import { makeEvent } from "./inventoryService";
@@ -190,6 +191,8 @@ function createImportedItem(
     description,
     quantity,
     safetyStock: 0,
+    maxInventory: defaultMaxInventory,
+    active: true,
     mappings: { shopify: mapping },
     createdAt: timestamp,
     updatedAt: timestamp

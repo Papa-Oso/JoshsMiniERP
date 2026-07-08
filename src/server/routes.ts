@@ -5,21 +5,27 @@ import { getPlatformStatuses } from "./config";
 import {
   adjustInventory,
   createItem,
+  deleteItem,
   listData,
   updateItem,
   updateSchedule
 } from "./inventoryService";
+import { ebayReviewsRouter } from "./ebayReviewRoutes";
 import { refreshScheduler } from "./scheduler";
 import { runInventorySync } from "./syncEngine";
+import { printingRouter } from "./printingRoutes";
 
 export const router = express.Router();
+router.use("/ebay-reviews", ebayReviewsRouter);
+router.use("/printing", printingRouter);
 
 const createItemSchema = z.object({
   sku: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
   quantity: z.coerce.number().int().min(0),
-  safetyStock: z.coerce.number().int().min(0).optional()
+  safetyStock: z.coerce.number().int().min(0).optional(),
+  maxInventory: z.coerce.number().int().min(1).optional()
 });
 
 const adjustSchema = z.object({
@@ -46,6 +52,8 @@ const updateItemSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   safetyStock: z.coerce.number().int().min(0).optional(),
+  maxInventory: z.coerce.number().int().min(1).optional(),
+  active: z.boolean().optional(),
   mappings: z
     .object({
       etsy: mappingSchema.optional(),
@@ -81,6 +89,11 @@ router.post("/items", asyncHandler(async (req, res) => {
 router.patch("/items/:id", asyncHandler(async (req, res) => {
   const item = await updateItem(routeParam(req.params.id), updateItemSchema.parse(req.body));
   res.json(item);
+}));
+
+router.delete("/items/:id", asyncHandler(async (req, res) => {
+  const item = await deleteItem(routeParam(req.params.id));
+  res.json({ item, platformTouched: false });
 }));
 
 router.post("/items/:id/adjust", asyncHandler(async (req, res) => {

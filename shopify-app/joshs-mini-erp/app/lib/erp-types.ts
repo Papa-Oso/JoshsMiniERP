@@ -8,6 +8,8 @@ export const platformLabels: Record<Platform, string> = {
   shopify: "Shopify",
 };
 
+export const defaultMaxInventory = 100;
+
 export interface PlatformMapping {
   enabled: boolean;
   remoteSku?: string;
@@ -28,6 +30,7 @@ export interface InventoryItem {
   description?: string;
   quantity: number;
   safetyStock: number;
+  maxInventory: number;
   mappings: Partial<Record<Platform, PlatformMapping>>;
   createdAt: string;
   updatedAt: string;

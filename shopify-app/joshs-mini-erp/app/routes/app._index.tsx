@@ -14,7 +14,7 @@ import {
   erpRequest,
   getDashboard,
 } from "../lib/erp.server";
-import { createEmptyDashboard } from "../lib/erp-types";
+import { createEmptyDashboard, defaultMaxInventory } from "../lib/erp-types";
 import type {
   DashboardPayload,
   InventoryItem,
@@ -651,7 +651,14 @@ function isLowStock(item: InventoryItem) {
   return item.quantity <= item.safetyStock;
 }
 
+function isOverMax(item: InventoryItem) {
+  const maxInventory =
+    Number.isInteger(item.maxInventory) && item.maxInventory >= 1 ? item.maxInventory : defaultMaxInventory;
+  return item.quantity > maxInventory;
+}
+
 function stockTone(item: InventoryItem) {
+  if (isOverMax(item)) return "critical";
   return isLowStock(item) ? "warning" : "success";
 }
 

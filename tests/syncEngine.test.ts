@@ -80,6 +80,25 @@ test("failed pulls do not push stale local inventory", async () => {
   assert.equal(stored.items[0].quantity, 10);
 });
 
+test("inactive SKUs stay local but are skipped by sync", async () => {
+  await writeStore(seedStore({ quantity: 10 }));
+  const inactive = await updateItem("item-1", { active: false });
+  assert.equal(inactive.active, false);
+
+  globalThis.fetch = (async () => {
+    throw new Error("Inactive SKUs should not call marketplace APIs.");
+  }) as typeof fetch;
+
+  const run = await runInventorySync("cli");
+  const stored = await readStore();
+
+  assert.equal(run.summary.itemsChecked, 0);
+  assert.equal(run.summary.pushes, 0);
+  assert.equal(stored.items.length, 1);
+  assert.equal(stored.items[0].active, false);
+  assert.equal(stored.events.length, 0);
+});
+
 test("sync only pushes Shopify SKUs whose remote quantity differs from local", async () => {
   const store = seedStore({
     quantity: 10,
@@ -94,6 +113,8 @@ test("sync only pushes Shopify SKUs whose remote quantity differs from local", a
     name: "Changed",
     quantity: 13,
     safetyStock: 0,
+    maxInventory: 100,
+    active: true,
     mappings: {
       shopify: {
         enabled: true,
@@ -291,6 +312,8 @@ function seedStore({
         name: "Neon Mug",
         quantity,
         safetyStock: 0,
+        maxInventory: 100,
+        active: true,
         mappings: {
           shopify: {
             enabled: true,

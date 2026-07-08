@@ -3,18 +3,27 @@ import {
   Activity,
   Box,
   Clock3,
+  FileSpreadsheet,
+  Menu,
   Minus,
+  PackagePlus,
   Play,
   Plus,
+  Printer,
   RefreshCw,
   Save,
+  Search,
   Settings,
   SlidersHorizontal,
-  X
+  X,
+  type LucideIcon
 } from "lucide-react";
 import { api } from "./api";
+import { EbayReviewsPage } from "./EbayReviewsPage";
+import { ItemManagementPage } from "./ItemManagementPage";
+import { PrintingPage } from "./PrintingPage";
 import type { DashboardPayload, InventoryItem, Platform, PlatformMapping } from "../shared/types";
-import { platformLabels, platforms } from "../shared/types";
+import { defaultMaxInventory, platformLabels, platforms } from "../shared/types";
 
 const emptyDashboard: DashboardPayload = {
   items: [],
@@ -31,13 +40,28 @@ const emptyDashboard: DashboardPayload = {
 };
 
 type AdjustMode = "add" | "subtract";
+type AppPage = "inventory" | "items" | "ebayReviews" | "printing";
 type SortField = "sku" | "name" | "quantity" | "lowAlert" | "status";
 type SortDirection = "asc" | "desc";
 
+const tools: Array<{
+  id: AppPage;
+  label: string;
+  group: string;
+  icon: LucideIcon;
+}> = [
+  { id: "inventory", label: "Inventory", group: "Core", icon: Box },
+  { id: "items", label: "Item Management", group: "Core", icon: PackagePlus },
+  { id: "printing", label: "Printing", group: "Fulfillment", icon: Printer },
+  { id: "ebayReviews", label: "eBay Reviews", group: "Marketplaces", icon: FileSpreadsheet }
+];
+
 export function App() {
+  const [page, setPage] = useState<AppPage>("inventory");
+  const [toolSwitcherOpen, setToolSwitcherOpen] = useState(false);
+  const [toolSearch, setToolSearch] = useState("");
   const [dashboard, setDashboard] = useState<DashboardPayload>(emptyDashboard);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newItem, setNewItem] = useState({ sku: "", name: "", quantity: 0 });
   const [adjustment, setAdjustment] = useState({ mode: "add" as AdjustMode, quantity: 1, note: "" });
   const [lowAlert, setLowAlert] = useState(0);
   const [sortField, setSortField] = useState<SortField>("sku");
@@ -48,14 +72,33 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
+  const activeItems = useMemo(
+    () => dashboard.items.filter((item) => item.active !== false),
+    [dashboard.items]
+  );
+  const activeDashboard = useMemo(
+    () => ({ ...dashboard, items: activeItems }),
+    [activeItems, dashboard]
+  );
   const selectedItem = useMemo(
-    () => dashboard.items.find((item) => item.id === selectedId) ?? dashboard.items[0],
-    [dashboard.items, selectedId]
+    () => activeItems.find((item) => item.id === selectedId) ?? activeItems[0],
+    [activeItems, selectedId]
   );
 
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!toolSwitcherOpen) return;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setToolSwitcherOpen(false);
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [toolSwitcherOpen]);
 
   useEffect(() => {
     setSchedule({
@@ -94,14 +137,6 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function handleCreate() {
-    await runAction(
-      () => api.createItem({ ...newItem, quantity: Number(newItem.quantity) }),
-      "Item saved."
-    );
-    setNewItem({ sku: "", name: "", quantity: 0 });
   }
 
   async function handleAdjust() {
@@ -175,16 +210,15 @@ export function App() {
   }
 
   const latestRun = dashboard.syncRuns[0];
-  const stockTotal = dashboard.items.reduce((sum, item) => sum + item.quantity, 0);
-  const lowStock = dashboard.items.filter(isLowStock).length;
-  const maxQuantity = Math.max(1, ...dashboard.items.map((item) => item.quantity));
+  const stockTotal = activeItems.reduce((sum, item) => sum + item.quantity, 0);
+  const lowStock = activeItems.filter(isLowStock).length;
   const readyStores = dashboard.platformStatuses.filter((status) => status.configured).length;
   const linkedStores = selectedItem
     ? platforms.filter((platform) => selectedItem.mappings[platform]?.enabled).length
     : 0;
   const sortedItems = useMemo(
-    () => [...dashboard.items].sort((left, right) => compareInventoryItems(left, right, sortField, sortDirection)),
-    [dashboard.items, sortDirection, sortField]
+    () => [...activeItems].sort((left, right) => compareInventoryItems(left, right, sortField, sortDirection)),
+    [activeItems, sortDirection, sortField]
   );
   const activityEvents = useMemo(
     () =>
@@ -193,55 +227,125 @@ export function App() {
         .slice(0, 12),
     [dashboard.events]
   );
+  const pageTitle =
+    page === "inventory"
+      ? "Inventory Sync"
+      : page === "items"
+        ? "Item Management"
+        : page === "printing"
+          ? "Printing"
+          : "eBay Reviews";
+  const visibleTools = useMemo(() => {
+    const query = toolSearch.trim().toLowerCase();
+    if (!query) return tools;
+    return tools.filter((tool) => `${tool.label} ${tool.group}`.toLowerCase().includes(query));
+  }, [toolSearch]);
 
   return (
     <main className="shell">
       <section className="topbar">
-        <div>
-          <p className="eyebrow">Josh's Mini ERP</p>
-          <h1>Inventory Sync</h1>
+        <div className="topbar-title">
+          <button className="icon-button tool-trigger" type="button" onClick={() => setToolSwitcherOpen(true)}>
+            <Menu size={18} />
+            Tools
+          </button>
+          <div>
+            <p className="eyebrow">Josh's Mini ERP</p>
+            <h1>{pageTitle}</h1>
+          </div>
         </div>
         <div className="topbar-actions">
-          <div className="status-strip">
-            <Metric label="SKUs" value={dashboard.items.length} />
-            <Metric label="Global Units" value={stockTotal} />
-            <Metric label="Low Alerts" value={lowStock} tone={lowStock ? "warn" : "ok"} />
-          </div>
-          <button className="icon-button settings-button" type="button" onClick={() => setStoreSettingsOpen(true)}>
-            <Settings size={18} />
-            Stores
-          </button>
+          {page === "inventory" ? (
+            <>
+              <div className="status-strip">
+                <Metric label="SKUs" value={activeItems.length} />
+                <Metric label="Global Units" value={stockTotal} />
+                <Metric label="Low Alerts" value={lowStock} tone={lowStock ? "warn" : "ok"} />
+              </div>
+              <button className="icon-button settings-button" type="button" onClick={() => setStoreSettingsOpen(true)}>
+                <Settings size={18} />
+                Stores
+              </button>
+            </>
+          ) : page === "items" ? (
+            <div className="tool-summary">
+              <span>Create + connect</span>
+              <strong>SKU library</strong>
+            </div>
+          ) : page === "printing" ? (
+            <div className="tool-summary">
+              <span>Labels + Instructions</span>
+              <strong>Packaging station</strong>
+            </div>
+          ) : (
+            <div className="tool-summary">
+              <span>Judge.me CSV</span>
+              <strong>Local scan history</strong>
+            </div>
+          )}
         </div>
       </section>
 
+      {toolSwitcherOpen ? (
+        <div className="tool-drawer-backdrop" role="presentation" onMouseDown={() => setToolSwitcherOpen(false)}>
+          <aside
+            className="tool-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tool-drawer-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="tool-drawer-header">
+              <div>
+                <p className="eyebrow">Josh's Mini ERP</p>
+                <h2 id="tool-drawer-title">Tools</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setToolSwitcherOpen(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            <label className="tool-search-field">
+              <span>Search</span>
+              <Search size={16} />
+              <input
+                autoFocus
+                value={toolSearch}
+                onChange={(event) => setToolSearch(event.target.value)}
+                placeholder="Find page"
+              />
+            </label>
+            <nav className="tool-drawer-list" aria-label="Tools">
+              {visibleTools.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <button
+                    key={tool.id}
+                    className={`tool-drawer-item ${page === tool.id ? "active" : ""}`}
+                    type="button"
+                    onClick={() => {
+                      setPage(tool.id);
+                      setToolSearch("");
+                      setToolSwitcherOpen(false);
+                    }}
+                  >
+                    <span className="tool-drawer-icon">
+                      <Icon size={20} />
+                    </span>
+                    <strong>{tool.label}</strong>
+                    <span>{tool.group}</span>
+                  </button>
+                );
+              })}
+              {visibleTools.length === 0 ? <div className="tool-empty">No tools</div> : null}
+            </nav>
+          </aside>
+        </div>
+      ) : null}
+
+      {page === "inventory" ? (
+        <>
       <section className="grid">
         <Panel title="Inventory" icon={<Box size={18} />} className="inventory-panel">
-          <div className="inline-form create-form">
-            <input
-              aria-label="SKU"
-              placeholder="SKU"
-              value={newItem.sku}
-              onChange={(event) => setNewItem({ ...newItem, sku: event.target.value })}
-            />
-            <input
-              aria-label="Name"
-              placeholder="Name"
-              value={newItem.name}
-              onChange={(event) => setNewItem({ ...newItem, name: event.target.value })}
-            />
-            <input
-              aria-label="Initial quantity"
-              type="number"
-              min="0"
-              value={newItem.quantity}
-              onChange={(event) => setNewItem({ ...newItem, quantity: Number(event.target.value) })}
-            />
-            <button className="icon-button primary" type="button" disabled={busy} onClick={handleCreate}>
-              <Plus size={18} />
-              Add SKU
-            </button>
-          </div>
-
           <div className="table-wrap">
             <table>
               <thead>
@@ -289,12 +393,12 @@ export function App() {
                       {item.description ? <div className="item-description">{item.description}</div> : null}
                     </td>
                     <td>
-                      <StockCell item={item} maxQuantity={maxQuantity} />
+                      <StockCell item={item} />
                     </td>
                     <td>{item.safetyStock}</td>
                   </tr>
                 ))}
-                {dashboard.items.length === 0 ? (
+                {activeItems.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="empty">
                       No SKUs
@@ -320,6 +424,10 @@ export function App() {
             <div>
               <span>Low At</span>
               <strong>{selectedItem?.safetyStock ?? 0}</strong>
+            </div>
+            <div>
+              <span>Max</span>
+              <strong>{selectedItem ? itemMaxInventory(selectedItem) : defaultMaxInventory}</strong>
             </div>
             <div>
               <span>Status</span>
@@ -517,6 +625,14 @@ export function App() {
           </section>
         </div>
       ) : null}
+        </>
+      ) : page === "items" ? (
+        <ItemManagementPage dashboard={dashboard} onDashboardChange={load} />
+      ) : page === "printing" ? (
+        <PrintingPage dashboard={activeDashboard} />
+      ) : (
+        <EbayReviewsPage />
+      )}
     </main>
   );
 }
@@ -561,7 +677,10 @@ function MiniStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function StockCell({ item, maxQuantity }: { item: InventoryItem; maxQuantity: number }) {
+function StockCell({ item }: { item: InventoryItem }) {
+  const maxInventory = itemMaxInventory(item);
+  const overage = Math.max(0, item.quantity - maxInventory);
+
   return (
     <div className={`stock-cell ${stockTone(item)}`}>
       <div className="stock-cell-top">
@@ -569,7 +688,11 @@ function StockCell({ item, maxQuantity }: { item: InventoryItem; maxQuantity: nu
         <span>{stockStatusLabel(item)}</span>
       </div>
       <div className="stock-bar">
-        <span className="stock-fill" style={{ width: stockPercent(item.quantity, maxQuantity) }} />
+        <span className="stock-fill" style={{ width: stockPercent(item.quantity, maxInventory) }} />
+      </div>
+      <div className="stock-cell-scale">
+        <span>Max {maxInventory}</span>
+        {overage ? <span>+{overage}</span> : null}
       </div>
     </div>
   );
@@ -717,7 +840,16 @@ function isLowStock(item: InventoryItem) {
   return item.quantity <= item.safetyStock;
 }
 
+function isOverMax(item: InventoryItem) {
+  return item.quantity > itemMaxInventory(item);
+}
+
+function itemMaxInventory(item: InventoryItem) {
+  return Number.isInteger(item.maxInventory) && item.maxInventory >= 1 ? item.maxInventory : defaultMaxInventory;
+}
+
 function stockTone(item: InventoryItem) {
+  if (isOverMax(item)) return "over";
   if (isLowStock(item)) return "low";
   if (item.safetyStock > 0 && item.quantity <= item.safetyStock + Math.max(3, Math.ceil(item.safetyStock * 0.25))) {
     return "watch";
@@ -727,6 +859,7 @@ function stockTone(item: InventoryItem) {
 
 function stockStatusLabel(item: InventoryItem) {
   const tone = stockTone(item);
+  if (tone === "over") return "Over max";
   if (tone === "low") return "Low";
   if (tone === "watch") return "Watch";
   return "OK";
@@ -734,7 +867,7 @@ function stockStatusLabel(item: InventoryItem) {
 
 function stockPercent(quantity: number, maxQuantity: number) {
   if (quantity <= 0) return "0%";
-  return `${Math.max(6, Math.round((quantity / maxQuantity) * 100))}%`;
+  return `${Math.min(100, Math.max(6, Math.round((quantity / maxQuantity) * 100)))}%`;
 }
 
 function compareInventoryItems(
@@ -758,7 +891,8 @@ function compareSortField(left: InventoryItem, right: InventoryItem, field: Sort
 
 function stockToneRank(item: InventoryItem) {
   const tone = stockTone(item);
-  if (tone === "low") return 0;
-  if (tone === "watch") return 1;
-  return 2;
+  if (tone === "over") return 0;
+  if (tone === "low") return 1;
+  if (tone === "watch") return 2;
+  return 3;
 }

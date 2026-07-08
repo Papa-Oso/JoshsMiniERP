@@ -18,6 +18,8 @@ export async function assertInventoryStoreContract(store: InventoryStoreDriver) 
       description: "Bright mug",
       quantity: 12,
       safetyStock: 2,
+      maxInventory: 100,
+      active: true,
       mappings: {
         shopify: {
           enabled: true,
@@ -72,6 +74,7 @@ export async function assertInventoryStoreContract(store: InventoryStoreDriver) 
   const stored = await store.read();
   assert.equal(stored.items.length, 1);
   assert.equal(stored.items[0].sku, "NEON-MUG");
+  assert.equal(stored.items[0].maxInventory, 100);
   assert.equal(stored.items[0].mappings.shopify?.enabled, true);
   assert.equal(stored.items[0].mappings.shopify?.lastSyncedQuantity, 12);
   assert.equal(stored.events.length, 1);

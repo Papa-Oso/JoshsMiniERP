@@ -6,7 +6,6 @@
   "main": "dist/server/index.js",
   "scripts": {
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:db": "docker compose up -d postgres",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
@@ -35,14 +34,17 @@
     "node": ">=20.19 <22 || >=22.12"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "lucide-react": "^1.23.0",
     "nanoid": "^5.1.16",
     "node-cron": "^4.6.0",
     "pg": "^8.22.0",
+    "playwright": "^1.61.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sql.js": "^1.14.1",
     "tsx": "^4.23.0",
     "zod": "^4.4.3"
   },

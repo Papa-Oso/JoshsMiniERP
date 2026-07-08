@@ -79,7 +79,7 @@ async function pullRemoteQuantities(messages: string[], summary: SyncSummary) {
     messages.push("No marketplace credentials are configured; local inventory was left unchanged.");
   }
 
-  for (const item of data.items) {
+  for (const item of data.items.filter((candidate) => candidate.active !== false)) {
     summary.itemsChecked += 1;
 
     for (const platform of platforms) {

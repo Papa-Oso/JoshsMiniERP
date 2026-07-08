@@ -1,9 +1,0 @@
-node_modules
-dist
-data
-.env
-.git
-.gitignore
-shopify-app/joshs-mini-erp/node_modules
-shopify-app/joshs-mini-erp/build
-shopify-app/joshs-mini-erp/.env

@@ -133,6 +133,7 @@ async function listItems() {
       name: item.name,
       qty: item.quantity,
       safety: item.safetyStock,
+      max: item.maxInventory,
       etsy: item.mappings.etsy?.enabled ? "on" : "",
       ebay: item.mappings.ebay?.enabled ? "on" : "",
       shopify: item.mappings.shopify?.enabled ? "on" : ""
