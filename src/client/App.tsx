@@ -30,6 +30,16 @@ const emptyDashboard: DashboardPayload = {
 };
 
 type AdjustMode = "add" | "subtract";
+type SortField = "sku" | "name" | "quantity" | "lowAlert" | "status";
+type SortDirection = "asc" | "desc";
+
+const sortOptions: Array<{ value: SortField; label: string }> = [
+  { value: "sku", label: "SKU" },
+  { value: "name", label: "Name" },
+  { value: "quantity", label: "Global Stock" },
+  { value: "lowAlert", label: "Low At" },
+  { value: "status", label: "Status" }
+];
 
 export function App() {
   const [dashboard, setDashboard] = useState<DashboardPayload>(emptyDashboard);
@@ -37,6 +47,8 @@ export function App() {
   const [newItem, setNewItem] = useState({ sku: "", name: "", quantity: 0 });
   const [adjustment, setAdjustment] = useState({ mode: "add" as AdjustMode, quantity: 1, note: "" });
   const [lowAlert, setLowAlert] = useState(0);
+  const [sortField, setSortField] = useState<SortField>("sku");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [schedule, setSchedule] = useState({ enabled: false, intervalMinutes: 60 });
   const [mappingDraft, setMappingDraft] = useState<Partial<Record<Platform, PlatformMapping>>>({});
   const [busy, setBusy] = useState(false);
@@ -163,6 +175,10 @@ export function App() {
   const stockTotal = dashboard.items.reduce((sum, item) => sum + item.quantity, 0);
   const lowStock = dashboard.items.filter(isLowStock).length;
   const maxQuantity = Math.max(1, ...dashboard.items.map((item) => item.quantity));
+  const sortedItems = useMemo(
+    () => [...dashboard.items].sort((left, right) => compareInventoryItems(left, right, sortField, sortDirection)),
+    [dashboard.items, sortDirection, sortField]
+  );
 
   return (
     <main className="shell">
@@ -179,7 +195,7 @@ export function App() {
       </section>
 
       <section className="grid">
-        <Panel title="Inventory" icon={<Box size={18} />}>
+        <Panel title="Inventory" icon={<Box size={18} />} className="inventory-panel">
           <div className="inline-form create-form">
             <input
               aria-label="SKU"
@@ -206,6 +222,29 @@ export function App() {
             </button>
           </div>
 
+          <div className="inventory-controls">
+            <label>
+              Sort
+              <select value={sortField} onChange={(event) => setSortField(event.target.value as SortField)}>
+                {sortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Order
+              <select
+                value={sortDirection}
+                onChange={(event) => setSortDirection(event.target.value as SortDirection)}
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </label>
+          </div>
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -217,7 +256,7 @@ export function App() {
                 </tr>
               </thead>
               <tbody>
-                {dashboard.items.map((item) => (
+                {sortedItems.map((item) => (
                   <tr
                     key={item.id}
                     className={item.id === selectedItem?.id ? "selected" : ""}
@@ -442,9 +481,19 @@ export function App() {
   );
 }
 
-function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Panel({
+  title,
+  icon,
+  children,
+  className
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <section className="panel">
+    <section className={`panel ${className ?? ""}`}>
       <header className="panel-header">
         <span>{icon}</span>
         <h2>{title}</h2>
@@ -596,4 +645,30 @@ function stockStatusLabel(item: InventoryItem) {
 function stockPercent(quantity: number, maxQuantity: number) {
   if (quantity <= 0) return "0%";
   return `${Math.max(6, Math.round((quantity / maxQuantity) * 100))}%`;
+}
+
+function compareInventoryItems(
+  left: InventoryItem,
+  right: InventoryItem,
+  field: SortField,
+  direction: SortDirection
+) {
+  const comparison = compareSortField(left, right, field);
+  if (comparison !== 0) return direction === "asc" ? comparison : -comparison;
+  return left.sku.localeCompare(right.sku);
+}
+
+function compareSortField(left: InventoryItem, right: InventoryItem, field: SortField) {
+  if (field === "sku") return left.sku.localeCompare(right.sku);
+  if (field === "name") return left.name.localeCompare(right.name);
+  if (field === "quantity") return left.quantity - right.quantity;
+  if (field === "lowAlert") return left.safetyStock - right.safetyStock;
+  return stockToneRank(left) - stockToneRank(right);
+}
+
+function stockToneRank(item: InventoryItem) {
+  const tone = stockTone(item);
+  if (tone === "low") return 0;
+  if (tone === "watch") return 1;
+  return 2;
 }
