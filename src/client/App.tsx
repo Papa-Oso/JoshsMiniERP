@@ -34,14 +34,6 @@ type AdjustMode = "add" | "subtract";
 type SortField = "sku" | "name" | "quantity" | "lowAlert" | "status";
 type SortDirection = "asc" | "desc";
 
-const sortOptions: Array<{ value: SortField; label: string }> = [
-  { value: "sku", label: "SKU" },
-  { value: "name", label: "Name" },
-  { value: "quantity", label: "Global Stock" },
-  { value: "lowAlert", label: "Low At" },
-  { value: "status", label: "Status" }
-];
-
 export function App() {
   const [dashboard, setDashboard] = useState<DashboardPayload>(emptyDashboard);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -162,6 +154,15 @@ export function App() {
     await runAction(() => api.updateItem(selectedItem.id, { mappings: mappingDraft }), "Store links saved.");
   }
 
+  function handleSort(nextField: SortField) {
+    if (sortField === nextField) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortField(nextField);
+    setSortDirection("asc");
+  }
+
   function updateMapping(platform: Platform, patch: Partial<PlatformMapping>) {
     setMappingDraft((current) => ({
       ...current,
@@ -234,37 +235,38 @@ export function App() {
             </button>
           </div>
 
-          <div className="inventory-controls">
-            <label>
-              Sort
-              <select value={sortField} onChange={(event) => setSortField(event.target.value as SortField)}>
-                {sortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Order
-              <select
-                value={sortDirection}
-                onChange={(event) => setSortDirection(event.target.value as SortDirection)}
-              >
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-              </select>
-            </label>
-          </div>
-
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>SKU</th>
-                  <th>Item</th>
-                  <th>Global Stock</th>
-                  <th>Low At</th>
+                  <SortableTh
+                    field="sku"
+                    label="SKU"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableTh
+                    field="name"
+                    label="Item"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableTh
+                    field="quantity"
+                    label="Global Stock"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableTh
+                    field="lowAlert"
+                    label="Low At"
+                    activeField={sortField}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -563,6 +565,30 @@ function StockCell({ item, maxQuantity }: { item: InventoryItem; maxQuantity: nu
         <span className="stock-fill" style={{ width: stockPercent(item.quantity, maxQuantity) }} />
       </div>
     </div>
+  );
+}
+
+function SortableTh({
+  field,
+  label,
+  activeField,
+  direction,
+  onSort
+}: {
+  field: SortField;
+  label: string;
+  activeField: SortField;
+  direction: SortDirection;
+  onSort: (field: SortField) => void;
+}) {
+  const active = field === activeField;
+  return (
+    <th>
+      <button className={`sort-header ${active ? "active" : ""}`} type="button" onClick={() => onSort(field)}>
+        <span>{label}</span>
+        <span className="sort-arrow">{active ? (direction === "asc" ? "^" : "v") : ""}</span>
+      </button>
+    </th>
   );
 }
 

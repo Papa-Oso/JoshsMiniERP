@@ -298,17 +298,6 @@ select:focus {
   grid-area: schedule;
 }
 
-.inventory-controls {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.48fr);
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.inventory-controls label {
-  margin-bottom: 0;
-}
-
 .selected-stock-meta span,
 .stock-cell-top span {
   color: var(--text-soft);
@@ -428,10 +417,41 @@ th {
   position: sticky;
   top: 0;
   z-index: 1;
+  padding: 0;
   background: var(--panel-strong);
   color: var(--cyan);
   font-size: 0.72rem;
   text-transform: uppercase;
+}
+
+.sort-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--cyan);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.sort-header:hover,
+.sort-header.active {
+  background: rgba(85, 247, 255, 0.08);
+}
+
+.sort-arrow {
+  flex: 0 0 14px;
+  color: #fff;
+  font-size: 0.86rem;
+  text-align: right;
 }
 
 td {
@@ -887,10 +907,6 @@ tbody tr.selected {
   .inventory-panel {
     height: auto;
     min-height: 0;
-  }
-
-  .inventory-controls {
-    grid-template-columns: 1fr 1fr;
   }
 
   .table-wrap {
