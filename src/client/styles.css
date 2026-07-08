@@ -164,7 +164,7 @@ h2 {
     "inventory stock"
     "inventory schedule";
   gap: var(--panel-gap);
-  align-items: start;
+  align-items: stretch;
 }
 
 .lower-grid {
@@ -286,6 +286,7 @@ select:focus {
   display: flex;
   flex-direction: column;
   grid-area: inventory;
+  height: 100%;
   min-height: 0;
 }
 
@@ -382,9 +383,9 @@ select:focus {
 }
 
 .inventory-panel .table-wrap {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 486px;
+  max-height: none;
 }
 
 .inventory-panel th:nth-child(1),
@@ -884,6 +885,7 @@ tbody tr.selected {
   }
 
   .inventory-panel {
+    height: auto;
     min-height: 0;
   }
 
