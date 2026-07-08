@@ -23,6 +23,7 @@ interface PushSuccess extends PushTarget {
 let activeRun: Promise<SyncRun> | null = null;
 
 const now = () => new Date().toISOString();
+const pushKey = (itemId: string, platform: Platform) => `${itemId}:${platform}`;
 
 export function syncIsRunning() {
   return Boolean(activeRun);
@@ -115,6 +116,7 @@ async function applySalesAndPlanPushes(
   summary: SyncSummary
 ) {
   const salesByItem = new Map<string, { units: number; notes: string[] }>();
+  const pushableMappings = new Set<string>();
 
   const pushTargets = await store.mutate((data) => {
     for (const reading of readings) {
@@ -128,12 +130,16 @@ async function applySalesAndPlanPushes(
 
       if (typeof lastSynced !== "number") {
         const note = `${platformLabels[reading.platform]} baseline captured at ${reading.quantity}`;
+        mapping.lastSyncedQuantity = reading.quantity;
+        mapping.lastSyncedAt = now();
         mapping.warning = note;
         data.events.unshift(makeEvent(item, "sync_baseline", 0, item.quantity, "sync", note, reading.platform));
         summary.warnings += 1;
-        messages.push(`${item.sku}: ${note}.`);
+        messages.push(`${item.sku}: ${note}; confirm local count before the next push.`);
         continue;
       }
+
+      pushableMappings.add(pushKey(item.id, reading.platform));
 
       if (reading.quantity < lastSynced) {
         const sold = lastSynced - reading.quantity;
@@ -178,6 +184,7 @@ async function applySalesAndPlanPushes(
         const mapping = item.mappings[platform];
         const adapter = adapterByPlatform[platform];
         if (!mapping?.enabled || !adapter.isConfigured() || !adapter.hasRequiredMapping(item, mapping)) continue;
+        if (!pushableMappings.has(pushKey(item.id, platform))) continue;
         targets.push({ itemId: item.id, platform, quantity: item.quantity });
       }
     }

@@ -27,7 +27,7 @@ npm start
 - Batch adds increase the local master count and are pushed to mapped stores on sync.
 - Manual subtracts reduce the local master count for discards, personal use, damage, or corrections.
 - Store sales are detected on sync by comparing each platform's current quantity to the last quantity this tool successfully pushed.
-- First sync for a mapped store captures a baseline, then pushes the local master count.
+- First sync for a newly mapped store captures a baseline only. It does not push that store until a later sync, so you can confirm the local count before anything writes to the marketplace.
 
 That last-synced baseline lets simultaneous sales subtract correctly. If Etsy drops from 15 to 14 and eBay drops from 15 to 13 before the next sync, the tool subtracts 3 total units from the master inventory, then pushes the new count to every mapped store.
 
@@ -39,6 +39,7 @@ npm run inv -- create NEON-MUG "Neon Mug" 30
 npm run inv -- add NEON-MUG 15 "July restock"
 npm run inv -- subtract NEON-MUG 1 "personal use"
 npm run inv -- sync
+npm run inv -- shopify-lookup NEON-MUG
 npm run inv -- schedule on 30
 npm run inv -- schedule off
 ```
@@ -107,7 +108,10 @@ After filling Shopify credentials in `.env`, test the real store connection befo
 
 ```powershell
 npm run inv -- shopify-test
+npm run inv -- shopify-lookup NEON-MUG
 ```
+
+`shopify-lookup` prints the Shopify inventory item GID, location GID/name, and current available quantity for matching variants. Use those IDs in the Shopify mapping command.
 
 eBay:
 - `EBAY_ACCESS_TOKEN`
