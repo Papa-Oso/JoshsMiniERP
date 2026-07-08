@@ -8,7 +8,9 @@ import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } 
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
 import { reconcileInventory } from "./reconcile";
+import { auditSkuPairings } from "./skuAudit";
 import { importShopifySkus } from "./shopifyImport";
+import { migrateJsonToSqlite, sqliteStatus } from "./sqliteMigration";
 import { runInventorySync } from "./syncEngine";
 import { createWindowsStartupScript, createWindowsSyncTask } from "./windowsScheduler";
 
@@ -63,6 +65,15 @@ try {
       break;
     case "backup":
       await backupFromCli(args.slice(1));
+      break;
+    case "migrate-sqlite":
+      await migrateSqliteFromCli(args.slice(1));
+      break;
+    case "sqlite-status":
+      await sqliteStatusFromCli(args.slice(1));
+      break;
+    case "sku-audit":
+      await skuAuditFromCli(args.slice(1));
       break;
     case "ebay-auth-url":
       await ebayAuthUrlFromCli();
@@ -351,6 +362,66 @@ async function backupFromCli(input: string[]) {
   const [outputDirectory] = positionalArgs(input);
   const result = await backupInventoryData(outputDirectory);
   console.log(`Backed up ${result.itemCount} items to ${result.path}.`);
+}
+
+async function migrateSqliteFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const result = await migrateJsonToSqlite({
+    dryRun: Boolean(flags["dry-run"]),
+    databaseFile: stringFlag(flags.database)
+  });
+
+  console.log(`${result.dryRun ? "Dry run" : "Migrated"} JSON inventory to SQLite.`);
+  console.table([
+    {
+      database: result.databaseFile,
+      items: result.items,
+      mappings: result.mappings,
+      events: result.events,
+      syncRuns: result.syncRuns,
+      syncMessages: result.syncMessages,
+      scheduleRows: result.scheduleRows,
+      backup: result.backupPath ?? "-"
+    }
+  ]);
+}
+
+async function sqliteStatusFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const status = sqliteStatus(stringFlag(flags.database));
+  console.table([status]);
+}
+
+async function skuAuditFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const only = stringFlag(flags.platform);
+  if (only && only !== "shopify" && only !== "ebay" && only !== "all") {
+    throw new Error("Usage: npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output file.csv]");
+  }
+
+  const result = await auditSkuPairings({
+    includeShopify: only ? only === "shopify" || only === "all" : true,
+    includeEbay: only ? only === "ebay" || only === "all" : true,
+    location: stringFlag(flags.location),
+    outputPath: stringFlag(flags.output)
+  });
+
+  console.log(
+    `SKU audit: ${result.summary.matchedAllAvailable} paired, ${result.summary.missingLocal} missing local, ${result.summary.missingShopify} missing Shopify, ${result.summary.missingEbay} missing eBay, ${result.summary.warnings} warnings.`
+  );
+  console.table(
+    result.rows.map((row) => ({
+      sku: row.sku,
+      local: row.localQuantity ?? row.local,
+      shopify: row.shopifyQuantity ?? row.shopify,
+      ebay: row.ebayQuantity ?? row.ebay,
+      recommendation: row.recommendation
+    }))
+  );
+
+  if (result.outputPath) {
+    console.log(`Wrote SKU audit CSV to ${result.outputPath}.`);
+  }
 }
 
 async function ebayAuthUrlFromCli() {
@@ -656,6 +727,9 @@ Commands:
   npm run inv -- csv-import <file.csv> [--dry-run]
   npm run inv -- export [output.json]
   npm run inv -- backup [backup-directory]
+  npm run inv -- migrate-sqlite [--dry-run] [--database data/inventory.sqlite]
+  npm run inv -- sqlite-status [--database data/inventory.sqlite]
+  npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output data/sku-audit.csv]
   npm run inv -- shopify-test
   npm run inv -- shopify-lookup <sku>
   npm run inv -- shopify-map <local-sku> [shopify-sku] [--location <name-or-id>]

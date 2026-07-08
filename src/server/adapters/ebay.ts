@@ -23,6 +23,21 @@ interface BulkPriceQuantityResponse {
   errors?: EbayErrorDetail[];
 }
 
+export interface EbayInventoryItemSummary {
+  sku: string;
+  availability?: { shipToLocationAvailability?: { quantity?: number } };
+  product?: { title?: string };
+}
+
+interface InventoryItemsResponse {
+  inventoryItems?: EbayInventoryItemSummary[];
+  total?: number;
+  size?: number;
+  limit?: number;
+  offset?: number;
+  next?: string;
+}
+
 export class EbayAdapter implements PlatformAdapter {
   platform = "ebay" as const;
   label = platformLabels.ebay;
@@ -92,6 +107,31 @@ export class EbayAdapter implements PlatformAdapter {
       availability?: { shipToLocationAvailability?: { quantity?: number } };
       product?: { title?: string };
     }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
+  }
+
+  async listInventoryItems() {
+    const items: EbayInventoryItemSummary[] = [];
+    const limit = 200;
+    let offset = 0;
+
+    while (true) {
+      const url = new URL(`${this.baseUrl()}/inventory_item`);
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("offset", String(offset));
+
+      const payload = await readJson<InventoryItemsResponse>(
+        await fetch(url, { headers: await this.headers() })
+      );
+      const page = payload.inventoryItems ?? [];
+      items.push(...page.filter((item) => item.sku?.trim()));
+
+      const total = payload.total;
+      if (typeof total === "number" && offset + page.length >= total) break;
+      if (page.length === 0 || page.length < limit) break;
+      offset += page.length;
+    }
+
+    return items;
   }
 
   private assertBulkUpdateSucceeded(payload: BulkPriceQuantityResponse, sku: string) {

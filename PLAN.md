@@ -36,7 +36,8 @@ Status legend:
 | Backup/export | Done | `backup` and `export` operate on `data/inventory.json`. |
 | eBay setup | Done | OAuth URL, callback, refresh, lookup, test, and mapping helpers are in place. |
 | Scheduler polish | Done | Windows startup script preview/install and Task Scheduler command preview/install are in place. |
-| Small SQL database | Planned | Recommended next step: migrate local storage to SQLite. |
+| Small SQL database | In progress | SQLite dependency, schema, status command, and JSON-to-SQLite migration command are in place. Runtime storage still defaults to JSON. |
+| SKU pairing audit | Done | `sku-audit` compares local SKUs with Shopify and eBay SKU catalogs. |
 
 ## Implemented Command Reference
 
@@ -94,6 +95,23 @@ npm run inv -- export
 npm run inv -- export data/export.json
 npm run inv -- backup
 npm run inv -- backup D:\InventoryBackups
+```
+
+SKU pairing audit:
+
+```powershell
+npm run inv -- sku-audit --location "Main"
+npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
+npm run inv -- sku-audit --platform shopify --location "Main"
+npm run inv -- sku-audit --platform ebay
+```
+
+SQLite foundation:
+
+```powershell
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
+npm run inv -- sqlite-status
 ```
 
 eBay OAuth and helpers:
@@ -346,9 +364,10 @@ STORE_DRIVER=json
 
 Initial behavior:
 
-- `STORE_DRIVER=json` keeps current behavior.
-- `STORE_DRIVER=sqlite` uses the new SQLite store.
-- This lets us test without risking the current JSON data.
+- `STORE_DRIVER=json` keeps current behavior. This is currently implemented.
+- `DATABASE_FILE=data/inventory.sqlite` points at the SQLite database file. This is currently implemented.
+- `migrate-sqlite --dry-run`, `migrate-sqlite`, and `sqlite-status` are currently implemented.
+- `STORE_DRIVER=sqlite` is the next implementation step. The schema and migration exist, but runtime reads/writes still use JSON.
 
 ### Step 2: Create a store interface
 
@@ -474,4 +493,3 @@ Before calling the SQL migration complete:
 5. Switch services to use the store interface.
 6. Add import batch tables to CSV and Shopify import flows.
 7. Add reconcile history only after the basic SQLite cutover is stable.
-

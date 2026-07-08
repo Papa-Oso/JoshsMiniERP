@@ -45,6 +45,9 @@ npm run inv -- csv-import inventory-batch.csv --dry-run
 npm run inv -- csv-import inventory-batch.csv
 npm run inv -- backup
 npm run inv -- export data/export.json
+npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
 npm run inv -- shopify-lookup NEON-MUG
 npm run inv -- shopify-map NEON-MUG --location "Main"
 npm run inv -- shopify-import --location "Main" --dry-run
@@ -105,6 +108,27 @@ npm run inv -- backup D:\InventoryBackups
 ```
 
 `export` prints JSON when no output path is supplied. `backup` writes a timestamped copy under `data/backups` unless you pass a directory.
+
+SKU pairing audit:
+
+```powershell
+npm run inv -- sku-audit --location "Main"
+npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
+npm run inv -- sku-audit --platform shopify --location "Main"
+npm run inv -- sku-audit --platform ebay
+```
+
+`sku-audit` compares local SKUs with Shopify variant SKUs and eBay Sell Inventory SKUs. It reports whether each SKU pairs cleanly, is missing locally, is missing on a marketplace, has duplicate remote records, or has quantity differences that should be reviewed with `reconcile`.
+
+SQLite migration foundation:
+
+```powershell
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
+npm run inv -- sqlite-status
+```
+
+The app still uses `STORE_DRIVER=json` by default. `migrate-sqlite` creates `data/inventory.sqlite` from the current JSON data and writes a JSON backup first. Use a fresh `DATABASE_FILE` if you need to rerun the migration.
 
 ## Shopify CLI
 
