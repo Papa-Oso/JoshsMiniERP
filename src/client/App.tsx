@@ -36,7 +36,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ sku: "", name: "", quantity: 0 });
   const [adjustment, setAdjustment] = useState({ mode: "add" as AdjustMode, quantity: 1, note: "" });
-  const [safetyFloor, setSafetyFloor] = useState(0);
+  const [lowAlert, setLowAlert] = useState(0);
   const [schedule, setSchedule] = useState({ enabled: false, intervalMinutes: 60 });
   const [mappingDraft, setMappingDraft] = useState<Partial<Record<Platform, PlatformMapping>>>({});
   const [busy, setBusy] = useState(false);
@@ -68,7 +68,7 @@ export function App() {
   }, [selectedItem?.id]);
 
   useEffect(() => {
-    setSafetyFloor(selectedItem?.safetyStock ?? 0);
+    setLowAlert(selectedItem?.safetyStock ?? 0);
   }, [selectedItem?.id, selectedItem?.safetyStock]);
 
   async function load() {
@@ -129,11 +129,17 @@ export function App() {
     await runAction(() => api.runSync(), "Sync finished.");
   }
 
-  async function handleSafetyStockSave() {
-    if (!selectedItem) return;
+  async function handleLowAlertCommit() {
+    if (!selectedItem || busy) return;
+    const nextLowAlert = Math.max(0, Math.trunc(Number(lowAlert) || 0));
+    if (nextLowAlert === selectedItem.safetyStock) {
+      setLowAlert(selectedItem.safetyStock);
+      return;
+    }
+    setLowAlert(nextLowAlert);
     await runAction(
-      () => api.updateItem(selectedItem.id, { safetyStock: Number(safetyFloor) }),
-      "Safety floor saved."
+      () => api.updateItem(selectedItem.id, { safetyStock: nextLowAlert }),
+      "Low alert saved."
     );
   }
 
@@ -176,7 +182,7 @@ export function App() {
         <div className="status-strip">
           <Metric label="SKUs" value={dashboard.items.length} />
           <Metric label="Global Units" value={stockTotal} />
-          <Metric label="Below Floor" value={lowStock} tone={lowStock ? "warn" : "ok"} />
+          <Metric label="Low Alerts" value={lowStock} tone={lowStock ? "warn" : "ok"} />
         </div>
       </section>
 
@@ -212,7 +218,7 @@ export function App() {
             <div className="stock-overview-total">
               <span>Global On Hand</span>
               <strong>{stockTotal}</strong>
-              <small>{lowStock ? `${lowStock} below floor` : "All above floor"}</small>
+              <small>{lowStock ? `${lowStock} low alert${lowStock === 1 ? "" : "s"}` : "No low alerts"}</small>
             </div>
             <div className="stock-watch">
               <div className="stock-watch-header">
@@ -239,7 +245,7 @@ export function App() {
                   <th>SKU</th>
                   <th>Item</th>
                   <th>Global Stock</th>
-                  <th>Floor</th>
+                  <th>Low At</th>
                 </tr>
               </thead>
               <tbody>
@@ -284,7 +290,7 @@ export function App() {
               <strong>{selectedItem?.quantity ?? 0}</strong>
             </div>
             <div>
-              <span>Floor</span>
+              <span>Low At</span>
               <strong>{selectedItem?.safetyStock ?? 0}</strong>
             </div>
             <div>
@@ -296,23 +302,18 @@ export function App() {
           </div>
 
           <label>
-            Safety Floor
+            Low Alert
             <input
               type="number"
               min="0"
-              value={safetyFloor}
-              onChange={(event) => setSafetyFloor(Math.max(0, Number(event.target.value)))}
+              value={lowAlert}
+              onBlur={handleLowAlertCommit}
+              onChange={(event) => setLowAlert(Math.max(0, Number(event.target.value)))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
             />
           </label>
-          <button
-            className="icon-button full safety-button"
-            type="button"
-            disabled={!selectedItem || busy}
-            onClick={handleSafetyStockSave}
-          >
-            <Save size={18} />
-            Set Floor
-          </button>
 
           <div className="segmented">
             <button

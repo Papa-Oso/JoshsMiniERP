@@ -548,10 +548,6 @@ tbody tr.selected {
   white-space: nowrap;
 }
 
-.safety-button {
-  margin-bottom: 12px;
-}
-
 .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
