@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+data/
+npm-debug.log*
+dev-server*.log
+*.local
