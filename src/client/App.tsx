@@ -161,15 +161,7 @@ export function App() {
 
   const latestRun = dashboard.syncRuns[0];
   const stockTotal = dashboard.items.reduce((sum, item) => sum + item.quantity, 0);
-  const lowStockItems = useMemo(
-    () => dashboard.items.filter(isLowStock).sort(sortByStockRisk),
-    [dashboard.items]
-  );
-  const stockWatchItems = useMemo(
-    () => [...dashboard.items].sort(sortByStockRisk).slice(0, 5),
-    [dashboard.items]
-  );
-  const lowStock = lowStockItems.length;
+  const lowStock = dashboard.items.filter(isLowStock).length;
   const maxQuantity = Math.max(1, ...dashboard.items.map((item) => item.quantity));
 
   return (
@@ -212,30 +204,6 @@ export function App() {
               <Plus size={18} />
               Add SKU
             </button>
-          </div>
-
-          <div className="stock-overview">
-            <div className="stock-overview-total">
-              <span>Global On Hand</span>
-              <strong>{stockTotal}</strong>
-              <small>{lowStock ? `${lowStock} low alert${lowStock === 1 ? "" : "s"}` : "No low alerts"}</small>
-            </div>
-            <div className="stock-watch">
-              <div className="stock-watch-header">
-                <span>Lowest Stock</span>
-                <strong>{stockWatchItems.length ? `${stockWatchItems[0].quantity} min` : "-"}</strong>
-              </div>
-              {stockWatchItems.map((item) => (
-                <StockLevelRow
-                  key={item.id}
-                  item={item}
-                  maxQuantity={maxQuantity}
-                  selected={item.id === selectedItem?.id}
-                  onSelect={() => setSelectedId(item.id)}
-                />
-              ))}
-              {stockWatchItems.length === 0 ? <div className="empty compact-empty">No SKUs</div> : null}
-            </div>
           </div>
 
           <div className="table-wrap">
@@ -504,36 +472,6 @@ function MiniStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function StockLevelRow({
-  item,
-  maxQuantity,
-  selected,
-  onSelect
-}: {
-  item: InventoryItem;
-  maxQuantity: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      className={`stock-level-row ${stockTone(item)} ${selected ? "selected" : ""}`}
-      type="button"
-      onClick={onSelect}
-    >
-      <div className="stock-level-name">
-        <strong>{item.name}</strong>
-        <span>{item.sku}</span>
-        <div className="stock-bar">
-          <span className="stock-fill" style={{ width: stockPercent(item.quantity, maxQuantity) }} />
-        </div>
-      </div>
-      <strong className="stock-level-count">{item.quantity}</strong>
-      <span className={`stock-status ${stockTone(item)}`}>{stockStatusLabel(item)}</span>
-    </button>
-  );
-}
-
 function StockCell({ item, maxQuantity }: { item: InventoryItem; maxQuantity: number }) {
   return (
     <div className={`stock-cell ${stockTone(item)}`}>
@@ -658,8 +596,4 @@ function stockStatusLabel(item: InventoryItem) {
 function stockPercent(quantity: number, maxQuantity: number) {
   if (quantity <= 0) return "0%";
   return `${Math.max(6, Math.round((quantity / maxQuantity) * 100))}%`;
-}
-
-function sortByStockRisk(left: InventoryItem, right: InventoryItem) {
-  return left.quantity - left.safetyStock - (right.quantity - right.safetyStock) || left.sku.localeCompare(right.sku);
 }
