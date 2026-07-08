@@ -38,9 +38,17 @@ npm run inv -- list
 npm run inv -- create NEON-MUG "Neon Mug" 30
 npm run inv -- add NEON-MUG 15 "July restock"
 npm run inv -- subtract NEON-MUG 1 "personal use"
+npm run inv -- reconcile shopify
+npm run inv -- sync --dry-run --platform shopify
 npm run inv -- sync
+npm run inv -- csv-import inventory-batch.csv --dry-run
+npm run inv -- csv-import inventory-batch.csv
+npm run inv -- backup
+npm run inv -- export data/export.json
 npm run inv -- shopify-lookup NEON-MUG
 npm run inv -- shopify-map NEON-MUG --location "Main"
+npm run inv -- shopify-import --location "Main" --dry-run
+npm run inv -- shopify-import --location "Main"
 npm run inv -- schedule on 30
 npm run inv -- schedule off
 ```
@@ -59,6 +67,44 @@ For Shopify, the helper command can find and save those IDs for a local SKU:
 npm run inv -- shopify-map NEON-MUG
 npm run inv -- shopify-map LOCAL-SKU SHOPIFY-SKU --location "Main"
 ```
+
+To import Shopify variants in bulk, use:
+
+```powershell
+npm run inv -- shopify-import --location "Main" --dry-run
+npm run inv -- shopify-import --location "Main"
+```
+
+`shopify-import` scans Shopify variants with SKUs. Missing local SKUs are created with Shopify's available quantity. Existing local SKUs keep their local count and get a Shopify mapping, so run `reconcile` before syncing when local and Shopify differ. If a SKU exists on multiple Shopify variants, the importer skips it until the SKU is unique.
+
+Dry-run/reconcile commands pull live marketplace quantities and show what a sync would do without changing `data/inventory.json` or pushing inventory:
+
+```powershell
+npm run inv -- reconcile shopify
+npm run inv -- sync --dry-run --platform shopify
+```
+
+CSV batch import supports these columns:
+
+- `sku` is required.
+- `name` is required only for new SKUs.
+- `quantity` or `qty` sets an absolute on-hand count.
+- `add`, `delta`, `adjustment`, or `received` applies a batch quantity change.
+- `safety_stock` or `safety` updates safety stock.
+- `note` is saved on inventory events.
+
+Use either an absolute `quantity` or an adjustment column on a row, not both.
+
+Data export and backup commands:
+
+```powershell
+npm run inv -- export
+npm run inv -- export data/export.json
+npm run inv -- backup
+npm run inv -- backup D:\InventoryBackups
+```
+
+`export` prints JSON when no output path is supplied. `backup` writes a timestamped copy under `data/backups` unless you pass a directory.
 
 ## Shopify CLI
 
@@ -123,8 +169,14 @@ npm run inv -- shopify-lookup NEON-MUG
 `shopify-map` uses the same lookup and saves the Shopify mapping directly. If Shopify returns multiple locations, pass `--location` with the location name or ID.
 
 eBay:
-- `EBAY_ACCESS_TOKEN`
+- `EBAY_ACCESS_TOKEN`, or the local token file created by the CLI OAuth helper
+- `EBAY_REFRESH_TOKEN` if you want to seed the OAuth helper manually
+- `EBAY_CLIENT_ID`
+- `EBAY_CLIENT_SECRET`
+- `EBAY_RUNAME` as the RuName redirect_uri value from eBay, not a normal HTTPS URL
+- `EBAY_ENVIRONMENT` as `production` or `sandbox`
 - `EBAY_MARKETPLACE_ID`
+- `EBAY_TOKEN_FILE`
 - Per SKU: eBay SKU, with offer ID recommended for live offers
 
 Etsy:
@@ -164,10 +216,73 @@ The tool saves Etsy tokens to `data/etsy-auth.json`, which is ignored by git. Re
 npm run inv -- etsy-refresh
 ```
 
+### eBay OAuth
+
+The eBay Sell Inventory API uses user access tokens for seller inventory. Add these values to `.env`:
+
+```powershell
+EBAY_ENVIRONMENT=production
+EBAY_CLIENT_ID=your-app-id
+EBAY_CLIENT_SECRET=your-cert-id
+EBAY_RUNAME=your-ru-name
+EBAY_MARKETPLACE_ID=EBAY_US
+```
+
+Then run:
+
+```powershell
+npm run inv -- ebay-auth-url
+```
+
+Open the printed URL, approve the seller account, then copy the full final redirect URL from your browser and run:
+
+```powershell
+npm run inv -- ebay-auth-callback "https://your-accept-url?code=...&state=..."
+```
+
+The tool saves eBay tokens to `data/ebay-auth.json`, which is ignored by git. Refresh manually any time with:
+
+```powershell
+npm run inv -- ebay-refresh
+```
+
+Useful eBay helpers:
+
+```powershell
+npm run inv -- ebay-test
+npm run inv -- ebay-lookup NEON-MUG
+npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
+```
+
+## Windows Automation
+
+The built-in scheduler runs while the server is running:
+
+```powershell
+npm run inv -- schedule on 30
+npm start
+```
+
+To start the app automatically when you sign in to Windows:
+
+```powershell
+npm run inv -- schedule-windows startup
+npm run inv -- schedule-windows startup --install
+```
+
+To use Windows Task Scheduler to run a sync command directly every 30 minutes:
+
+```powershell
+npm run inv -- schedule-windows task 30
+npm run inv -- schedule-windows task 30 --install
+```
+
+Run without `--install` first to preview the startup script or `schtasks` command.
+
 ## Platform API Notes
 
 - Shopify adapter uses Admin GraphQL `inventoryItem` reads and `inventorySetQuantities` writes.
-- eBay adapter uses Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity`, and checks the per-SKU response before treating a push as successful.
+- eBay adapter uses OAuth user tokens with Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity`, and checks the per-SKU response before treating a push as successful.
 - Etsy adapter reads and writes `GET/PUT /v3/application/listings/{listing_id}/inventory`, preserving the listing inventory payload and changing the matched SKU quantity.
 
 Relevant docs:
@@ -176,6 +291,9 @@ Relevant docs:
 - https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/client-credentials-grant
 - https://shopify.dev/docs/api/admin-graphql/latest/mutations/inventorySetQuantities
 - https://shopify.dev/docs/api/admin-graphql/latest/objects/inventoryitem
+- https://shopify.dev/docs/api/admin-graphql/latest/queries/productVariants
+- https://developer.ebay.com/develop/guides-v2/authorization
+- https://developer.ebay.com/api-docs/static/oauth-token-types.html
 - https://developer.ebay.com/api-docs/sell/static/inventory/bulk-updates.html
 - https://developer.etsy.com/documentation/tutorials/listings
 

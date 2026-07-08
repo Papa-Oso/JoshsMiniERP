@@ -1,0 +1,477 @@
+# Josh's Mini ERP Plan
+
+This document captures the requested inventory work, what is already implemented, how to use it safely, and the plan to move from the current JSON store to a small SQL database.
+
+## Current Storage
+
+The app is currently JSON-backed.
+
+Default file:
+
+```text
+data/inventory.json
+```
+
+That JSON file currently stores:
+
+- `items`: local SKUs, names, quantities, safety stock, and platform mappings.
+- `events`: creates, batch adds, manual subtracts, corrections, platform-sale deductions, sync baselines, and sync pushes.
+- `schedule`: local scheduler settings.
+- `syncRuns`: recent sync run summaries and messages.
+
+So today, batch entries and CSV adjustments are saved as inventory events in `data/inventory.json`. The SQL plan below is the next step if we want those entries stored as proper database rows.
+
+## Requested Work
+
+Status legend:
+
+- Done: implemented in the current working tree.
+- Planned: documented here for the SQL/storage follow-up.
+
+| Request | Status | Notes |
+| --- | --- | --- |
+| Shopify import | Done | `shopify-import` scans Shopify SKUs, creates missing local SKUs, and maps existing SKUs. |
+| Dry-run / reconcile mode | Done | `reconcile` and `sync --dry-run` show local vs marketplace differences without changing local data or pushing inventory. |
+| CSV batch import | Done | `csv-import` can create SKUs, set quantities, apply batch deltas, update safety stock, and save event notes. |
+| Backup/export | Done | `backup` and `export` operate on `data/inventory.json`. |
+| eBay setup | Done | OAuth URL, callback, refresh, lookup, test, and mapping helpers are in place. |
+| Scheduler polish | Done | Windows startup script preview/install and Task Scheduler command preview/install are in place. |
+| Small SQL database | Planned | Recommended next step: migrate local storage to SQLite. |
+
+## Implemented Command Reference
+
+Basic inventory:
+
+```powershell
+npm run inv -- list
+npm run inv -- create NEON-MUG "Neon Mug" 30
+npm run inv -- add NEON-MUG 15 "July restock"
+npm run inv -- subtract NEON-MUG 1 "personal use"
+```
+
+Shopify:
+
+```powershell
+npm run inv -- shopify-test
+npm run inv -- shopify-lookup NEON-MUG
+npm run inv -- shopify-map NEON-MUG --location "Main"
+npm run inv -- shopify-import --location "Main" --dry-run
+npm run inv -- shopify-import --location "Main"
+```
+
+Reconcile before live sync:
+
+```powershell
+npm run inv -- reconcile shopify
+npm run inv -- sync --dry-run --platform shopify
+npm run inv -- sync
+```
+
+CSV import:
+
+```powershell
+npm run inv -- csv-import inventory-batch.csv --dry-run
+npm run inv -- csv-import inventory-batch.csv
+```
+
+CSV columns:
+
+| Column | Required | Meaning |
+| --- | --- | --- |
+| `sku` | Yes | Local SKU. Converted to uppercase. |
+| `name` | New SKUs only | Item name/title. |
+| `quantity` or `qty` | No | Absolute on-hand count. |
+| `add`, `delta`, `adjustment`, or `received` | No | Batch adjustment. Positive adds stock, negative subtracts stock. |
+| `safety_stock` or `safety` | No | Safety stock value. |
+| `note` | No | Saved on the inventory event. |
+
+Use either an absolute quantity or a delta on one CSV row, not both.
+
+Backup/export:
+
+```powershell
+npm run inv -- export
+npm run inv -- export data/export.json
+npm run inv -- backup
+npm run inv -- backup D:\InventoryBackups
+```
+
+eBay OAuth and helpers:
+
+```powershell
+npm run inv -- ebay-auth-url
+npm run inv -- ebay-auth-callback "https://your-accept-url?code=...&state=..."
+npm run inv -- ebay-refresh
+npm run inv -- ebay-test
+npm run inv -- ebay-lookup NEON-MUG
+npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
+```
+
+Windows automation:
+
+```powershell
+npm run inv -- schedule on 30
+npm start
+npm run inv -- schedule-windows startup
+npm run inv -- schedule-windows startup --install
+npm run inv -- schedule-windows task 30
+npm run inv -- schedule-windows task 30 --install
+```
+
+Run Windows helper commands without `--install` first to preview what will be created.
+
+## Safe Operating Workflow
+
+1. Back up the current data.
+
+```powershell
+npm run inv -- backup
+```
+
+2. Import or map marketplace SKUs.
+
+```powershell
+npm run inv -- shopify-import --location "Main" --dry-run
+npm run inv -- shopify-import --location "Main"
+```
+
+3. Import batch spreadsheet changes with a dry run first.
+
+```powershell
+npm run inv -- csv-import inventory-batch.csv --dry-run
+npm run inv -- csv-import inventory-batch.csv
+```
+
+4. Reconcile before any push.
+
+```powershell
+npm run inv -- reconcile shopify
+npm run inv -- sync --dry-run --platform shopify
+```
+
+5. Push only after the review looks correct.
+
+```powershell
+npm run inv -- sync
+```
+
+6. Keep automated sync running only after credentials and mappings are trusted.
+
+```powershell
+npm run inv -- schedule on 30
+npm start
+```
+
+## SQL Migration Goal
+
+Move from one JSON document to a small SQLite database:
+
+```text
+data/inventory.sqlite
+```
+
+Why SQLite:
+
+- Local single-file database, easy to back up.
+- Safer concurrent reads/writes than a JSON document.
+- Real audit tables for batches, imports, events, and sync runs.
+- Easier reports later: sales by SKU, import history, marketplace differences, and adjustments by date.
+- Keeps the app local and simple.
+
+The current JSON store can stay as a fallback/export format while SQLite becomes the source of truth.
+
+## Proposed SQLite Schema
+
+Initial schema:
+
+```sql
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE inventory_items (
+  id TEXT PRIMARY KEY,
+  sku TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity >= 0),
+  safety_stock INTEGER NOT NULL DEFAULT 0 CHECK (safety_stock >= 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE platform_mappings (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL CHECK (platform IN ('etsy', 'ebay', 'shopify')),
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  remote_sku TEXT,
+  listing_id TEXT,
+  inventory_item_id TEXT,
+  location_id TEXT,
+  offer_id TEXT,
+  last_synced_quantity INTEGER,
+  last_remote_quantity INTEGER,
+  last_synced_at TEXT,
+  warning TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (item_id, platform)
+);
+
+CREATE TABLE inventory_events (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+  sku TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (
+    type IN (
+      'create',
+      'batch_add',
+      'manual_subtract',
+      'platform_sale',
+      'sync_baseline',
+      'sync_push',
+      'correction'
+    )
+  ),
+  delta INTEGER NOT NULL,
+  quantity_after INTEGER NOT NULL CHECK (quantity_after >= 0),
+  source TEXT NOT NULL CHECK (source IN ('local', 'sync', 'etsy', 'ebay', 'shopify')),
+  platform TEXT CHECK (platform IN ('etsy', 'ebay', 'shopify')),
+  note TEXT,
+  batch_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE import_batches (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL CHECK (source IN ('csv', 'shopify', 'manual')),
+  file_name TEXT,
+  status TEXT NOT NULL CHECK (status IN ('dry_run', 'applied', 'failed')),
+  rows_total INTEGER NOT NULL DEFAULT 0,
+  rows_created INTEGER NOT NULL DEFAULT 0,
+  rows_updated INTEGER NOT NULL DEFAULT 0,
+  rows_adjusted INTEGER NOT NULL DEFAULT 0,
+  rows_skipped INTEGER NOT NULL DEFAULT 0,
+  rows_failed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE import_batch_rows (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  line_number INTEGER,
+  sku TEXT,
+  action TEXT NOT NULL,
+  previous_quantity INTEGER,
+  next_quantity INTEGER,
+  message TEXT NOT NULL,
+  raw_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE sync_runs (
+  id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL CHECK (mode IN ('manual', 'scheduled', 'cli')),
+  status TEXT NOT NULL CHECK (
+    status IN ('running', 'completed', 'completed_with_warnings', 'failed')
+  ),
+  items_checked INTEGER NOT NULL DEFAULT 0,
+  sales_detected INTEGER NOT NULL DEFAULT 0,
+  pushes INTEGER NOT NULL DEFAULT 0,
+  warnings INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);
+
+CREATE TABLE sync_run_messages (
+  id TEXT PRIMARY KEY,
+  sync_run_id TEXT NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE schedule_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  interval_minutes INTEGER NOT NULL DEFAULT 60 CHECK (interval_minutes BETWEEN 5 AND 1440),
+  last_run_at TEXT,
+  next_run_at TEXT,
+  updated_at TEXT NOT NULL
+);
+
+INSERT INTO schedule_settings (id, enabled, interval_minutes, updated_at)
+VALUES (1, 0, 60, datetime('now'))
+ON CONFLICT(id) DO NOTHING;
+
+CREATE INDEX idx_inventory_events_item_created
+  ON inventory_events(item_id, created_at DESC);
+
+CREATE INDEX idx_inventory_events_batch
+  ON inventory_events(batch_id);
+
+CREATE INDEX idx_platform_mappings_platform_enabled
+  ON platform_mappings(platform, enabled);
+
+CREATE INDEX idx_import_batch_rows_batch
+  ON import_batch_rows(batch_id);
+
+CREATE INDEX idx_sync_runs_started
+  ON sync_runs(started_at DESC);
+```
+
+Optional later tables:
+
+- `reconcile_runs`: store dry-run snapshots for review history.
+- `reconcile_rows`: store each local vs remote comparison.
+- `oauth_tokens`: only if token storage is wanted in SQLite. Keep file-based token storage unless we also add encryption.
+- `app_settings`: generic key/value settings after schedule grows beyond one row.
+
+## SQL Migration Implementation Plan
+
+### Step 1: Add SQLite storage alongside JSON
+
+Create:
+
+```text
+src/server/sqliteStore.ts
+src/server/migrations/001_initial.sql
+src/server/migrateJsonToSqlite.ts
+```
+
+Add env:
+
+```text
+DATABASE_FILE=data/inventory.sqlite
+STORE_DRIVER=json
+```
+
+Initial behavior:
+
+- `STORE_DRIVER=json` keeps current behavior.
+- `STORE_DRIVER=sqlite` uses the new SQLite store.
+- This lets us test without risking the current JSON data.
+
+### Step 2: Create a store interface
+
+The current `InventoryStore` exposes:
+
+- `read()`
+- `mutate()`
+- `withLock()`
+
+Create an interface both JSON and SQLite stores can satisfy. Keep service code mostly unchanged at first.
+
+Target:
+
+```ts
+export interface InventoryDataStore {
+  read(): Promise<StoreData>;
+  mutate<T>(mutator: (data: StoreData) => T | Promise<T>): Promise<T>;
+  withLock<T>(callback: () => Promise<T>): Promise<T>;
+}
+```
+
+This is the fastest low-risk bridge. A later pass can move services from document-style mutation to direct SQL queries.
+
+### Step 3: Build JSON to SQLite migration
+
+Migration command:
+
+```powershell
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
+```
+
+Migration behavior:
+
+1. Read `data/inventory.json`.
+2. Create `data/inventory.sqlite` if missing.
+3. Insert `items`.
+4. Insert `platform_mappings`.
+5. Insert `inventory_events`.
+6. Insert `sync_runs` and `sync_run_messages`.
+7. Insert `schedule_settings`.
+8. Verify row counts.
+9. Write a fresh JSON backup before switching drivers.
+
+### Step 4: Move batch/import history to SQL rows
+
+Once SQLite is active, update:
+
+- `csv-import` to create `import_batches` and `import_batch_rows`.
+- `shopify-import` to create `import_batches` and `import_batch_rows`.
+- Inventory quantity changes to continue creating `inventory_events`.
+
+Expected benefit:
+
+- You can see one import as a batch.
+- You can see every row outcome in that batch.
+- You can tie actual quantity changes to the batch that caused them.
+
+### Step 5: Move reconcile history to SQL
+
+Current reconcile is preview-only. Later, add:
+
+```text
+reconcile_runs
+reconcile_rows
+```
+
+That allows saving a review snapshot before pushing live inventory.
+
+Commands:
+
+```powershell
+npm run inv -- reconcile shopify --save
+npm run inv -- reconcile-show <run-id>
+```
+
+### Step 6: Update backup/export
+
+After SQLite:
+
+- `backup` copies both `data/inventory.sqlite` and a JSON export.
+- `export` still produces JSON for portability.
+- Add optional CSV exports later.
+
+Commands:
+
+```powershell
+npm run inv -- backup
+npm run inv -- export data/export.json
+npm run inv -- export-csv data/items.csv
+```
+
+### Step 7: Cut over default storage
+
+After migration is tested:
+
+```text
+STORE_DRIVER=sqlite
+```
+
+Then later, once stable, make SQLite the default and keep JSON as an import/export format.
+
+## SQL Acceptance Checklist
+
+Before calling the SQL migration complete:
+
+- `npm run build` passes.
+- `npm test` passes.
+- JSON store tests still pass when `STORE_DRIVER=json`.
+- SQLite tests pass when `STORE_DRIVER=sqlite`.
+- `migrate-sqlite --dry-run` shows row counts and makes no changes.
+- `migrate-sqlite` creates a database from existing JSON.
+- `list`, `create`, `add`, `subtract`, `map`, `shopify-import`, `csv-import`, `reconcile`, `sync`, `backup`, and `export` work on SQLite.
+- A backup is created before any migration writes.
+- No marketplace tokens are committed or printed.
+
+## Suggested Next Work Order
+
+1. Commit the current command/import/OAuth work.
+2. Add `PLAN.md` to that commit.
+3. Create the SQLite schema and migration command.
+4. Add SQLite integration tests using a temporary database file.
+5. Switch services to use the store interface.
+6. Add import batch tables to CSV and Shopify import flows.
+7. Add reconcile history only after the basic SQLite cutover is stable.
+

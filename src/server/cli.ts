@@ -1,9 +1,16 @@
 import type { Platform, PlatformMapping } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
+import { EbayAdapter } from "./adapters/ebay";
 import { ShopifyAdapter } from "./adapters/shopify";
+import { importCsv } from "./csvImport";
+import { backupInventoryData, exportInventoryData } from "./dataTools";
+import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
+import { reconcileInventory } from "./reconcile";
+import { importShopifySkus } from "./shopifyImport";
 import { runInventorySync } from "./syncEngine";
+import { createWindowsStartupScript, createWindowsSyncTask } from "./windowsScheduler";
 
 type ShopifyLookupResult = Awaited<ReturnType<ShopifyAdapter["lookupSku"]>>;
 type ShopifyInventoryLevel =
@@ -31,7 +38,10 @@ try {
       await mapFromCli(args.slice(1));
       break;
     case "sync":
-      await syncFromCli();
+      await syncFromCli(args.slice(1));
+      break;
+    case "reconcile":
+      await reconcileFromCli(args.slice(1));
       break;
     case "shopify-test":
       await shopifyTestFromCli();
@@ -41,6 +51,36 @@ try {
       break;
     case "shopify-map":
       await shopifyMapFromCli(args.slice(1));
+      break;
+    case "shopify-import":
+      await shopifyImportFromCli(args.slice(1));
+      break;
+    case "csv-import":
+      await csvImportFromCli(args.slice(1));
+      break;
+    case "export":
+      await exportFromCli(args.slice(1));
+      break;
+    case "backup":
+      await backupFromCli(args.slice(1));
+      break;
+    case "ebay-auth-url":
+      await ebayAuthUrlFromCli();
+      break;
+    case "ebay-auth-callback":
+      await ebayAuthCallbackFromCli(args.slice(1));
+      break;
+    case "ebay-refresh":
+      await ebayRefreshFromCli();
+      break;
+    case "ebay-test":
+      await ebayTestFromCli();
+      break;
+    case "ebay-lookup":
+      await ebayLookupFromCli(args.slice(1));
+      break;
+    case "ebay-map":
+      await ebayMapFromCli(args.slice(1));
       break;
     case "etsy-auth-url":
       await etsyAuthUrlFromCli();
@@ -53,6 +93,9 @@ try {
       break;
     case "schedule":
       await scheduleFromCli(args.slice(1));
+      break;
+    case "schedule-windows":
+      await scheduleWindowsFromCli(args.slice(1));
       break;
     default:
       printHelp();
@@ -129,12 +172,34 @@ async function mapFromCli(input: string[]) {
   console.log(`${item.sku}: ${platformLabels[rawPlatform]} mapping saved.`);
 }
 
-async function syncFromCli() {
+async function syncFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  if (flags["dry-run"] || flags.reconcile) {
+    await reconcileFromCli(input);
+    return;
+  }
+
   const run = await runInventorySync("cli");
   console.log(`${run.status}: ${run.summary.salesDetected} sales, ${run.summary.pushes} pushes.`);
   for (const message of run.messages) {
     console.log(`- ${message}`);
   }
+}
+
+async function reconcileFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const [maybePlatform] = positionalArgs(input);
+  const platformValue = stringFlag(flags.platform) ?? maybePlatform;
+
+  if (platformValue && !isPlatform(platformValue)) {
+    throw new Error("Usage: npm run inv -- reconcile [etsy|ebay|shopify]");
+  }
+
+  const result = await reconcileInventory({ platform: platformValue as Platform | undefined });
+  console.log(
+    `Dry run: ${result.summary.salesDetected} sales, ${result.summary.pushes} reviewable pushes, ${result.summary.warnings} warnings, ${result.summary.errors} errors.`
+  );
+  printReconcileRows(result.rows);
 }
 
 async function shopifyTestFromCli() {
@@ -225,6 +290,161 @@ async function shopifyMapFromCli(input: string[]) {
   console.log(`  Available: ${typeof available === "number" ? available : "-"}`);
 }
 
+async function shopifyImportFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const result = await importShopifySkus({
+    dryRun: Boolean(flags["dry-run"]),
+    enabled: !flags.disable,
+    location: stringFlag(flags.location)
+  });
+
+  console.log(
+    `${flags["dry-run"] ? "Dry run" : "Imported"} Shopify SKUs: ${result.summary.created} create, ${result.summary.mapped} map, ${result.summary.skipped} skip from ${result.summary.variantsScanned} variants.`
+  );
+  console.table(
+    result.rows.map((row) => ({
+      sku: row.sku,
+      action: row.action,
+      local: row.localQuantity ?? "-",
+      shopify: row.shopifyQuantity ?? "-",
+      location: row.locationName ?? "-",
+      message: row.message
+    }))
+  );
+}
+
+async function csvImportFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const [filePath] = positionalArgs(input);
+  if (!filePath) {
+    throw new Error("Usage: npm run inv -- csv-import <file.csv> [--dry-run]");
+  }
+
+  const result = await importCsv(filePath, { dryRun: Boolean(flags["dry-run"]) });
+  console.log(
+    `${flags["dry-run"] ? "Dry run" : "Imported"} CSV: ${result.summary.created} created, ${result.summary.updated} updated, ${result.summary.adjusted} adjusted, ${result.summary.skipped} skipped, ${result.summary.errors} errors.`
+  );
+  console.table(
+    result.rows.map((row) => ({
+      line: row.line,
+      sku: row.sku ?? "-",
+      action: row.action,
+      previous: row.previousQuantity ?? "-",
+      next: row.nextQuantity ?? "-",
+      message: row.message
+    }))
+  );
+}
+
+async function exportFromCli(input: string[]) {
+  const [outputPath] = positionalArgs(input);
+  const result = await exportInventoryData(outputPath);
+  if (result.json) {
+    console.log(result.json.trimEnd());
+    return;
+  }
+
+  console.log(`Exported ${result.itemCount} items to ${result.path}.`);
+}
+
+async function backupFromCli(input: string[]) {
+  const [outputDirectory] = positionalArgs(input);
+  const result = await backupInventoryData(outputDirectory);
+  console.log(`Backed up ${result.itemCount} items to ${result.path}.`);
+}
+
+async function ebayAuthUrlFromCli() {
+  const auth = await createEbayAuthorization();
+  console.log("Register/use this exact eBay RuName redirect_uri value:");
+  console.log(auth.redirectUri);
+  console.log("");
+  console.log(`Environment: ${auth.environment}`);
+  console.log(`Scopes: ${auth.scopes.join(" ")}`);
+  console.log("");
+  console.log("Open this URL and approve the seller account:");
+  console.log(auth.url);
+  console.log("");
+  console.log("After approval, paste the full final redirect URL into:");
+  console.log('npm run inv -- ebay-auth-callback "https://..."');
+}
+
+async function ebayAuthCallbackFromCli(input: string[]) {
+  const [callbackValue] = input;
+  if (!callbackValue) {
+    throw new Error('Usage: npm run inv -- ebay-auth-callback "https://your-accept-url?code=...&state=..."');
+  }
+
+  const token = await completeEbayAuthorization(callbackValue);
+  console.log(`eBay OAuth saved. Access token expires in ${Math.round(token.expires_in / 60)} minutes.`);
+}
+
+async function ebayRefreshFromCli() {
+  const token = await refreshEbayToken();
+  console.log(`eBay token refreshed. Access token expires in ${Math.round(token.expires_in / 60)} minutes.`);
+}
+
+async function ebayTestFromCli() {
+  const adapter = new EbayAdapter();
+  if (!adapter.isConfigured()) {
+    throw new Error(`eBay is missing: ${adapter.missingEnv().join(", ")}`);
+  }
+
+  const result = await adapter.testConnection();
+  console.log(`eBay connected${result.version ? `: Inventory API ${result.version}` : "."}`);
+}
+
+async function ebayLookupFromCli(input: string[]) {
+  const [sku] = input;
+  if (!sku) throw new Error("Usage: npm run inv -- ebay-lookup <sku>");
+
+  const adapter = new EbayAdapter();
+  if (!adapter.isConfigured()) {
+    throw new Error(`eBay is missing: ${adapter.missingEnv().join(", ")}`);
+  }
+
+  const result = await adapter.lookupSku(sku);
+  const quantity = result.availability?.shipToLocationAvailability?.quantity;
+  console.log(`eBay SKU: ${result.sku ?? sku}`);
+  if (result.product?.title) console.log(`  Title: ${result.product.title}`);
+  console.log(`  Quantity: ${typeof quantity === "number" ? quantity : "-"}`);
+}
+
+async function ebayMapFromCli(input: string[]) {
+  const [localSku, maybeEbaySku, ...rest] = input;
+  if (!localSku) {
+    throw new Error("Usage: npm run inv -- ebay-map <local-sku> [ebay-sku] [--offer-id <id>] [--disable]");
+  }
+
+  const ebaySku = maybeEbaySku && !maybeEbaySku.startsWith("--") ? maybeEbaySku : localSku;
+  const flags = parseFlags(maybeEbaySku && !maybeEbaySku.startsWith("--") ? rest : input.slice(1));
+  const item = await findItemBySku(localSku);
+
+  const adapter = new EbayAdapter();
+  if (!adapter.isConfigured()) {
+    throw new Error(`eBay is missing: ${adapter.missingEnv().join(", ")}`);
+  }
+
+  const result = await adapter.lookupSku(ebaySku);
+  const quantity = result.availability?.shipToLocationAvailability?.quantity;
+  const current = item.mappings.ebay ?? { enabled: false };
+
+  await updateItem(item.id, {
+    mappings: {
+      ebay: {
+        ...current,
+        enabled: !flags.disable,
+        remoteSku: ebaySku,
+        offerId: stringFlag(flags["offer-id"]) ?? current.offerId,
+        lastRemoteQuantity: typeof quantity === "number" ? quantity : current.lastRemoteQuantity
+      }
+    }
+  });
+
+  console.log(`${item.sku}: eBay mapping saved.`);
+  console.log(`  eBay SKU: ${ebaySku}`);
+  console.log(`  Quantity: ${typeof quantity === "number" ? quantity : "-"}`);
+}
+
 async function etsyAuthUrlFromCli() {
   const auth = await createEtsyAuthorization();
   console.log("Register this exact redirect URI in Etsy if you have not already:");
@@ -267,11 +487,69 @@ async function scheduleFromCli(input: string[]) {
   console.log(`Schedule ${schedule.enabled ? "on" : "off"} every ${schedule.intervalMinutes} minutes.`);
 }
 
+async function scheduleWindowsFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const [mode, maybeInterval] = positionalArgs(input);
+  const install = Boolean(flags.install || flags.write);
+
+  if (mode === "startup") {
+    const result = await createWindowsStartupScript(install);
+    console.log(`${result.installed ? "Installed" : "Prepared"} Windows startup script: ${result.path}`);
+    if (!result.installed) {
+      console.log("");
+      console.log(result.script.trimEnd());
+      console.log("");
+      console.log("Rerun with --install to write it into your Startup folder.");
+    }
+    return;
+  }
+
+  if (mode === "task") {
+    const interval = Number(stringFlag(flags.interval) ?? maybeInterval ?? 30);
+    const result = await createWindowsSyncTask({
+      install,
+      intervalMinutes: interval,
+      taskName: stringFlag(flags.name)
+    });
+    console.log(
+      `${result.installed ? "Installed" : "Prepared"} Task Scheduler job "${result.taskName}" every ${result.intervalMinutes} minutes.`
+    );
+    if (!result.installed) {
+      console.log(result.command);
+      console.log("Rerun with --install to create it.");
+    }
+    return;
+  }
+
+  throw new Error("Usage: npm run inv -- schedule-windows <startup|task> [intervalMinutes] [--install]");
+}
+
 async function findItemBySku(sku: string) {
   const data = await listData();
   const item = data.items.find((candidate) => candidate.sku.toUpperCase() === sku.toUpperCase());
   if (!item) throw new Error(`SKU ${sku} not found.`);
   return item;
+}
+
+function positionalArgs(input: string[]) {
+  const positional: string[] = [];
+  for (let index = 0; index < input.length; index += 1) {
+    const token = input[index];
+    if (!token.startsWith("--")) {
+      positional.push(token);
+      continue;
+    }
+
+    if (isBooleanFlag(token.slice(2))) {
+      continue;
+    }
+
+    const next = input[index + 1];
+    if (next && !next.startsWith("--")) {
+      index += 1;
+    }
+  }
+  return positional;
 }
 
 function parseFlags(input: string[]) {
@@ -280,6 +558,10 @@ function parseFlags(input: string[]) {
     const token = input[index];
     if (!token.startsWith("--")) continue;
     const key = token.slice(2);
+    if (isBooleanFlag(key)) {
+      flags[key] = true;
+      continue;
+    }
     const next = input[index + 1];
     if (!next || next.startsWith("--")) {
       flags[key] = true;
@@ -289,6 +571,10 @@ function parseFlags(input: string[]) {
     }
   }
   return flags;
+}
+
+function isBooleanFlag(key: string) {
+  return ["disable", "dry-run", "enable", "install", "reconcile", "write"].includes(key);
 }
 
 function stringFlag(value: string | boolean | undefined) {
@@ -335,6 +621,27 @@ function isPlatform(value: string): value is Platform {
   return platforms.includes(value as Platform);
 }
 
+function printReconcileRows(rows: Awaited<ReturnType<typeof reconcileInventory>>["rows"]) {
+  if (rows.length === 0) {
+    console.log("No enabled mappings matched the reconcile request.");
+    return;
+  }
+
+  console.table(
+    rows.map((row) => ({
+      sku: row.sku,
+      platform: platformLabels[row.platform],
+      status: row.status,
+      local: row.localQuantity,
+      remote: row.remoteQuantity ?? "-",
+      last: row.lastSyncedQuantity ?? "-",
+      projected: row.projectedLocalQuantity ?? "-",
+      push: row.wouldPushQuantity ?? "-",
+      message: row.message
+    }))
+  );
+}
+
 function printHelp() {
   console.log(`Josh's Mini ERP inventory CLI
 
@@ -344,13 +651,27 @@ Commands:
   npm run inv -- add <sku> <quantity> [note]
   npm run inv -- subtract <sku> <quantity> [note]
   npm run inv -- sync
+  npm run inv -- sync --dry-run [--platform shopify]
+  npm run inv -- reconcile [etsy|ebay|shopify]
+  npm run inv -- csv-import <file.csv> [--dry-run]
+  npm run inv -- export [output.json]
+  npm run inv -- backup [backup-directory]
   npm run inv -- shopify-test
   npm run inv -- shopify-lookup <sku>
   npm run inv -- shopify-map <local-sku> [shopify-sku] [--location <name-or-id>]
+  npm run inv -- shopify-import [--location <name-or-id>] [--dry-run] [--disable]
+  npm run inv -- ebay-auth-url
+  npm run inv -- ebay-auth-callback "https://..."
+  npm run inv -- ebay-refresh
+  npm run inv -- ebay-test
+  npm run inv -- ebay-lookup <sku>
+  npm run inv -- ebay-map <local-sku> [ebay-sku] [--offer-id <id>]
   npm run inv -- etsy-auth-url
   npm run inv -- etsy-auth-callback "https://..."
   npm run inv -- etsy-refresh
   npm run inv -- schedule <on|off> [intervalMinutes]
+  npm run inv -- schedule-windows startup [--install]
+  npm run inv -- schedule-windows task [intervalMinutes] [--install]
   npm run inv -- map <sku> etsy --listing-id <id> --remote-sku <sku> --enable
   npm run inv -- map <sku> ebay --remote-sku <sku> --offer-id <id> --enable
   npm run inv -- map <sku> shopify --inventory-item-id <id-or-gid> --location-id <id-or-gid> --enable

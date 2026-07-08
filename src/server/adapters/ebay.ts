@@ -1,10 +1,10 @@
+import fs from "node:fs";
 import { platformLabels } from "../../shared/types";
 import type { InventoryItem, PlatformMapping } from "../../shared/types";
 import { config } from "../config";
+import { getEbayAccessToken } from "../ebayAuth";
 import type { PlatformAdapter, PushResult, RemoteQuantity } from "./types";
 import { mappingSku, readJson } from "./types";
-
-const baseUrl = "https://api.ebay.com/sell/inventory/v1";
 
 interface EbayErrorDetail {
   errorId?: number;
@@ -28,13 +28,12 @@ export class EbayAdapter implements PlatformAdapter {
   label = platformLabels.ebay;
 
   isConfigured() {
-    return Boolean(config.ebay.accessToken);
+    return Boolean(config.ebay.accessToken || config.ebay.refreshToken || fs.existsSync(config.ebay.tokenFile));
   }
 
   missingEnv() {
-    return [["EBAY_ACCESS_TOKEN", config.ebay.accessToken]]
-      .filter(([, value]) => !value)
-      .map(([key]) => key as string);
+    if (this.isConfigured()) return [];
+    return ["EBAY_ACCESS_TOKEN or EBAY_REFRESH_TOKEN or eBay OAuth token file"];
   }
 
   hasRequiredMapping(item: InventoryItem, mapping: PlatformMapping) {
@@ -49,7 +48,7 @@ export class EbayAdapter implements PlatformAdapter {
     const sku = mappingSku(item, mapping);
     const payload = await readJson<{
       availability?: { shipToLocationAvailability?: { quantity?: number } };
-    }>(await fetch(`${baseUrl}/inventory_item/${encodeURIComponent(sku)}`, { headers: this.headers() }));
+    }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
     const quantity = payload.availability?.shipToLocationAvailability?.quantity;
     if (typeof quantity !== "number") {
       throw new Error("eBay returned no ship-to-home quantity for this SKU.");
@@ -73,14 +72,26 @@ export class EbayAdapter implements PlatformAdapter {
     }
 
     const payload = await readJson<BulkPriceQuantityResponse>(
-      await fetch(`${baseUrl}/bulk_update_price_quantity`, {
+      await fetch(`${this.baseUrl()}/bulk_update_price_quantity`, {
         method: "POST",
-        headers: this.headers(),
+        headers: await this.headers(),
         body: JSON.stringify({ requests: [request] })
       })
     );
     this.assertBulkUpdateSucceeded(payload, sku);
     return { platform: this.platform, quantity, raw: payload };
+  }
+
+  async testConnection() {
+    return readJson<{ version?: string }>(await fetch(`${this.baseUrl()}/getVersion`, { headers: await this.headers() }));
+  }
+
+  async lookupSku(sku: string) {
+    return readJson<{
+      sku?: string;
+      availability?: { shipToLocationAvailability?: { quantity?: number } };
+      product?: { title?: string };
+    }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
   }
 
   private assertBulkUpdateSucceeded(payload: BulkPriceQuantityResponse, sku: string) {
@@ -103,9 +114,14 @@ export class EbayAdapter implements PlatformAdapter {
     }
   }
 
-  private headers() {
+  private baseUrl() {
+    const host = config.ebay.environment === "sandbox" ? "api.sandbox.ebay.com" : "api.ebay.com";
+    return `https://${host}/sell/inventory/v1`;
+  }
+
+  private async headers() {
     return {
-      Authorization: `Bearer ${config.ebay.accessToken}`,
+      Authorization: `Bearer ${await getEbayAccessToken()}`,
       "Content-Type": "application/json",
       "Content-Language": "en-US",
       "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId

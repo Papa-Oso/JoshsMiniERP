@@ -17,6 +17,8 @@ process.env.SHOPIFY_API_VERSION = "2026-07";
 
 const { runInventorySync } = await import("../src/server/syncEngine.ts");
 const { updateItem } = await import("../src/server/inventoryService.ts");
+const { importCsv } = await import("../src/server/csvImport.ts");
+const { reconcileInventory } = await import("../src/server/reconcile.ts");
 
 after(async () => {
   globalThis.fetch = originalFetch;
@@ -137,6 +139,59 @@ test("changing mapping identity clears the previous sync baseline", async () => 
   assert.equal(mapping?.lastRemoteQuantity, null);
   assert.equal(mapping?.lastSyncedAt, null);
   assert.match(mapping?.warning ?? "", /mapping changed/);
+});
+
+test("reconcile previews Shopify sales without mutating local inventory", async () => {
+  await writeStore(
+    seedStore({
+      quantity: 10,
+      lastSyncedQuantity: 10,
+      lastRemoteQuantity: 10
+    })
+  );
+
+  mockShopify({
+    remoteQuantity: 8,
+    onMutation: () => {
+      throw new Error("Reconcile should not push inventory.");
+    }
+  });
+
+  const result = await reconcileInventory({ platform: "shopify" });
+  const stored = await readStore();
+
+  assert.equal(result.summary.salesDetected, 2);
+  assert.equal(result.summary.pushes, 1);
+  assert.equal(result.rows[0].status, "sale");
+  assert.equal(result.rows[0].wouldPushQuantity, 8);
+  assert.equal(stored.items[0].quantity, 10);
+  assert.equal(stored.events.length, 0);
+  assert.equal(stored.syncRuns.length, 0);
+});
+
+test("csv import creates new SKUs and applies batch quantities", async () => {
+  await writeStore(
+    seedStore({
+      quantity: 10
+    })
+  );
+  const csvPath = path.join(tempDir, "batch.csv");
+  await writeFile(
+    csvPath,
+    "sku,name,quantity,add,safety_stock,note\nNEW-SKU,New SKU,5,,2,initial\nNEON-MUG,,,3,,restock\n",
+    "utf8"
+  );
+
+  const result = await importCsv(csvPath);
+  const stored = await readStore();
+  const created = stored.items.find((item) => item.sku === "NEW-SKU");
+  const adjusted = stored.items.find((item) => item.sku === "NEON-MUG");
+
+  assert.equal(result.summary.created, 1);
+  assert.equal(result.summary.adjusted, 1);
+  assert.equal(created?.quantity, 5);
+  assert.equal(created?.safetyStock, 2);
+  assert.equal(adjusted?.quantity, 13);
 });
 
 async function writeStore(data: StoreData) {

@@ -38,20 +38,18 @@ type SkuLookupQuery = {
       id: string;
       sku: string | null;
       displayName: string;
-      inventoryItem: {
-        id: string;
-        inventoryLevels: {
-          nodes: Array<{
-            id: string;
-            location: {
-              id: string;
-              name: string;
-            };
-            quantities: Array<{ name: string; quantity: number }>;
-          }>;
-        };
-      };
+      inventoryItem: ShopifyInventoryItem;
     }>;
+  };
+};
+
+type SkuListQuery = {
+  productVariants: {
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor: string | null;
+    };
+    nodes: ShopifySkuVariant[];
   };
 };
 
@@ -60,6 +58,29 @@ type ClientCredentialsToken = {
   scope?: string;
   expires_in?: number;
 };
+
+export interface ShopifyInventoryLevel {
+  id: string;
+  location: {
+    id: string;
+    name: string;
+  };
+  quantities: Array<{ name: string; quantity: number }>;
+}
+
+export interface ShopifyInventoryItem {
+  id: string;
+  inventoryLevels: {
+    nodes: ShopifyInventoryLevel[];
+  };
+}
+
+export interface ShopifySkuVariant {
+  id: string;
+  sku: string | null;
+  displayName: string;
+  inventoryItem: ShopifyInventoryItem;
+}
 
 const toShopifyGid = (type: "InventoryItem" | "Location", value: string) => {
   const trimmed = value.trim();
@@ -222,6 +243,51 @@ export class ShopifyAdapter implements PlatformAdapter {
       }`,
       {}
     );
+  }
+
+  async listSkuVariants() {
+    const variants: ShopifySkuVariant[] = [];
+    let after: string | null = null;
+
+    do {
+      const payload: SkuListQuery = await this.graphql<SkuListQuery>(
+        `query ListSkuVariants($first: Int!, $after: String) {
+          productVariants(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              sku
+              displayName
+              inventoryItem {
+                id
+                inventoryLevels(first: 10) {
+                  nodes {
+                    id
+                    location {
+                      id
+                      name
+                    }
+                    quantities(names: ["available"]) {
+                      name
+                      quantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        { first: 100, after }
+      );
+
+      variants.push(...payload.productVariants.nodes.filter((variant) => variant.sku?.trim()));
+      after = payload.productVariants.pageInfo.hasNextPage ? payload.productVariants.pageInfo.endCursor : null;
+    } while (after);
+
+    return variants;
   }
 
   private domain() {

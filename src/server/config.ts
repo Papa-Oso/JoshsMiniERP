@@ -18,7 +18,13 @@ export interface AppConfig {
   };
   ebay: {
     accessToken?: string;
+    refreshToken?: string;
+    clientId?: string;
+    clientSecret?: string;
+    redirectUri?: string;
+    environment: "production" | "sandbox";
     marketplaceId: string;
+    tokenFile: string;
   };
   etsy: {
     apiKey?: string;
@@ -42,7 +48,12 @@ const placeholderValues = new Set([
   "your_etsy_keystring",
   "your_etsy_oauth_token",
   "your_etsy_refresh_token",
-  "https://your-domain.example/etsy/callback"
+  "https://your-domain.example/etsy/callback",
+  "your_ebay_client_id",
+  "your_ebay_client_secret",
+  "your_ebay_runame",
+  "your_ebay_oauth_token",
+  "your_ebay_refresh_token"
 ]);
 const readConfigured = (key: string) => {
   const value = read(key);
@@ -61,7 +72,13 @@ export const config: AppConfig = {
   },
   ebay: {
     accessToken: readConfigured("EBAY_ACCESS_TOKEN"),
-    marketplaceId: readConfigured("EBAY_MARKETPLACE_ID") ?? "EBAY_US"
+    refreshToken: readConfigured("EBAY_REFRESH_TOKEN"),
+    clientId: readConfigured("EBAY_CLIENT_ID"),
+    clientSecret: readConfigured("EBAY_CLIENT_SECRET"),
+    redirectUri: readConfigured("EBAY_RUNAME") ?? readConfigured("EBAY_REDIRECT_URI"),
+    environment: readConfigured("EBAY_ENVIRONMENT") === "sandbox" ? "sandbox" : "production",
+    marketplaceId: readConfigured("EBAY_MARKETPLACE_ID") ?? "EBAY_US",
+    tokenFile: path.resolve(readConfigured("EBAY_TOKEN_FILE") ?? "data/ebay-auth.json")
   },
   etsy: {
     apiKey: readConfigured("ETSY_API_KEY"),
@@ -84,10 +101,8 @@ export function getPlatformStatuses(): PlatformStatus[] {
     {
       platform: "ebay",
       label: platformLabels.ebay,
-      configured: Boolean(config.ebay.accessToken),
-      missing: [["EBAY_ACCESS_TOKEN", config.ebay.accessToken]]
-        .filter(([, value]) => !value)
-        .map(([key]) => key as string)
+      configured: Boolean(config.ebay.accessToken || ebayHasToken()),
+      missing: ebayMissingEnv()
     },
     {
       platform: "shopify",
@@ -112,6 +127,16 @@ function shopifyMissingEnv() {
 
 function etsyHasToken() {
   return Boolean(config.etsy.accessToken || config.etsy.refreshToken || fs.existsSync(config.etsy.tokenFile));
+}
+
+function ebayHasToken() {
+  return Boolean(config.ebay.accessToken || config.ebay.refreshToken || fs.existsSync(config.ebay.tokenFile));
+}
+
+function ebayMissingEnv() {
+  const missing: string[] = [];
+  if (!ebayHasToken()) missing.push("EBAY_ACCESS_TOKEN or EBAY_REFRESH_TOKEN or eBay OAuth token file");
+  return missing;
 }
 
 function etsyMissingEnv() {
