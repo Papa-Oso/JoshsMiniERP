@@ -257,6 +257,179 @@ input:focus {
   gap: 8px;
 }
 
+.stock-overview {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.38fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(199, 188, 228, 0.12);
+  border-bottom: 1px solid rgba(199, 188, 228, 0.12);
+}
+
+.stock-overview-total {
+  display: grid;
+  align-content: center;
+  min-height: 156px;
+  padding-right: 12px;
+  border-right: 1px solid rgba(85, 247, 255, 0.22);
+}
+
+.stock-overview-total span,
+.stock-overview-total small,
+.stock-watch-header span,
+.stock-level-name span,
+.selected-stock-meta span,
+.stock-cell-top span {
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.stock-overview-total strong {
+  color: #fff;
+  font-size: 2.7rem;
+  line-height: 1;
+}
+
+.stock-overview-total small {
+  margin-top: 8px;
+}
+
+.stock-watch {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.stock-watch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 22px;
+}
+
+.stock-watch-header strong {
+  color: var(--cyan);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.stock-level-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px 54px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 35px;
+  border: 0;
+  border-bottom: 1px solid rgba(199, 188, 228, 0.12);
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+}
+
+.stock-level-row.selected {
+  background: rgba(85, 247, 255, 0.08);
+}
+
+.stock-level-name {
+  min-width: 0;
+}
+
+.stock-level-name strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-level-name span {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-level-count {
+  text-align: right;
+}
+
+.stock-status {
+  justify-self: end;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.stock-status.ok,
+.stock-cell.ok strong,
+.selected-sku strong.ok,
+.selected-stock-meta strong.ok {
+  color: var(--green);
+}
+
+.stock-status.watch,
+.stock-cell.watch strong,
+.selected-sku strong.watch,
+.selected-stock-meta strong.watch {
+  color: var(--yellow);
+}
+
+.stock-status.low,
+.stock-cell.low strong,
+.selected-sku strong.low,
+.selected-stock-meta strong.low {
+  color: var(--danger);
+}
+
+.stock-bar {
+  height: 7px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(199, 188, 228, 0.16);
+}
+
+.stock-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.stock-level-row.watch .stock-fill,
+.stock-cell.watch .stock-fill {
+  background: var(--yellow);
+}
+
+.stock-level-row.low .stock-fill,
+.stock-cell.low .stock-fill {
+  background: var(--danger);
+}
+
+.stock-cell {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.stock-cell-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stock-cell-top strong {
+  font-size: 1rem;
+}
+
 .table-wrap {
   max-height: 360px;
   overflow: auto;
@@ -350,6 +523,33 @@ tbody tr.selected {
 
 .selected-sku strong {
   font-size: 2rem;
+}
+
+.selected-stock-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.selected-stock-meta div {
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid rgba(199, 188, 228, 0.12);
+  border-bottom: 1px solid rgba(199, 188, 228, 0.12);
+}
+
+.selected-stock-meta strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #fff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.safety-button {
+  margin-bottom: 12px;
 }
 
 .segmented {
@@ -611,6 +811,18 @@ tbody tr.selected {
 
   .table-wrap {
     max-height: 300px;
+  }
+
+  .stock-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-overview-total {
+    min-height: 0;
+    padding-right: 0;
+    padding-bottom: 10px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(85, 247, 255, 0.22);
   }
 
   th:nth-child(2),

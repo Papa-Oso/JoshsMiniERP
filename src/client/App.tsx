@@ -36,6 +36,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({ sku: "", name: "", quantity: 0 });
   const [adjustment, setAdjustment] = useState({ mode: "add" as AdjustMode, quantity: 1, note: "" });
+  const [safetyFloor, setSafetyFloor] = useState(0);
   const [schedule, setSchedule] = useState({ enabled: false, intervalMinutes: 60 });
   const [mappingDraft, setMappingDraft] = useState<Partial<Record<Platform, PlatformMapping>>>({});
   const [busy, setBusy] = useState(false);
@@ -65,6 +66,10 @@ export function App() {
     setSelectedId(selectedItem.id);
     setMappingDraft(selectedItem.mappings);
   }, [selectedItem?.id]);
+
+  useEffect(() => {
+    setSafetyFloor(selectedItem?.safetyStock ?? 0);
+  }, [selectedItem?.id, selectedItem?.safetyStock]);
 
   async function load() {
     const data = await api.dashboard();
@@ -124,6 +129,14 @@ export function App() {
     await runAction(() => api.runSync(), "Sync finished.");
   }
 
+  async function handleSafetyStockSave() {
+    if (!selectedItem) return;
+    await runAction(
+      () => api.updateItem(selectedItem.id, { safetyStock: Number(safetyFloor) }),
+      "Safety floor saved."
+    );
+  }
+
   async function handleMappingSave() {
     if (!selectedItem) return;
     await runAction(() => api.updateItem(selectedItem.id, { mappings: mappingDraft }), "Mappings saved.");
@@ -142,7 +155,16 @@ export function App() {
 
   const latestRun = dashboard.syncRuns[0];
   const stockTotal = dashboard.items.reduce((sum, item) => sum + item.quantity, 0);
-  const lowStock = dashboard.items.filter((item) => item.quantity <= item.safetyStock).length;
+  const lowStockItems = useMemo(
+    () => dashboard.items.filter(isLowStock).sort(sortByStockRisk),
+    [dashboard.items]
+  );
+  const stockWatchItems = useMemo(
+    () => [...dashboard.items].sort(sortByStockRisk).slice(0, 5),
+    [dashboard.items]
+  );
+  const lowStock = lowStockItems.length;
+  const maxQuantity = Math.max(1, ...dashboard.items.map((item) => item.quantity));
 
   return (
     <main className="shell">
@@ -153,8 +175,8 @@ export function App() {
         </div>
         <div className="status-strip">
           <Metric label="SKUs" value={dashboard.items.length} />
-          <Metric label="On Hand" value={stockTotal} />
-          <Metric label="Low" value={lowStock} tone={lowStock ? "warn" : "ok"} />
+          <Metric label="Global Units" value={stockTotal} />
+          <Metric label="Below Floor" value={lowStock} tone={lowStock ? "warn" : "ok"} />
         </div>
       </section>
 
@@ -186,14 +208,38 @@ export function App() {
             </button>
           </div>
 
+          <div className="stock-overview">
+            <div className="stock-overview-total">
+              <span>Global On Hand</span>
+              <strong>{stockTotal}</strong>
+              <small>{lowStock ? `${lowStock} below floor` : "All above floor"}</small>
+            </div>
+            <div className="stock-watch">
+              <div className="stock-watch-header">
+                <span>Lowest Stock</span>
+                <strong>{stockWatchItems.length ? `${stockWatchItems[0].quantity} min` : "-"}</strong>
+              </div>
+              {stockWatchItems.map((item) => (
+                <StockLevelRow
+                  key={item.id}
+                  item={item}
+                  maxQuantity={maxQuantity}
+                  selected={item.id === selectedItem?.id}
+                  onSelect={() => setSelectedId(item.id)}
+                />
+              ))}
+              {stockWatchItems.length === 0 ? <div className="empty compact-empty">No SKUs</div> : null}
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>SKU</th>
-                  <th>Name</th>
-                  <th>Qty</th>
-                  <th>Stores</th>
+                  <th>Item</th>
+                  <th>Global Stock</th>
+                  <th>Floor</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,8 +254,10 @@ export function App() {
                       <div className="item-name">{item.name}</div>
                       {item.description ? <div className="item-description">{item.description}</div> : null}
                     </td>
-                    <td className={item.quantity <= item.safetyStock ? "danger" : ""}>{item.quantity}</td>
-                    <td>{enabledPlatforms(item)}</td>
+                    <td>
+                      <StockCell item={item} maxQuantity={maxQuantity} />
+                    </td>
+                    <td>{item.safetyStock}</td>
                   </tr>
                 ))}
                 {dashboard.items.length === 0 ? (
@@ -224,11 +272,47 @@ export function App() {
           </div>
         </Panel>
 
-        <Panel title="Batch Adjust" icon={<SlidersHorizontal size={18} />}>
+        <Panel title="Stock Control" icon={<SlidersHorizontal size={18} />}>
           <div className="selected-sku">
             <span>{selectedItem?.sku ?? "No SKU"}</span>
-            <strong>{selectedItem?.quantity ?? 0}</strong>
+            <strong className={selectedItem ? stockTone(selectedItem) : ""}>{selectedItem?.quantity ?? 0}</strong>
           </div>
+
+          <div className="selected-stock-meta">
+            <div>
+              <span>Global</span>
+              <strong>{selectedItem?.quantity ?? 0}</strong>
+            </div>
+            <div>
+              <span>Floor</span>
+              <strong>{selectedItem?.safetyStock ?? 0}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong className={selectedItem ? stockTone(selectedItem) : ""}>
+                {selectedItem ? stockStatusLabel(selectedItem) : "-"}
+              </strong>
+            </div>
+          </div>
+
+          <label>
+            Safety Floor
+            <input
+              type="number"
+              min="0"
+              value={safetyFloor}
+              onChange={(event) => setSafetyFloor(Math.max(0, Number(event.target.value)))}
+            />
+          </label>
+          <button
+            className="icon-button full safety-button"
+            type="button"
+            disabled={!selectedItem || busy}
+            onClick={handleSafetyStockSave}
+          >
+            <Save size={18} />
+            Set Floor
+          </button>
 
           <div className="segmented">
             <button
@@ -419,6 +503,50 @@ function MiniStat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function StockLevelRow({
+  item,
+  maxQuantity,
+  selected,
+  onSelect
+}: {
+  item: InventoryItem;
+  maxQuantity: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      className={`stock-level-row ${stockTone(item)} ${selected ? "selected" : ""}`}
+      type="button"
+      onClick={onSelect}
+    >
+      <div className="stock-level-name">
+        <strong>{item.name}</strong>
+        <span>{item.sku}</span>
+        <div className="stock-bar">
+          <span className="stock-fill" style={{ width: stockPercent(item.quantity, maxQuantity) }} />
+        </div>
+      </div>
+      <strong className="stock-level-count">{item.quantity}</strong>
+      <span className={`stock-status ${stockTone(item)}`}>{stockStatusLabel(item)}</span>
+    </button>
+  );
+}
+
+function StockCell({ item, maxQuantity }: { item: InventoryItem; maxQuantity: number }) {
+  return (
+    <div className={`stock-cell ${stockTone(item)}`}>
+      <div className="stock-cell-top">
+        <strong>{item.quantity}</strong>
+        <span>{stockStatusLabel(item)}</span>
+      </div>
+      <div className="stock-bar">
+        <span className="stock-fill" style={{ width: stockPercent(item.quantity, maxQuantity) }} />
+      </div>
+    </div>
+  );
+}
+
 function MappingFields({
   platform,
   mapping,
@@ -493,11 +621,6 @@ function MappingFields({
   );
 }
 
-function enabledPlatforms(item: InventoryItem) {
-  const enabled = platforms.filter((platform) => item.mappings[platform]?.enabled).map((platform) => platformLabels[platform]);
-  return enabled.length ? enabled.join(", ") : "-";
-}
-
 function formatDate(value?: string | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, {
@@ -510,4 +633,32 @@ function formatDate(value?: string | null) {
 
 function formatOptionalNumber(value?: number | null) {
   return typeof value === "number" ? String(value) : "-";
+}
+
+function isLowStock(item: InventoryItem) {
+  return item.quantity <= item.safetyStock;
+}
+
+function stockTone(item: InventoryItem) {
+  if (isLowStock(item)) return "low";
+  if (item.safetyStock > 0 && item.quantity <= item.safetyStock + Math.max(3, Math.ceil(item.safetyStock * 0.25))) {
+    return "watch";
+  }
+  return "ok";
+}
+
+function stockStatusLabel(item: InventoryItem) {
+  const tone = stockTone(item);
+  if (tone === "low") return "Low";
+  if (tone === "watch") return "Watch";
+  return "OK";
+}
+
+function stockPercent(quantity: number, maxQuantity: number) {
+  if (quantity <= 0) return "0%";
+  return `${Math.max(6, Math.round((quantity / maxQuantity) * 100))}%`;
+}
+
+function sortByStockRisk(left: InventoryItem, right: InventoryItem) {
+  return left.quantity - left.safetyStock - (right.quantity - right.safetyStock) || left.sku.localeCompare(right.sku);
 }
