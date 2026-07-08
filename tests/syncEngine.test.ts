@@ -80,6 +80,78 @@ test("failed pulls do not push stale local inventory", async () => {
   assert.equal(stored.items[0].quantity, 10);
 });
 
+test("sync only pushes Shopify SKUs whose remote quantity differs from local", async () => {
+  const store = seedStore({
+    quantity: 10,
+    lastSyncedQuantity: 10,
+    lastRemoteQuantity: 10
+  });
+  store.items[0].sku = "UNCHANGED";
+  store.items[0].name = "Unchanged";
+  store.items.push({
+    id: "item-2",
+    sku: "CHANGED",
+    name: "Changed",
+    quantity: 13,
+    safetyStock: 0,
+    mappings: {
+      shopify: {
+        enabled: true,
+        inventoryItemId: "gid://shopify/InventoryItem/2",
+        locationId: "gid://shopify/Location/1",
+        lastSyncedQuantity: 12,
+        lastRemoteQuantity: 12,
+        lastSyncedAt: timestamp,
+        warning: null
+      }
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp
+  });
+  await writeStore(store);
+
+  const mutationInputs: Array<{ inventoryItemId: string; quantity: number }> = [];
+  globalThis.fetch = (async (_url, init) => {
+    const body = readGraphqlBody(init);
+
+    if (body.query?.includes("query InventoryLevel")) {
+      const inventoryItemId = body.variables?.inventoryItemId ?? "";
+      const remoteQuantity = inventoryItemId.endsWith("/2") ? 12 : 10;
+      return jsonResponse({
+        data: {
+          inventoryItem: {
+            inventoryLevel: {
+              quantities: [{ name: "available", quantity: remoteQuantity }]
+            }
+          }
+        }
+      });
+    }
+
+    if (body.query?.includes("mutation InventorySet")) {
+      const quantityInput = body.variables?.input?.quantities?.[0];
+      mutationInputs.push({
+        inventoryItemId: quantityInput?.inventoryItemId ?? "",
+        quantity: quantityInput?.quantity ?? 0
+      });
+      return successMutation();
+    }
+
+    throw new Error(`Unexpected Shopify GraphQL operation: ${body.query ?? "missing query"}`);
+  }) as typeof fetch;
+
+  const run = await runInventorySync("cli");
+  const stored = await readStore();
+  const syncPushEvents = stored.events.filter((event) => event.type === "sync_push");
+
+  assert.equal(run.summary.pushes, 1);
+  assert.deepEqual(mutationInputs, [{ inventoryItemId: "gid://shopify/InventoryItem/2", quantity: 13 }]);
+  assert.equal(syncPushEvents.length, 1);
+  assert.equal(syncPushEvents[0].sku, "CHANGED");
+  assert.equal(stored.items.find((item) => item.sku === "UNCHANGED")?.mappings.shopify?.lastSyncedQuantity, 10);
+  assert.equal(stored.items.find((item) => item.sku === "CHANGED")?.mappings.shopify?.lastSyncedQuantity, 13);
+});
+
 test("failed pushes do not make the same platform sale subtract twice", async () => {
   await writeStore(
     seedStore({
@@ -277,7 +349,18 @@ function mockShopify({
 }
 
 function readGraphqlBody(init?: RequestInit) {
-  return JSON.parse(String(init?.body ?? "{}")) as { query?: string };
+  return JSON.parse(String(init?.body ?? "{}")) as {
+    query?: string;
+    variables?: {
+      inventoryItemId?: string;
+      input?: {
+        quantities?: Array<{
+          inventoryItemId?: string;
+          quantity?: number;
+        }>;
+      };
+    };
+  };
 }
 
 function successMutation() {

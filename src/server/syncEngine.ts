@@ -183,14 +183,18 @@ async function applySalesAndPlanPushes(
     }
 
     const targets: PushTarget[] = [];
-    for (const item of data.items) {
-      for (const platform of platforms) {
-        const mapping = item.mappings[platform];
-        const adapter = adapterByPlatform[platform];
-        if (!mapping?.enabled || !adapter.isConfigured() || !adapter.hasRequiredMapping(item, mapping)) continue;
-        if (!pushableMappings.has(pushKey(item.id, platform))) continue;
-        targets.push({ itemId: item.id, platform, quantity: item.quantity });
-      }
+    for (const reading of readings) {
+      const item = data.items.find((candidate) => candidate.id === reading.itemId);
+      if (!item) continue;
+
+      const platform = reading.platform;
+      const mapping = item.mappings[platform];
+      const adapter = adapterByPlatform[platform];
+      if (!mapping?.enabled || !adapter.isConfigured() || !adapter.hasRequiredMapping(item, mapping)) continue;
+      if (!pushableMappings.has(pushKey(item.id, platform))) continue;
+      if (reading.quantity === item.quantity) continue;
+
+      targets.push({ itemId: item.id, platform, quantity: item.quantity });
     }
 
     data.events = data.events.slice(0, 500);

@@ -186,6 +186,13 @@ export function App() {
     () => [...dashboard.items].sort((left, right) => compareInventoryItems(left, right, sortField, sortDirection)),
     [dashboard.items, sortDirection, sortField]
   );
+  const activityEvents = useMemo(
+    () =>
+      dashboard.events
+        .filter((event) => event.type !== "sync_push" && event.type !== "sync_baseline")
+        .slice(0, 12),
+    [dashboard.events]
+  );
 
   return (
     <main className="shell">
@@ -420,7 +427,7 @@ export function App() {
       <section className="lower-grid">
         <Panel title="Activity" icon={<Activity size={18} />}>
           <div className="activity-list">
-            {dashboard.events.slice(0, 12).map((event) => (
+            {activityEvents.map((event) => (
               <div className="activity-row" key={event.id}>
                 <span>{event.sku}</span>
                 <strong className={event.delta < 0 ? "danger" : event.delta > 0 ? "ok" : ""}>
@@ -430,7 +437,7 @@ export function App() {
                 <time>{formatDate(event.createdAt)}</time>
               </div>
             ))}
-            {dashboard.events.length === 0 ? <div className="empty">No activity</div> : null}
+            {activityEvents.length === 0 ? <div className="empty">No activity</div> : null}
           </div>
         </Panel>
       </section>
