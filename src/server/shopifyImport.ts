@@ -119,7 +119,7 @@ function planShopifyImport(
         inventoryItemId: variant.inventoryItem.id,
         locationId: levelResult.level.location.id,
         locationName: levelResult.level.location.name,
-        message: `Would create local SKU from Shopify with ${quantity} on hand.`
+        message: `${apply ? "Created" : "Would create"} local SKU from Shopify with ${quantity} on hand.`
       });
 
       if (apply) {
@@ -143,8 +143,8 @@ function planShopifyImport(
       locationId: levelResult.level.location.id,
       locationName: levelResult.level.location.name,
       message: differentQuantity
-        ? `Would map Shopify and keep local quantity ${item.quantity}; Shopify currently has ${quantity}.`
-        : `Would map Shopify with matching local and Shopify quantity ${quantity}.`
+        ? `${apply ? "Mapped" : "Would map"} Shopify and keep local quantity ${item.quantity}; Shopify currently has ${quantity}.`
+        : `${apply ? "Mapped" : "Would map"} Shopify with matching local and Shopify quantity ${quantity}.`
     });
 
     if (apply) {
