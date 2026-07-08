@@ -123,12 +123,12 @@ Etsy:
 - `ETSY_ACCESS_TOKEN`
 - Per SKU: Etsy listing ID and SKU
 
-Etsy inventory updates require a unique product match for the mapped SKU inside the listing inventory.
+Etsy inventory updates require a unique product match and a single offering for the mapped SKU inside the listing inventory. If Etsy has multiple offerings for one SKU, give each sellable variation its own SKU before syncing.
 
 ## Platform API Notes
 
 - Shopify adapter uses Admin GraphQL `inventoryItem` reads and `inventorySetQuantities` writes.
-- eBay adapter uses Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity`.
+- eBay adapter uses Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity`, and checks the per-SKU response before treating a push as successful.
 - Etsy adapter reads and writes `GET/PUT /v3/application/listings/{listing_id}/inventory`, preserving the listing inventory payload and changing the matched SKU quantity.
 
 Relevant docs:

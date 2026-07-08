@@ -6,6 +6,23 @@ import { mappingSku, readJson } from "./types";
 
 const baseUrl = "https://api.ebay.com/sell/inventory/v1";
 
+interface EbayErrorDetail {
+  errorId?: number;
+  message?: string;
+  longMessage?: string;
+}
+
+interface BulkPriceQuantityResponse {
+  responses?: Array<{
+    sku?: string;
+    offerId?: string;
+    statusCode?: number;
+    errors?: EbayErrorDetail[];
+    warnings?: EbayErrorDetail[];
+  }>;
+  errors?: EbayErrorDetail[];
+}
+
 export class EbayAdapter implements PlatformAdapter {
   platform = "ebay" as const;
   label = platformLabels.ebay;
@@ -55,14 +72,35 @@ export class EbayAdapter implements PlatformAdapter {
       request.offers = [{ offerId: mapping.offerId, availableQuantity: quantity }];
     }
 
-    const payload = await readJson(
+    const payload = await readJson<BulkPriceQuantityResponse>(
       await fetch(`${baseUrl}/bulk_update_price_quantity`, {
         method: "POST",
         headers: this.headers(),
         body: JSON.stringify({ requests: [request] })
       })
     );
+    this.assertBulkUpdateSucceeded(payload, sku);
     return { platform: this.platform, quantity, raw: payload };
+  }
+
+  private assertBulkUpdateSucceeded(payload: BulkPriceQuantityResponse, sku: string) {
+    const topLevelErrors = payload.errors ?? [];
+    if (topLevelErrors.length) {
+      throw new Error(`eBay bulk update failed: ${formatEbayErrors(topLevelErrors)}`);
+    }
+
+    const response = payload.responses?.find((entry) => entry.sku === sku) ?? payload.responses?.[0];
+    if (!response) {
+      throw new Error(`eBay returned no bulk update response for SKU ${sku}.`);
+    }
+
+    if (response.errors?.length) {
+      throw new Error(`eBay bulk update failed for SKU ${sku}: ${formatEbayErrors(response.errors)}`);
+    }
+
+    if (typeof response.statusCode === "number" && (response.statusCode < 200 || response.statusCode >= 300)) {
+      throw new Error(`eBay bulk update failed for SKU ${sku} with status ${response.statusCode}.`);
+    }
   }
 
   private headers() {
@@ -73,4 +111,10 @@ export class EbayAdapter implements PlatformAdapter {
       "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId
     };
   }
+}
+
+function formatEbayErrors(errors: EbayErrorDetail[]) {
+  return errors
+    .map((error) => error.longMessage ?? error.message ?? `eBay error ${error.errorId ?? "unknown"}`)
+    .join("; ");
 }

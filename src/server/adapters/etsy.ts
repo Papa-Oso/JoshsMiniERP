@@ -58,7 +58,8 @@ export class EtsyAdapter implements PlatformAdapter {
     const sku = mappingSku(item, mapping);
     const inventory = await this.getInventory(mapping);
     const product = this.findProduct(inventory, sku);
-    const quantity = product.offerings?.reduce((sum, offering) => sum + (offering.quantity ?? 0), 0);
+    const offering = this.findSingleOffering(product, sku);
+    const quantity = offering.quantity;
     if (typeof quantity !== "number") {
       throw new Error("Etsy returned no offering quantity for this SKU.");
     }
@@ -73,10 +74,8 @@ export class EtsyAdapter implements PlatformAdapter {
     const sku = mappingSku(item, mapping);
     const inventory = await this.getInventory(mapping);
     const product = this.findProduct(inventory, sku);
-    product.offerings = (product.offerings ?? []).map((offering) => ({
-      ...offering,
-      quantity
-    }));
+    const offering = this.findSingleOffering(product, sku);
+    offering.quantity = quantity;
 
     const payload: EtsyInventory = {
       products: inventory.products ?? [],
@@ -116,6 +115,17 @@ export class EtsyAdapter implements PlatformAdapter {
       throw new Error(`Etsy listing inventory has multiple products with SKU ${sku}.`);
     }
     return matches[0];
+  }
+
+  private findSingleOffering(product: EtsyProduct, sku: string) {
+    const offerings = product.offerings ?? [];
+    if (offerings.length === 0) {
+      throw new Error(`Etsy listing inventory has no offerings for SKU ${sku}.`);
+    }
+    if (offerings.length > 1) {
+      throw new Error(`Etsy listing inventory has multiple offerings for SKU ${sku}; use a unique SKU per offering.`);
+    }
+    return offerings[0];
   }
 
   private headers() {
