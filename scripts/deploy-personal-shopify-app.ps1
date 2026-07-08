@@ -27,25 +27,41 @@ param(
 
 $ErrorActionPreference = "Stop"
 $env:Path = "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin;$env:Path"
+$gcloudCommand = Join-Path $env:LOCALAPPDATA "Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
+if (-not (Test-Path $gcloudCommand)) {
+  $gcloudCommand = "gcloud"
+}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $shopifyAppRoot = Join-Path $repoRoot "shopify-app\joshs-mini-erp"
 $shopifyConfigPath = Join-Path $shopifyAppRoot "shopify.app.toml"
 
 function Invoke-Native {
-  param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Command)
+  param(
+    [string]$FilePath,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Arguments
+  )
 
-  & $Command[0] @($Command | Select-Object -Skip 1)
+  & $FilePath @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "Command failed: $($Command -join ' ')"
+    $summary = ($Arguments | Select-Object -First 4) -join " "
+    throw "Command failed: $FilePath $summary ..."
   }
 }
 
 function Test-Gcloud {
   param([string[]]$Arguments)
 
-  & gcloud @Arguments *> $null
-  return $LASTEXITCODE -eq 0
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $gcloudCommand @Arguments 1>$null 2>$null
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  return $exitCode -eq 0
 }
 
 function Read-PlainSecret {
@@ -62,7 +78,12 @@ function Read-PlainSecret {
 
 function New-Token {
   $bytes = New-Object byte[] 32
-  [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+  $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $generator.GetBytes($bytes)
+  } finally {
+    $generator.Dispose()
+  }
   return [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
 }
 
@@ -71,25 +92,24 @@ function Escape-DatabasePassword {
   return [uri]::EscapeDataString($Value)
 }
 
-function Join-EnvVars {
+function Write-EnvVarsFile {
   param([hashtable]$Values)
 
-  $delimiter = "|"
-  $parts = @("^$delimiter^")
+  $lines = @()
   foreach ($key in $Values.Keys) {
-    $value = [string]$Values[$key]
-    if ($value.Contains($delimiter)) {
-      throw "Environment variable $key contains reserved delimiter '$delimiter'."
-    }
-    $parts += "$key=$value"
+    $escaped = ([string]$Values[$key]).Replace("'", "''")
+    $lines += "${key}: '$escaped'"
   }
-  return ($parts -join $delimiter)
+
+  $file = New-TemporaryFile
+  Set-Content -Path $file.FullName -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+  return $file.FullName
 }
 
 function Get-RunUrl {
   param([string]$ServiceName)
 
-  $url = & gcloud run services describe $ServiceName --project $ProjectId --region $Region --format "value(status.url)"
+  $url = & $gcloudCommand run services describe $ServiceName --project $ProjectId --region $Region --format "value(status.url)"
   if ($LASTEXITCODE -ne 0 -or -not $url) {
     throw "Unable to read Cloud Run URL for $ServiceName."
   }
@@ -105,11 +125,11 @@ function Update-ShopifyConfigUrls {
   Set-Content -Path $shopifyConfigPath -Value $config -NoNewline
 }
 
-if (-not (Get-Command gcloud -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command $gcloudCommand -ErrorAction SilentlyContinue)) {
   throw "gcloud was not found. Install Google Cloud CLI and open a fresh PowerShell."
 }
 
-$accounts = & gcloud auth list --format "value(account)"
+$accounts = & $gcloudCommand auth list --format "value(account)"
 if (-not $accounts) {
   throw "gcloud is not authenticated. Run: gcloud auth login"
 }
@@ -130,9 +150,9 @@ $shopifyDatabaseUrl = "postgresql://${ShopifyDatabaseUser}:$(Escape-DatabasePass
 
 Push-Location $repoRoot
 try {
-  Invoke-Native gcloud config set project $ProjectId
+  Invoke-Native $gcloudCommand config set project $ProjectId
 
-  Invoke-Native gcloud services enable `
+  Invoke-Native $gcloudCommand services enable `
     run.googleapis.com `
     sqladmin.googleapis.com `
     cloudbuild.googleapis.com `
@@ -140,33 +160,36 @@ try {
     secretmanager.googleapis.com `
     --project $ProjectId
 
+  Start-Sleep -Seconds 45
+
   if (-not (Test-Gcloud @("sql", "instances", "describe", $SqlInstance, "--project", $ProjectId))) {
-    Invoke-Native gcloud sql instances create $SqlInstance `
+    Invoke-Native $gcloudCommand sql instances create $SqlInstance `
       --project $ProjectId `
       --database-version POSTGRES_16 `
+      --edition ENTERPRISE `
       --region $Region `
       --tier db-f1-micro
   }
 
   foreach ($database in @($ErpDatabase, $ShopifyDatabase)) {
     if (-not (Test-Gcloud @("sql", "databases", "describe", $database, "--instance", $SqlInstance, "--project", $ProjectId))) {
-      Invoke-Native gcloud sql databases create $database --instance $SqlInstance --project $ProjectId
+      Invoke-Native $gcloudCommand sql databases create $database --instance $SqlInstance --project $ProjectId
     }
   }
 
-  $existingUsers = & gcloud sql users list --instance $SqlInstance --project $ProjectId --format "value(name)"
+  $existingUsers = & $gcloudCommand sql users list --instance $SqlInstance --project $ProjectId --format "value(name)"
   if ($existingUsers -notcontains $ErpDatabaseUser) {
-    Invoke-Native gcloud sql users create $ErpDatabaseUser --instance $SqlInstance --project $ProjectId --password $ErpDatabasePassword
+    Invoke-Native $gcloudCommand sql users create $ErpDatabaseUser --instance $SqlInstance --project $ProjectId "--password=$ErpDatabasePassword"
   } else {
-    Invoke-Native gcloud sql users set-password $ErpDatabaseUser --instance $SqlInstance --project $ProjectId --password $ErpDatabasePassword
+    Invoke-Native $gcloudCommand sql users set-password $ErpDatabaseUser --instance $SqlInstance --project $ProjectId "--password=$ErpDatabasePassword"
   }
   if ($existingUsers -notcontains $ShopifyDatabaseUser) {
-    Invoke-Native gcloud sql users create $ShopifyDatabaseUser --instance $SqlInstance --project $ProjectId --password $ShopifyDatabasePassword
+    Invoke-Native $gcloudCommand sql users create $ShopifyDatabaseUser --instance $SqlInstance --project $ProjectId "--password=$ShopifyDatabasePassword"
   } else {
-    Invoke-Native gcloud sql users set-password $ShopifyDatabaseUser --instance $SqlInstance --project $ProjectId --password $ShopifyDatabasePassword
+    Invoke-Native $gcloudCommand sql users set-password $ShopifyDatabaseUser --instance $SqlInstance --project $ProjectId "--password=$ShopifyDatabasePassword"
   }
 
-  $erpEnv = Join-EnvVars @{
+  $erpEnv = @{
     HOST = "0.0.0.0"
     STORE_DRIVER = "postgres"
     DATABASE_URL = $erpDatabaseUrl
@@ -177,19 +200,24 @@ try {
     SHOPIFY_API_VERSION = $ShopifyApiVersion
   }
 
-  Invoke-Native gcloud run deploy $ErpService `
-    --project $ProjectId `
-    --source . `
-    --region $Region `
-    --allow-unauthenticated `
-    --add-cloudsql-instances $connectionName `
-    --set-env-vars $erpEnv
+  $erpEnvFile = Write-EnvVarsFile $erpEnv
+  try {
+    Invoke-Native $gcloudCommand run deploy $ErpService `
+      --project $ProjectId `
+      --source . `
+      --region $Region `
+      --allow-unauthenticated `
+      --add-cloudsql-instances $connectionName `
+      --env-vars-file $erpEnvFile
+  } finally {
+    Remove-Item $erpEnvFile -Force -ErrorAction SilentlyContinue
+  }
 
   $erpUrl = Get-RunUrl $ErpService
 
   Push-Location $shopifyAppRoot
   try {
-    $shopifyEnv = Join-EnvVars @{
+    $shopifyEnv = @{
       SHOPIFY_API_KEY = $ShopifyClientId
       SHOPIFY_API_SECRET = $ShopifyClientSecret
       SHOPIFY_APP_URL = "https://placeholder.example.com"
@@ -200,19 +228,24 @@ try {
       NODE_ENV = "production"
     }
 
-    Invoke-Native gcloud run deploy $ShopifyService `
-      --project $ProjectId `
-      --source . `
-      --region $Region `
-      --allow-unauthenticated `
-      --add-cloudsql-instances $connectionName `
-      --set-env-vars $shopifyEnv
+    $shopifyEnvFile = Write-EnvVarsFile $shopifyEnv
+    try {
+      Invoke-Native $gcloudCommand run deploy $ShopifyService `
+        --project $ProjectId `
+        --source . `
+        --region $Region `
+        --allow-unauthenticated `
+        --add-cloudsql-instances $connectionName `
+        --env-vars-file $shopifyEnvFile
+    } finally {
+      Remove-Item $shopifyEnvFile -Force -ErrorAction SilentlyContinue
+    }
   } finally {
     Pop-Location
   }
 
   $shopifyUrl = Get-RunUrl $ShopifyService
-  Invoke-Native gcloud run services update $ShopifyService `
+  Invoke-Native $gcloudCommand run services update $ShopifyService `
     --project $ProjectId `
     --region $Region `
     --update-env-vars "SHOPIFY_APP_URL=$shopifyUrl"
