@@ -321,6 +321,22 @@ export function App() {
             <span>Latest Run</span>
             <strong>{latestRun ? latestRun.status.replaceAll("_", " ") : "None"}</strong>
           </div>
+          {latestRun ? (
+            <>
+              <div className="sync-summary">
+                <MiniStat label="Sales" value={latestRun.summary.salesDetected} />
+                <MiniStat label="Pushes" value={latestRun.summary.pushes} />
+                <MiniStat label="Issues" value={latestRun.summary.errors + latestRun.summary.warnings} />
+              </div>
+              <div className="run-messages">
+                {latestRun.messages.slice(0, 4).map((message) => (
+                  <p className="run-message" key={message}>
+                    {message}
+                  </p>
+                ))}
+              </div>
+            </>
+          ) : null}
           {notice ? <p className="notice">{notice}</p> : null}
         </Panel>
       </section>
@@ -388,6 +404,15 @@ function Metric({ label, value, tone }: { label: string; value: number; tone?: "
   );
 }
 
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="mini-stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function MappingFields({
   platform,
   mapping,
@@ -441,6 +466,22 @@ function MappingFields({
           </label>
         </>
       ) : null}
+      {mapping.enabled ? (
+        <div className="mapping-meta">
+          <div>
+            <span>Remote</span>
+            <strong>{formatOptionalNumber(mapping.lastRemoteQuantity)}</strong>
+          </div>
+          <div>
+            <span>Synced</span>
+            <strong>{formatOptionalNumber(mapping.lastSyncedQuantity)}</strong>
+          </div>
+          <div>
+            <span>At</span>
+            <strong>{formatDate(mapping.lastSyncedAt)}</strong>
+          </div>
+        </div>
+      ) : null}
       {mapping.warning ? <p className="mapping-warning">{mapping.warning}</p> : null}
     </fieldset>
   );
@@ -459,4 +500,8 @@ function formatDate(value?: string | null) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatOptionalNumber(value?: number | null) {
+  return typeof value === "number" ? String(value) : "-";
 }
