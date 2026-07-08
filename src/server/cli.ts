@@ -409,6 +409,9 @@ async function skuAuditFromCli(input: string[]) {
   console.log(
     `SKU audit: ${result.summary.matchedAllAvailable} paired, ${result.summary.missingLocal} missing local, ${result.summary.missingShopify} missing Shopify, ${result.summary.missingEbay} missing eBay, ${result.summary.warnings} warnings.`
   );
+  for (const message of result.messages) {
+    console.log(`- ${message}`);
+  }
   console.table(
     result.rows.map((row) => ({
       sku: row.sku,

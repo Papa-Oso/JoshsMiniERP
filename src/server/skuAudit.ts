@@ -32,6 +32,7 @@ export interface SkuAuditRow {
 
 export interface SkuAuditResult {
   rows: SkuAuditRow[];
+  messages: string[];
   summary: {
     localSkus: number;
     shopifySkus: number;
@@ -87,6 +88,7 @@ export async function auditSkuPairings(options: SkuAuditOptions = {}): Promise<S
 
   const result: SkuAuditResult = {
     rows,
+    messages: auditMessages(shopifyLoad, ebayLoad),
     summary: summarizeRows(rows, data.items.length, shopifyLoad.records.size, ebayLoad.records.size)
   };
 
@@ -178,7 +180,7 @@ function ebayStatus(
 async function loadShopifySkus(location?: string): Promise<RemoteLoad<ShopifySkuRecord>> {
   const adapter = new ShopifyAdapter();
   if (!adapter.isConfigured()) {
-    return { configured: false, records: new Map() };
+    return { configured: false, records: new Map(), error: `Shopify is missing ${adapter.missingEnv().join(", ")}.` };
   }
 
   try {
@@ -206,7 +208,7 @@ async function loadShopifySkus(location?: string): Promise<RemoteLoad<ShopifySku
 async function loadEbaySkus(): Promise<RemoteLoad<EbaySkuRecord>> {
   const adapter = new EbayAdapter();
   if (!adapter.isConfigured()) {
-    return { configured: false, records: new Map() };
+    return { configured: false, records: new Map(), error: `eBay is missing ${adapter.missingEnv().join(", ")}.` };
   }
 
   try {
@@ -268,6 +270,16 @@ function summarizeRows(rows: SkuAuditRow[], localSkus: number, shopifySkus: numb
     missingEbay: rows.filter((row) => row.ebay === "missing").length,
     warnings: rows.filter((row) => row.recommendation !== "SKU pairs cleanly across available sources.").length
   };
+}
+
+function auditMessages(
+  shopifyLoad: RemoteLoad<ShopifySkuRecord>,
+  ebayLoad: RemoteLoad<EbaySkuRecord>
+) {
+  return [
+    shopifyLoad.error ? `${platformLabels.shopify}: ${shopifyLoad.error}` : null,
+    ebayLoad.error ? `${platformLabels.ebay}: ${ebayLoad.error}` : null
+  ].filter((message): message is string => Boolean(message));
 }
 
 function toCsv(rows: SkuAuditRow[]) {
