@@ -3,13 +3,14 @@ import {
   Activity,
   Box,
   Clock3,
-  Link2,
   Minus,
   Play,
   Plus,
   RefreshCw,
   Save,
-  SlidersHorizontal
+  Settings,
+  SlidersHorizontal,
+  X
 } from "lucide-react";
 import { api } from "./api";
 import type { DashboardPayload, InventoryItem, Platform, PlatformMapping } from "../shared/types";
@@ -49,6 +50,7 @@ export function App() {
   const [lowAlert, setLowAlert] = useState(0);
   const [sortField, setSortField] = useState<SortField>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [storeSettingsOpen, setStoreSettingsOpen] = useState(false);
   const [schedule, setSchedule] = useState({ enabled: false, intervalMinutes: 60 });
   const [mappingDraft, setMappingDraft] = useState<Partial<Record<Platform, PlatformMapping>>>({});
   const [busy, setBusy] = useState(false);
@@ -175,6 +177,10 @@ export function App() {
   const stockTotal = dashboard.items.reduce((sum, item) => sum + item.quantity, 0);
   const lowStock = dashboard.items.filter(isLowStock).length;
   const maxQuantity = Math.max(1, ...dashboard.items.map((item) => item.quantity));
+  const readyStores = dashboard.platformStatuses.filter((status) => status.configured).length;
+  const linkedStores = selectedItem
+    ? platforms.filter((platform) => selectedItem.mappings[platform]?.enabled).length
+    : 0;
   const sortedItems = useMemo(
     () => [...dashboard.items].sort((left, right) => compareInventoryItems(left, right, sortField, sortDirection)),
     [dashboard.items, sortDirection, sortField]
@@ -187,10 +193,16 @@ export function App() {
           <p className="eyebrow">Josh's Mini ERP</p>
           <h1>Inventory Sync</h1>
         </div>
-        <div className="status-strip">
-          <Metric label="SKUs" value={dashboard.items.length} />
-          <Metric label="Global Units" value={stockTotal} />
-          <Metric label="Low Alerts" value={lowStock} tone={lowStock ? "warn" : "ok"} />
+        <div className="topbar-actions">
+          <div className="status-strip">
+            <Metric label="SKUs" value={dashboard.items.length} />
+            <Metric label="Global Units" value={stockTotal} />
+            <Metric label="Low Alerts" value={lowStock} tone={lowStock ? "warn" : "ok"} />
+          </div>
+          <button className="icon-button settings-button" type="button" onClick={() => setStoreSettingsOpen(true)}>
+            <Settings size={18} />
+            Stores
+          </button>
         </div>
       </section>
 
@@ -401,66 +413,9 @@ export function App() {
           </div>
         </Panel>
 
-        <Panel title="Stores" icon={<Activity size={18} />}>
-          <div className="platform-list">
-            {dashboard.platformStatuses.map((status) => (
-              <div className="platform-status" key={status.platform}>
-                <div className="platform-status-copy">
-                  <span>{status.label}</span>
-                  {!status.configured && status.missing.length ? <small>{status.missing.join(", ")}</small> : null}
-                </div>
-                <strong className={status.configured ? "ok" : "warn"}>
-                  {status.configured ? "Ready" : "Needs keys"}
-                </strong>
-              </div>
-            ))}
-          </div>
-          <div className="latest-run">
-            <span>Latest Run</span>
-            <strong>{latestRun ? latestRun.status.replaceAll("_", " ") : "None"}</strong>
-          </div>
-          {latestRun ? (
-            <>
-              <div className="sync-summary">
-                <MiniStat label="Sales" value={latestRun.summary.salesDetected} />
-                <MiniStat label="Pushes" value={latestRun.summary.pushes} />
-                <MiniStat label="Issues" value={latestRun.summary.errors + latestRun.summary.warnings} />
-              </div>
-              <div className="run-messages">
-                {latestRun.messages.slice(0, 4).map((message) => (
-                  <p className="run-message" key={message}>
-                    {message}
-                  </p>
-                ))}
-              </div>
-            </>
-          ) : null}
-          {notice ? <p className="notice">{notice}</p> : null}
-        </Panel>
       </section>
 
       <section className="lower-grid">
-        <Panel title="Store Links" icon={<Link2 size={18} />}>
-          {selectedItem ? (
-            <div className="mapping-grid">
-              {platforms.map((platform) => (
-                <MappingFields
-                  key={platform}
-                  platform={platform}
-                  mapping={mappingDraft[platform] ?? { enabled: false }}
-                  onChange={(patch) => updateMapping(platform, patch)}
-                />
-              ))}
-              <button className="icon-button primary mapping-save" type="button" disabled={busy} onClick={handleMappingSave}>
-                <Save size={18} />
-                Save Store Links
-              </button>
-            </div>
-          ) : (
-            <div className="empty">No SKU selected</div>
-          )}
-        </Panel>
-
         <Panel title="Activity" icon={<Activity size={18} />}>
           <div className="activity-list">
             {dashboard.events.slice(0, 12).map((event) => (
@@ -477,6 +432,93 @@ export function App() {
           </div>
         </Panel>
       </section>
+
+      {storeSettingsOpen ? (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setStoreSettingsOpen(false)}>
+          <section
+            className="settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="store-settings-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="settings-modal-header">
+              <div>
+                <h2 id="store-settings-title">Stores</h2>
+                <p>
+                  {readyStores}/{dashboard.platformStatuses.length} ready · {linkedStores}/{platforms.length} linked
+                </p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setStoreSettingsOpen(false)}>
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="stores-body">
+              <div className="platform-list">
+                {dashboard.platformStatuses.map((status) => (
+                  <div className="platform-status" key={status.platform}>
+                    <div className="platform-status-copy">
+                      <span>{status.label}</span>
+                      {!status.configured && status.missing.length ? <small>{status.missing.join(", ")}</small> : null}
+                    </div>
+                    <strong className={status.configured ? "ok" : "warn"}>
+                      {status.configured ? "Ready" : "Needs keys"}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="store-links-section">
+                <div className="section-label">
+                  <span>{selectedItem?.sku ?? "No SKU"}</span>
+                  <strong>Store Links</strong>
+                </div>
+                {selectedItem ? (
+                  <div className="mapping-grid">
+                    {platforms.map((platform) => (
+                      <MappingFields
+                        key={platform}
+                        platform={platform}
+                        mapping={mappingDraft[platform] ?? { enabled: false }}
+                        onChange={(patch) => updateMapping(platform, patch)}
+                      />
+                    ))}
+                    <button className="icon-button primary mapping-save" type="button" disabled={busy} onClick={handleMappingSave}>
+                      <Save size={18} />
+                      Save Store Links
+                    </button>
+                  </div>
+                ) : (
+                  <div className="empty">No SKU selected</div>
+                )}
+              </div>
+
+              <div className="latest-run">
+                <span>Latest Run</span>
+                <strong>{latestRun ? latestRun.status.replaceAll("_", " ") : "None"}</strong>
+              </div>
+              {latestRun ? (
+                <>
+                  <div className="sync-summary">
+                    <MiniStat label="Sales" value={latestRun.summary.salesDetected} />
+                    <MiniStat label="Pushes" value={latestRun.summary.pushes} />
+                    <MiniStat label="Issues" value={latestRun.summary.errors + latestRun.summary.warnings} />
+                  </div>
+                  <div className="run-messages">
+                    {latestRun.messages.slice(0, 4).map((message) => (
+                      <p className="run-message" key={message}>
+                        {message}
+                      </p>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+              {notice ? <p className="notice">{notice}</p> : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
