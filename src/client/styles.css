@@ -14,6 +14,7 @@
   --yellow: #ffe66b;
   --green: #6dffb5;
   --danger: #ff6b8a;
+  --panel-gap: 12px;
 }
 
 * {
@@ -60,18 +61,18 @@ button:disabled {
 }
 
 .shell {
-  width: min(1440px, calc(100% - 32px));
+  width: min(1360px, calc(100% - 28px));
   margin: 0 auto;
-  padding: 28px 0 40px;
+  padding: 18px 0 32px;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  min-height: 112px;
-  padding: 20px 0;
+  gap: 16px;
+  min-height: 82px;
+  padding: 10px 0 16px;
 }
 
 .eyebrow {
@@ -91,8 +92,8 @@ p {
 
 h1 {
   color: #fff;
-  font-size: clamp(2.3rem, 6vw, 5.6rem);
-  line-height: 0.92;
+  font-size: clamp(2rem, 4vw, 3.7rem);
+  line-height: 0.96;
   text-shadow:
     0 0 18px rgba(255, 75, 225, 0.62),
     0 0 28px rgba(85, 247, 255, 0.38);
@@ -106,13 +107,13 @@ h2 {
 .status-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(86px, 1fr));
-  gap: 10px;
-  width: min(420px, 100%);
+  gap: 8px;
+  width: min(390px, 100%);
 }
 
 .metric {
-  min-height: 76px;
-  padding: 12px;
+  min-height: 62px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(7, 6, 20, 0.62);
@@ -131,8 +132,8 @@ h2 {
 
 .metric strong {
   display: block;
-  margin-top: 4px;
-  font-size: 1.85rem;
+  margin-top: 3px;
+  font-size: 1.45rem;
   line-height: 1;
 }
 
@@ -148,21 +149,21 @@ h2 {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(420px, 1.45fr) minmax(260px, 0.7fr) minmax(260px, 0.7fr) minmax(230px, 0.55fr);
-  gap: 14px;
+  grid-template-columns: minmax(520px, 1.25fr) minmax(250px, 0.55fr) minmax(250px, 0.55fr) minmax(230px, 0.45fr);
+  gap: var(--panel-gap);
   align-items: start;
 }
 
 .lower-grid {
   display: grid;
   grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
-  gap: 14px;
-  margin-top: 14px;
+  gap: var(--panel-gap);
+  margin-top: var(--panel-gap);
 }
 
 .panel {
   min-width: 0;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -176,8 +177,8 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
-  margin-bottom: 14px;
+  height: 24px;
+  margin-bottom: 10px;
   color: #fff;
 }
 
@@ -193,8 +194,8 @@ h2 {
 }
 
 .create-form {
-  grid-template-columns: minmax(94px, 0.7fr) minmax(130px, 1fr) 86px auto;
-  margin-bottom: 12px;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(150px, 1fr) 78px auto;
+  margin-bottom: 10px;
 }
 
 label {
@@ -210,7 +211,7 @@ label {
 input,
 select {
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   width: 100%;
   border: 1px solid rgba(199, 188, 228, 0.28);
   border-radius: 8px;
@@ -236,7 +237,7 @@ select:focus {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 13px;
@@ -267,14 +268,14 @@ select:focus {
 .inventory-panel {
   display: flex;
   flex-direction: column;
-  min-height: min(720px, calc(100vh - 172px));
+  min-height: 0;
 }
 
 .inventory-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(132px, 0.48fr);
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.48fr);
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .inventory-controls label {
@@ -308,8 +309,8 @@ select:focus {
 }
 
 .stock-bar {
-  height: 7px;
-  margin-top: 5px;
+  height: 5px;
+  margin-top: 4px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(199, 188, 228, 0.16);
@@ -348,36 +349,36 @@ select:focus {
 }
 
 .table-wrap {
-  max-height: 360px;
+  max-height: 430px;
   overflow: auto;
   border: 1px solid rgba(199, 188, 228, 0.14);
   border-radius: 8px;
 }
 
 .inventory-panel .table-wrap {
-  flex: 1;
-  min-height: 520px;
-  max-height: none;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 430px;
 }
 
 .inventory-panel th:nth-child(1),
 .inventory-panel td:nth-child(1) {
-  width: 31%;
+  width: 32%;
 }
 
 .inventory-panel th:nth-child(2),
 .inventory-panel td:nth-child(2) {
-  width: 32%;
+  width: 34%;
 }
 
 .inventory-panel th:nth-child(3),
 .inventory-panel td:nth-child(3) {
-  width: 25%;
+  width: 24%;
 }
 
 .inventory-panel th:nth-child(4),
 .inventory-panel td:nth-child(4) {
-  width: 12%;
+  width: 10%;
 }
 
 table {
@@ -389,7 +390,7 @@ table {
 th,
 td {
   overflow: hidden;
-  padding: 11px 10px;
+  padding: 9px 10px;
   border-bottom: 1px solid rgba(199, 188, 228, 0.12);
   text-align: left;
   text-overflow: ellipsis;
@@ -450,8 +451,8 @@ tbody tr.selected {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 58px;
-  margin-bottom: 12px;
+  min-height: 48px;
+  margin-bottom: 10px;
   border-bottom: 1px solid rgba(85, 247, 255, 0.2);
 }
 
@@ -465,19 +466,19 @@ tbody tr.selected {
 }
 
 .selected-sku strong {
-  font-size: 2rem;
+  font-size: 1.55rem;
 }
 
 .selected-stock-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .selected-stock-meta div {
   min-width: 0;
-  padding: 8px 0;
+  padding: 7px 0;
   border-top: 1px solid rgba(199, 188, 228, 0.12);
   border-bottom: 1px solid rgba(199, 188, 228, 0.12);
 }
@@ -495,7 +496,7 @@ tbody tr.selected {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .switch-row {
@@ -503,7 +504,7 @@ tbody tr.selected {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 42px;
+  min-height: 36px;
 }
 
 .switch-row input {
@@ -516,8 +517,8 @@ tbody tr.selected {
   display: grid;
   grid-template-columns: 42px 1fr;
   gap: 8px 10px;
-  min-height: 60px;
-  margin-bottom: 12px;
+  min-height: 54px;
+  margin-bottom: 10px;
 }
 
 .schedule-meta strong,
@@ -597,8 +598,8 @@ tbody tr.selected {
 .run-messages {
   display: grid;
   gap: 6px;
-  max-height: 136px;
-  margin-top: 12px;
+  max-height: 118px;
+  margin-top: 10px;
   overflow: auto;
 }
 
@@ -670,7 +671,7 @@ tbody tr.selected {
 .activity-list {
   display: grid;
   gap: 6px;
-  max-height: 338px;
+  max-height: 300px;
   overflow: auto;
 }
 
@@ -709,7 +710,7 @@ tbody tr.selected {
 
 @media (max-width: 1180px) {
   .grid {
-    grid-template-columns: minmax(340px, 1fr) minmax(250px, 0.7fr);
+    grid-template-columns: minmax(360px, 1fr) minmax(250px, 0.7fr);
   }
 
   .lower-grid,
@@ -761,8 +762,8 @@ tbody tr.selected {
   }
 
   .inventory-panel .table-wrap {
-    min-height: 360px;
-    max-height: 70vh;
+    min-height: 0;
+    max-height: 420px;
   }
 
   th:nth-child(2),
