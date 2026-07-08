@@ -92,6 +92,69 @@ function Escape-DatabasePassword {
   return [uri]::EscapeDataString($Value)
 }
 
+function Read-DotEnv {
+  param([string]$Path)
+
+  $values = @{}
+  if (-not (Test-Path $Path)) {
+    return $values
+  }
+
+  foreach ($line in Get-Content $Path) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith("#")) {
+      continue
+    }
+
+    $separator = $trimmed.IndexOf("=")
+    if ($separator -lt 1) {
+      continue
+    }
+
+    $key = $trimmed.Substring(0, $separator).Trim()
+    if ($key -notmatch "^[A-Za-z_][A-Za-z0-9_]*$") {
+      continue
+    }
+
+    $value = $trimmed.Substring($separator + 1).Trim()
+    if ($value.Length -ge 2) {
+      $first = $value.Substring(0, 1)
+      $last = $value.Substring($value.Length - 1, 1)
+      if (($first -eq '"' -and $last -eq '"') -or ($first -eq "'" -and $last -eq "'")) {
+        $value = $value.Substring(1, $value.Length - 2)
+      }
+    }
+
+    $values[$key] = $value
+  }
+
+  return $values
+}
+
+function Read-JsonFile {
+  param([string]$Path)
+
+  if (-not (Test-Path $Path)) {
+    return $null
+  }
+
+  return Get-Content $Path -Raw | ConvertFrom-Json
+}
+
+function Add-OptionalEnvVars {
+  param(
+    [hashtable]$Target,
+    [hashtable]$Source,
+    [string[]]$Keys
+  )
+
+  foreach ($key in $Keys) {
+    if ($Source.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($Source[$key])) {
+      $Target[$key] = $Source[$key]
+    }
+  }
+}
+
 function Write-EnvVarsFile {
   param([hashtable]$Values)
 
@@ -198,6 +261,42 @@ try {
     SHOPIFY_CLIENT_ID = $ShopifyClientId
     SHOPIFY_CLIENT_SECRET = $ShopifyClientSecret
     SHOPIFY_API_VERSION = $ShopifyApiVersion
+  }
+
+  $localEnv = Read-DotEnv (Join-Path $repoRoot ".env")
+  Add-OptionalEnvVars $erpEnv $localEnv @(
+    "ETSY_KEYSTRING",
+    "ETSY_SHARED_SECRET",
+    "ETSY_API_KEY",
+    "ETSY_CLIENT_ID",
+    "ETSY_REDIRECT_URI",
+    "ETSY_ACCESS_TOKEN",
+    "ETSY_REFRESH_TOKEN",
+    "ETSY_TOKEN_FILE",
+    "EBAY_ENVIRONMENT",
+    "EBAY_ACCESS_TOKEN",
+    "EBAY_REFRESH_TOKEN",
+    "EBAY_CLIENT_ID",
+    "EBAY_CLIENT_SECRET",
+    "EBAY_RUNAME",
+    "EBAY_REDIRECT_URI",
+    "EBAY_MARKETPLACE_ID",
+    "EBAY_TOKEN_FILE"
+  )
+
+  if (-not $erpEnv.ContainsKey("ETSY_REFRESH_TOKEN")) {
+    $etsyTokenFile = if ($localEnv.ContainsKey("ETSY_TOKEN_FILE") -and $localEnv["ETSY_TOKEN_FILE"]) {
+      $localEnv["ETSY_TOKEN_FILE"]
+    } else {
+      "data/etsy-auth.json"
+    }
+    if (-not [System.IO.Path]::IsPathRooted($etsyTokenFile)) {
+      $etsyTokenFile = Join-Path $repoRoot $etsyTokenFile
+    }
+    $etsyToken = Read-JsonFile $etsyTokenFile
+    if ($etsyToken -and $etsyToken.refreshToken) {
+      $erpEnv["ETSY_REFRESH_TOKEN"] = $etsyToken.refreshToken
+    }
   }
 
   $erpEnvFile = Write-EnvVarsFile $erpEnv

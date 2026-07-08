@@ -210,7 +210,7 @@ gcloud auth login
   -ShopifyClientSecret <shopify-client-secret>
 ```
 
-The script prompts for database passwords, generates `ERP_API_TOKEN` if you do not provide one, deploys both Cloud Run services, updates `shopify.app.toml` to the Cloud Run app URL, and can release Shopify config too when run with `-ReleaseShopifyConfig`.
+The script prompts for database passwords, generates `ERP_API_TOKEN` if you do not provide one, deploys both Cloud Run services, updates `shopify.app.toml` to the Cloud Run app URL, and can release Shopify config too when run with `-ReleaseShopifyConfig`. It also forwards known Etsy/eBay values from your local `.env` into the ERP API service when those values are present, and forwards the local Etsy OAuth refresh token after the helper saves one.
 
 Enable the core Google APIs:
 
@@ -370,8 +370,8 @@ eBay:
 
 Etsy:
 
-- `ETSY_API_KEY` as `keystring:shared_secret`
-- `ETSY_CLIENT_ID` as the keystring
+- `ETSY_KEYSTRING`
+- `ETSY_SHARED_SECRET`
 - `ETSY_REDIRECT_URI` as the exact HTTPS redirect URI registered in Etsy
 - `ETSY_ACCESS_TOKEN`, `ETSY_REFRESH_TOKEN`, or the local token file created by the CLI OAuth helper
 - Per SKU: Etsy listing ID and SKU
@@ -383,8 +383,8 @@ Etsy inventory updates require a unique product match and a single offering for 
 New Etsy apps start as pending and cannot authenticate until Etsy approves the key. After the app status is active, add the keystring/shared secret and redirect URI to `.env`:
 
 ```powershell
-ETSY_API_KEY=keystring:shared_secret
-ETSY_CLIENT_ID=keystring
+ETSY_KEYSTRING=your-keystring
+ETSY_SHARED_SECRET=your-shared-secret
 ETSY_REDIRECT_URI=https://joshswidgets.com/etsy/callback
 ```
 

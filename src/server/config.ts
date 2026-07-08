@@ -51,6 +51,7 @@ const placeholderValues = new Set(
     "v^1.1#xxx",
     "your_etsy_keystring:your_etsy_shared_secret",
     "your_etsy_keystring",
+    "your_etsy_shared_secret",
     "your_etsy_oauth_token",
     "your_etsy_refresh_token",
     "https://your-domain.example/etsy/callback",
@@ -66,6 +67,11 @@ const readConfigured = (key: string) => {
   const value = read(key);
   return value && !isPlaceholderValue(value) ? value : undefined;
 };
+
+const etsyKeystring = readConfigured("ETSY_KEYSTRING") ?? readConfigured("ETSY_CLIENT_ID");
+const etsySharedSecret = readConfigured("ETSY_SHARED_SECRET");
+const etsyApiKey =
+  readConfigured("ETSY_API_KEY") ?? (etsyKeystring && etsySharedSecret ? `${etsyKeystring}:${etsySharedSecret}` : undefined);
 
 export const config: AppConfig = {
   port: Number(readConfigured("PORT") ?? 5174),
@@ -92,10 +98,10 @@ export const config: AppConfig = {
     tokenFile: path.resolve(readConfigured("EBAY_TOKEN_FILE") ?? "data/ebay-auth.json")
   },
   etsy: {
-    apiKey: readConfigured("ETSY_API_KEY"),
+    apiKey: etsyApiKey,
     accessToken: readConfigured("ETSY_ACCESS_TOKEN"),
     refreshToken: readConfigured("ETSY_REFRESH_TOKEN"),
-    clientId: readConfigured("ETSY_CLIENT_ID"),
+    clientId: etsyKeystring ?? etsyApiKey?.split(":")[0],
     redirectUri: readConfigured("ETSY_REDIRECT_URI"),
     tokenFile: path.resolve(readConfigured("ETSY_TOKEN_FILE") ?? "data/etsy-auth.json")
   }
@@ -161,7 +167,7 @@ export function ebayMissingEnv() {
 
 function etsyMissingEnv() {
   const missing: string[] = [];
-  if (!config.etsy.apiKey) missing.push("ETSY_API_KEY");
+  if (!config.etsy.apiKey) missing.push("ETSY_API_KEY or ETSY_KEYSTRING/ETSY_SHARED_SECRET");
   if (!etsyHasToken()) missing.push("ETSY_ACCESS_TOKEN or ETSY_REFRESH_TOKEN or Etsy OAuth token file");
   return missing;
 }
