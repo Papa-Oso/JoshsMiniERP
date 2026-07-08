@@ -68,7 +68,7 @@ button:disabled {
 
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   min-height: 82px;
@@ -159,7 +159,10 @@ h2 {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(520px, 1.3fr) minmax(250px, 0.55fr) minmax(250px, 0.55fr);
+  grid-template-columns: minmax(560px, 1fr) minmax(320px, 0.42fr);
+  grid-template-areas:
+    "inventory stock"
+    "inventory schedule";
   gap: var(--panel-gap);
   align-items: start;
 }
@@ -282,7 +285,16 @@ select:focus {
 .inventory-panel {
   display: flex;
   flex-direction: column;
+  grid-area: inventory;
   min-height: 0;
+}
+
+.stock-panel {
+  grid-area: stock;
+}
+
+.schedule-panel {
+  grid-area: schedule;
 }
 
 .inventory-controls {
@@ -372,7 +384,7 @@ select:focus {
 .inventory-panel .table-wrap {
   flex: 0 1 auto;
   min-height: 0;
-  max-height: 430px;
+  max-height: 486px;
 }
 
 .inventory-panel th:nth-child(1),
@@ -822,6 +834,9 @@ tbody tr.selected {
 @media (max-width: 1180px) {
   .grid {
     grid-template-columns: minmax(360px, 1fr) minmax(250px, 0.7fr);
+    grid-template-areas:
+      "inventory stock"
+      "inventory schedule";
   }
 
   .lower-grid,
@@ -838,6 +853,7 @@ tbody tr.selected {
 
   .topbar {
     display: grid;
+    align-items: start;
     min-height: 0;
   }
 
@@ -850,6 +866,13 @@ tbody tr.selected {
   .lower-grid,
   .create-form {
     grid-template-columns: 1fr;
+  }
+
+  .grid {
+    grid-template-areas:
+      "inventory"
+      "stock"
+      "schedule";
   }
 
   .status-strip {

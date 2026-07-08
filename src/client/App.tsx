@@ -297,7 +297,7 @@ export function App() {
           </div>
         </Panel>
 
-        <Panel title="Stock Control" icon={<SlidersHorizontal size={18} />}>
+        <Panel title="Stock Control" icon={<SlidersHorizontal size={18} />} className="stock-panel">
           <div className="selected-sku">
             <span>{selectedItem?.sku ?? "No SKU"}</span>
             <strong className={selectedItem ? stockTone(selectedItem) : ""}>{selectedItem?.quantity ?? 0}</strong>
@@ -376,7 +376,7 @@ export function App() {
           </button>
         </Panel>
 
-        <Panel title="Schedule" icon={<Clock3 size={18} />}>
+        <Panel title="Schedule" icon={<Clock3 size={18} />} className="schedule-panel">
           <label className="switch-row">
             <span>Enabled</span>
             <input
