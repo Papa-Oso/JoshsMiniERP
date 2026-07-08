@@ -400,9 +400,29 @@ tbody tr.selected {
   border-bottom: 1px solid rgba(199, 188, 228, 0.14);
 }
 
-.platform-status span {
+.platform-status-copy {
+  min-width: 0;
+}
+
+.platform-status-copy span {
+  display: block;
   color: #fff;
   font-weight: 800;
+}
+
+.platform-status-copy small {
+  display: block;
+  max-width: 210px;
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.platform-status strong {
+  flex: 0 0 auto;
+  margin-left: 12px;
 }
 
 .sync-summary {

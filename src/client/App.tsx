@@ -313,7 +313,10 @@ export function App() {
           <div className="platform-list">
             {dashboard.platformStatuses.map((status) => (
               <div className="platform-status" key={status.platform}>
-                <span>{status.label}</span>
+                <div className="platform-status-copy">
+                  <span>{status.label}</span>
+                  {!status.configured && status.missing.length ? <small>{status.missing.join(", ")}</small> : null}
+                </div>
                 <strong className={status.configured ? "ok" : "warn"}>
                   {status.configured ? "Ready" : "Needs keys"}
                 </strong>

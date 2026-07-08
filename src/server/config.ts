@@ -39,27 +39,30 @@ export interface AppConfig {
 }
 
 const read = (key: string) => process.env[key]?.trim() || undefined;
-const placeholderValues = new Set([
-  "your-shop.myshopify.com",
-  "your-real-store.myshopify.com",
-  "shpat_xxx",
-  "your_client_id",
-  "your_client_secret",
-  "v^1.1#xxx",
-  "your_etsy_keystring:your_etsy_shared_secret",
-  "your_etsy_keystring",
-  "your_etsy_oauth_token",
-  "your_etsy_refresh_token",
-  "https://your-domain.example/etsy/callback",
-  "your_ebay_client_id",
-  "your_ebay_client_secret",
-  "your_ebay_runame",
-  "your_ebay_oauth_token",
-  "your_ebay_refresh_token"
-]);
+const placeholderValues = new Set(
+  [
+    "your-shop.myshopify.com",
+    "your-real-store.myshopify.com",
+    "shpat_xxx",
+    "your_client_id",
+    "your_client_secret",
+    "v^1.1#xxx",
+    "your_etsy_keystring:your_etsy_shared_secret",
+    "your_etsy_keystring",
+    "your_etsy_oauth_token",
+    "your_etsy_refresh_token",
+    "https://your-domain.example/etsy/callback",
+    "your_ebay_client_id",
+    "your_ebay_client_secret",
+    "your_ebay_runame",
+    "your_ebay_oauth_token",
+    "your_ebay_refresh_token"
+  ].map((value) => value.toLowerCase())
+);
+
 const readConfigured = (key: string) => {
   const value = read(key);
-  return value && !placeholderValues.has(value) ? value : undefined;
+  return value && !isPlaceholderValue(value) ? value : undefined;
 };
 
 export const config: AppConfig = {
@@ -105,7 +108,7 @@ export function getPlatformStatuses(): PlatformStatus[] {
     {
       platform: "ebay",
       label: platformLabels.ebay,
-      configured: Boolean(config.ebay.accessToken || ebayHasToken()),
+      configured: ebayReadyForSync(),
       missing: ebayMissingEnv()
     },
     {
@@ -133,13 +136,22 @@ function etsyHasToken() {
   return Boolean(config.etsy.accessToken || config.etsy.refreshToken || fs.existsSync(config.etsy.tokenFile));
 }
 
-function ebayHasToken() {
-  return Boolean(config.ebay.accessToken || config.ebay.refreshToken || fs.existsSync(config.ebay.tokenFile));
+export function ebayReadyForSync() {
+  return Boolean(ebayHasRefreshableToken() && config.ebay.clientId && config.ebay.clientSecret);
 }
 
-function ebayMissingEnv() {
+function ebayHasRefreshableToken() {
+  return Boolean(config.ebay.refreshToken || fs.existsSync(config.ebay.tokenFile));
+}
+
+export function ebayMissingEnv() {
   const missing: string[] = [];
-  if (!ebayHasToken()) missing.push("EBAY_ACCESS_TOKEN or EBAY_REFRESH_TOKEN or eBay OAuth token file");
+  if (!config.ebay.clientId) missing.push("EBAY_CLIENT_ID");
+  if (!config.ebay.clientSecret) missing.push("EBAY_CLIENT_SECRET");
+  if (!ebayHasRefreshableToken()) {
+    missing.push("EBAY_REFRESH_TOKEN or eBay OAuth token file");
+    if (!config.ebay.redirectUri) missing.push("EBAY_RUNAME");
+  }
   return missing;
 }
 
@@ -148,4 +160,14 @@ function etsyMissingEnv() {
   if (!config.etsy.apiKey) missing.push("ETSY_API_KEY");
   if (!etsyHasToken()) missing.push("ETSY_ACCESS_TOKEN or ETSY_REFRESH_TOKEN or Etsy OAuth token file");
   return missing;
+}
+
+function isPlaceholderValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    placeholderValues.has(normalized) ||
+    normalized.startsWith("your_") ||
+    normalized.startsWith("your-") ||
+    /(^|[#:_-])x{2,}($|[#:_-])/i.test(normalized)
+  );
 }

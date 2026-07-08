@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import { platformLabels } from "../../shared/types";
 import type { InventoryItem, PlatformMapping } from "../../shared/types";
-import { config } from "../config";
+import { config, ebayMissingEnv, ebayReadyForSync } from "../config";
 import { getEbayAccessToken } from "../ebayAuth";
 import type { PlatformAdapter, PushResult, RemoteQuantity } from "./types";
 import { mappingSku, readJson } from "./types";
@@ -43,12 +42,11 @@ export class EbayAdapter implements PlatformAdapter {
   label = platformLabels.ebay;
 
   isConfigured() {
-    return Boolean(config.ebay.accessToken || config.ebay.refreshToken || fs.existsSync(config.ebay.tokenFile));
+    return ebayReadyForSync();
   }
 
   missingEnv() {
-    if (this.isConfigured()) return [];
-    return ["EBAY_ACCESS_TOKEN or EBAY_REFRESH_TOKEN or eBay OAuth token file"];
+    return ebayMissingEnv();
   }
 
   hasRequiredMapping(item: InventoryItem, mapping: PlatformMapping) {

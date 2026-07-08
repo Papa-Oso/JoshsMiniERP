@@ -62,6 +62,7 @@ interface EbaySkuRecord {
 interface RemoteLoad<T> {
   configured: boolean;
   records: Map<string, T[]>;
+  notConfigured?: boolean;
   error?: string;
 }
 
@@ -160,7 +161,7 @@ function shopifyStatus(
   records: ShopifySkuRecord[],
   matchedStatus: SkuAuditRow["shopify"]
 ): SkuAuditRow["shopify"] {
-  if (!load.configured) return load.error ? "error" : "not_configured";
+  if (!load.configured) return load.notConfigured ? "not_configured" : "error";
   if (records.length === 0) return "missing";
   if (records.length > 1) return "duplicate";
   return matchedStatus;
@@ -171,7 +172,7 @@ function ebayStatus(
   records: EbaySkuRecord[],
   matchedStatus: SkuAuditRow["ebay"]
 ): SkuAuditRow["ebay"] {
-  if (!load.configured) return load.error ? "error" : "not_configured";
+  if (!load.configured) return load.notConfigured ? "not_configured" : "error";
   if (records.length === 0) return "missing";
   if (records.length > 1) return "duplicate";
   return matchedStatus;
@@ -180,7 +181,12 @@ function ebayStatus(
 async function loadShopifySkus(location?: string): Promise<RemoteLoad<ShopifySkuRecord>> {
   const adapter = new ShopifyAdapter();
   if (!adapter.isConfigured()) {
-    return { configured: false, records: new Map(), error: `Shopify is missing ${adapter.missingEnv().join(", ")}.` };
+    return {
+      configured: false,
+      records: new Map(),
+      notConfigured: true,
+      error: `Shopify is missing ${adapter.missingEnv().join(", ")}.`
+    };
   }
 
   try {
@@ -208,7 +214,12 @@ async function loadShopifySkus(location?: string): Promise<RemoteLoad<ShopifySku
 async function loadEbaySkus(): Promise<RemoteLoad<EbaySkuRecord>> {
   const adapter = new EbayAdapter();
   if (!adapter.isConfigured()) {
-    return { configured: false, records: new Map(), error: `eBay is missing ${adapter.missingEnv().join(", ")}.` };
+    return {
+      configured: false,
+      records: new Map(),
+      notConfigured: true,
+      error: `eBay is missing ${adapter.missingEnv().join(", ")}.`
+    };
   }
 
   try {
@@ -308,7 +319,7 @@ function csvCell(value: unknown) {
 }
 
 function emptyRemoteLoad<T>(): RemoteLoad<T> {
-  return { configured: false, records: new Map() };
+  return { configured: false, records: new Map(), notConfigured: true };
 }
 
 function normalizeSku(value: string) {
