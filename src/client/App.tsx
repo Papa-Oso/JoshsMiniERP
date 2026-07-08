@@ -446,7 +446,7 @@ export function App() {
               <div>
                 <h2 id="store-settings-title">Stores</h2>
                 <p>
-                  {readyStores}/{dashboard.platformStatuses.length} ready · {linkedStores}/{platforms.length} linked
+                  {readyStores}/{dashboard.platformStatuses.length} ready - {linkedStores}/{platforms.length} linked
                 </p>
               </div>
               <button className="icon-button" type="button" onClick={() => setStoreSettingsOpen(false)}>
@@ -455,20 +455,6 @@ export function App() {
             </header>
 
             <div className="stores-body">
-              <div className="platform-list">
-                {dashboard.platformStatuses.map((status) => (
-                  <div className="platform-status" key={status.platform}>
-                    <div className="platform-status-copy">
-                      <span>{status.label}</span>
-                      {!status.configured && status.missing.length ? <small>{status.missing.join(", ")}</small> : null}
-                    </div>
-                    <strong className={status.configured ? "ok" : "warn"}>
-                      {status.configured ? "Ready" : "Needs keys"}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-
               <div className="store-links-section">
                 <div className="section-label">
                   <span>{selectedItem?.sku ?? "No SKU"}</span>
@@ -481,6 +467,9 @@ export function App() {
                         key={platform}
                         platform={platform}
                         mapping={mappingDraft[platform] ?? { enabled: false }}
+                        configured={Boolean(
+                          dashboard.platformStatuses.find((status) => status.platform === platform)?.configured
+                        )}
                         onChange={(patch) => updateMapping(platform, patch)}
                       />
                     ))}
@@ -580,10 +569,12 @@ function StockCell({ item, maxQuantity }: { item: InventoryItem; maxQuantity: nu
 function MappingFields({
   platform,
   mapping,
+  configured,
   onChange
 }: {
   platform: Platform;
   mapping: PlatformMapping;
+  configured: boolean;
   onChange: (patch: Partial<PlatformMapping>) => void;
 }) {
   const target = mappingTarget(platform, mapping);
@@ -592,7 +583,10 @@ function MappingFields({
     <fieldset className="mapping-block">
       <div className="mapping-row">
         <div className="mapping-row-copy">
-          <legend>{platformLabels[platform]}</legend>
+          <legend>
+            {platformLabels[platform]}
+            {!configured ? <span className="needs-key-badge">Needs keys</span> : null}
+          </legend>
           <span>{mapping.enabled ? `Linked to ${target}` : "Not linked"}</span>
         </div>
         <input
