@@ -14,6 +14,18 @@ npm run dev
 
 Open `http://127.0.0.1:5175`. The API runs on `http://127.0.0.1:5174`.
 
+For embedded Shopify app development, start a Postgres database first or set `DATABASE_URL` to an existing Postgres database. With Docker installed, the local helper is:
+
+```powershell
+npm run dev:db
+```
+
+Then run:
+
+```powershell
+npm run shopify:dev:full
+```
+
 For a built UI served by the API:
 
 ```powershell
@@ -46,8 +58,8 @@ npm run inv -- csv-import inventory-batch.csv
 npm run inv -- backup
 npm run inv -- export data/export.json
 npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
-npm run inv -- migrate-sqlite --dry-run
-npm run inv -- migrate-sqlite
+npm run inv -- migrate-postgres --dry-run
+npm run inv -- migrate-postgres
 npm run inv -- shopify-lookup NEON-MUG
 npm run inv -- shopify-map NEON-MUG --location "Main"
 npm run inv -- shopify-import --location "Main" --dry-run
@@ -140,15 +152,22 @@ npm run inv -- sku-audit --platform ebay
 
 `sku-audit` compares local SKUs with Shopify variant SKUs and eBay Sell Inventory SKUs. It reports whether each SKU pairs cleanly, is missing locally, is missing on a marketplace, has duplicate remote records, or has quantity differences that should be reviewed with `reconcile`.
 
-SQLite migration foundation:
+Postgres storage:
 
 ```powershell
-npm run inv -- migrate-sqlite --dry-run
-npm run inv -- migrate-sqlite
-npm run inv -- sqlite-status
+docker compose up -d postgres
+npm run inv -- migrate-postgres --dry-run
+npm run inv -- migrate-postgres
 ```
 
-The app still uses `STORE_DRIVER=json` by default. `migrate-sqlite` creates `data/inventory.sqlite` from the current JSON data and writes a JSON backup first. Use a fresh `DATABASE_FILE` if you need to rerun the migration.
+The app still uses `STORE_DRIVER=json` by default for quick local testing. Set `STORE_DRIVER=postgres` and `DATABASE_URL` to use native Postgres tables. `migrate-postgres` copies the current JSON inventory into Postgres and writes a JSON backup first. It refuses to overwrite a non-empty Postgres database unless you pass `--force`.
+
+To run the Postgres store contract test against a disposable/local database:
+
+```powershell
+$env:TEST_POSTGRES_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/joshs_mini_erp_erp?schema=public"
+npm run test:postgres
+```
 
 ## Shopify CLI
 
@@ -162,7 +181,119 @@ npm run shopify:deploy
 
 Shopify's current scaffold path is `shopify app init`. Shopify CLI can create app records, scaffold an app, run local development, and execute Admin GraphQL queries from an app context. If you already created the app record, pass its client ID with `--client-id <value>` to avoid the app selection prompt.
 
-This inventory tool still runs as its own local ERP app. The Shopify app you create through CLI is the authorization bridge that gets installed on your store and grants inventory scopes.
+This inventory tool still runs as its own local ERP app. The Shopify app is now the embedded App Home surface for running sync and basic inventory controls from Shopify admin. During local Shopify development, keep the ERP API running too:
+
+```powershell
+npm run shopify:dev:full
+```
+
+The embedded app proxies to `http://127.0.0.1:5174/api` by default. Set `ERP_API_BASE_URL` in the Shopify app environment if the ERP API runs somewhere else, for example `https://inventory.example.com/api`.
+
+## Production Deployment
+
+Production target: **Google Cloud Run** for compute and **Cloud SQL for PostgreSQL** for persistence.
+
+Production needs two Cloud Run services:
+
+1. **ERP API service** from the repo root. This owns inventory data and runs the marketplace sync engine.
+2. **Shopify app service** from `shopify-app/joshs-mini-erp`. This is the embedded Shopify Admin UI and calls the ERP API.
+
+The local Cloudflare URL from `shopify app dev` is only for development. For production, deploy both services to stable HTTPS Cloud Run URLs, then optionally map Cloudflare subdomains later.
+
+Enable the core Google APIs:
+
+```powershell
+gcloud services enable run.googleapis.com sqladmin.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+```
+
+Create one Cloud SQL for PostgreSQL instance, then create two databases in it:
+
+```powershell
+gcloud sql instances create joshs-mini-erp --database-version=POSTGRES_16 --region=us-central1 --tier=db-f1-micro
+gcloud sql databases create erp --instance=joshs-mini-erp
+gcloud sql databases create shopify_sessions --instance=joshs-mini-erp
+```
+
+Create database users/passwords in the Cloud SQL console or with `gcloud sql users create`. Save the instance connection name; it looks like:
+
+```text
+PROJECT_ID:us-central1:joshs-mini-erp
+```
+
+When you deploy each Cloud Run service, add that Cloud SQL connection to the service. Google mounts the Cloud SQL socket under `/cloudsql/<instance-connection-name>`.
+
+ERP API production environment:
+
+```text
+HOST=0.0.0.0
+ERP_API_TOKEN=<long random shared secret>
+STORE_DRIVER=postgres
+DATABASE_URL=postgresql://erp_user:<password>@localhost/erp?host=/cloudsql/PROJECT_ID:us-central1:joshs-mini-erp
+SHOPIFY_SHOP_DOMAIN=aqrqyf-uw.myshopify.com
+SHOPIFY_CLIENT_ID=<Shopify app client ID>
+SHOPIFY_CLIENT_SECRET=<Shopify app client secret>
+SHOPIFY_API_VERSION=2026-07
+```
+
+Add Etsy/eBay credentials to this service too if those sync targets are enabled. If the database password has special characters, URL-encode it in `DATABASE_URL`.
+
+Shopify app production environment:
+
+```text
+SHOPIFY_API_KEY=<Shopify app client ID>
+SHOPIFY_API_SECRET=<Shopify app client secret>
+SHOPIFY_APP_URL=https://your-shopify-app.example.com
+SCOPES=read_inventory,write_inventory,read_products,read_locations
+DATABASE_URL=postgresql://shopify_user:<password>@localhost/shopify_sessions?host=/cloudsql/PROJECT_ID:us-central1:joshs-mini-erp
+ERP_API_BASE_URL=https://your-erp-api-url.run.app/api
+ERP_API_TOKEN=<same shared secret as ERP API service>
+NODE_ENV=production
+```
+
+Deploy the ERP API from the repo root:
+
+```powershell
+gcloud run deploy joshs-erp-api --source . --region us-central1 --allow-unauthenticated --add-cloudsql-instances PROJECT_ID:us-central1:joshs-mini-erp
+```
+
+Deploy the embedded Shopify app from its app directory:
+
+```powershell
+cd shopify-app/joshs-mini-erp
+gcloud run deploy joshs-shopify-app --source . --region us-central1 --allow-unauthenticated --add-cloudsql-instances PROJECT_ID:us-central1:joshs-mini-erp
+```
+
+Set the environment variables above in each Cloud Run service. Prefer Secret Manager for passwords, Shopify secrets, marketplace tokens, and `ERP_API_TOKEN`.
+
+If you already have local JSON inventory data, migrate it once after the ERP database exists:
+
+```powershell
+$env:DATABASE_URL="postgresql://erp_user:<password>@127.0.0.1:5432/erp"
+npm run inv -- migrate-postgres --dry-run
+npm run inv -- migrate-postgres
+```
+
+For Cloud SQL, run the migration from a machine that can reach the database, or use the Cloud SQL Auth Proxy locally.
+
+Before installing on the real store:
+
+```powershell
+cd shopify-app/joshs-mini-erp
+npm run config:link
+npm run env
+```
+
+Set `application_url` in the production Shopify app config to the hosted `SHOPIFY_APP_URL`, and set the auth redirect URL to the same host with the generated app's auth path. Then release the Shopify app config:
+
+```powershell
+npm run deploy
+```
+
+After the hosted Shopify app is deployed and the app config is released, install/open it from the real store's admin:
+
+```text
+https://admin.shopify.com/store/aqrqyf-uw/apps
+```
 
 If you do not see **Distribution** or **App distribution**, use the merchant/owned-store flow instead:
 
@@ -195,6 +326,7 @@ This repo pins Shopify CLI `3.92.1` for repeatable installs. Shopify's app templ
 Copy `.env.example` to `.env` and fill in credentials.
 
 Shopify:
+
 - `SHOPIFY_SHOP_DOMAIN`
 - `SHOPIFY_ADMIN_ACCESS_TOKEN`, or `SHOPIFY_CLIENT_ID` plus `SHOPIFY_CLIENT_SECRET`
 - `SHOPIFY_API_VERSION`
@@ -213,6 +345,7 @@ npm run inv -- shopify-lookup NEON-MUG
 `shopify-map` uses the same lookup and saves the Shopify mapping directly. If Shopify returns multiple locations, pass `--location` with the location name or ID.
 
 eBay:
+
 - `EBAY_ACCESS_TOKEN`, or the local token file created by the CLI OAuth helper
 - `EBAY_REFRESH_TOKEN` if you want to seed the OAuth helper manually
 - `EBAY_CLIENT_ID`
@@ -224,6 +357,7 @@ eBay:
 - Per SKU: eBay SKU, with offer ID recommended for live offers
 
 Etsy:
+
 - `ETSY_API_KEY` as `keystring:shared_secret`
 - `ETSY_CLIENT_ID` as the keystring
 - `ETSY_REDIRECT_URI` as the exact HTTPS redirect URI registered in Etsy
@@ -330,6 +464,7 @@ Run without `--install` first to preview the startup script or `schtasks` comman
 - Etsy adapter reads and writes `GET/PUT /v3/application/listings/{listing_id}/inventory`, preserving the listing inventory payload and changing the matched SKU quantity.
 
 Relevant docs:
+
 - https://shopify.dev/docs/apps/build/cli-for-apps
 - https://shopify.dev/docs/apps/build/scaffold-app
 - https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/client-credentials-grant

@@ -7,11 +7,12 @@ import { backupInventoryData, exportInventoryData } from "./dataTools";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
+import { migrateJsonToPostgres } from "./postgresMigration";
 import { reconcileInventory } from "./reconcile";
 import { auditSkuPairings } from "./skuAudit";
 import { refreshShopifyDetails } from "./shopifyDetails";
 import { importShopifySkus } from "./shopifyImport";
-import { migrateJsonToSqlite, sqliteStatus } from "./sqliteMigration";
+import { closeStore } from "./store";
 import { runInventorySync } from "./syncEngine";
 import { createWindowsStartupScript, createWindowsSyncTask } from "./windowsScheduler";
 
@@ -70,11 +71,8 @@ try {
     case "backup":
       await backupFromCli(args.slice(1));
       break;
-    case "migrate-sqlite":
-      await migrateSqliteFromCli(args.slice(1));
-      break;
-    case "sqlite-status":
-      await sqliteStatusFromCli(args.slice(1));
+    case "migrate-postgres":
+      await migratePostgresFromCli(args.slice(1));
       break;
     case "sku-audit":
       await skuAuditFromCli(args.slice(1));
@@ -118,6 +116,8 @@ try {
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
+} finally {
+  await closeStore();
 }
 
 async function listItems() {
@@ -390,32 +390,27 @@ async function backupFromCli(input: string[]) {
   console.log(`Backed up ${result.itemCount} items to ${result.path}.`);
 }
 
-async function migrateSqliteFromCli(input: string[]) {
+async function migratePostgresFromCli(input: string[]) {
   const flags = parseFlags(input);
-  const result = await migrateJsonToSqlite({
+  const result = await migrateJsonToPostgres({
     dryRun: Boolean(flags["dry-run"]),
-    databaseFile: stringFlag(flags.database)
+    force: Boolean(flags.force)
   });
 
-  console.log(`${result.dryRun ? "Dry run" : "Migrated"} JSON inventory to SQLite.`);
+  console.log(`${result.dryRun ? "Dry run" : "Migrated"} JSON inventory to Postgres.`);
   console.table([
     {
-      database: result.databaseFile,
+      database: result.databaseUrl,
       items: result.items,
       mappings: result.mappings,
       events: result.events,
       syncRuns: result.syncRuns,
       syncMessages: result.syncMessages,
       scheduleRows: result.scheduleRows,
+      force: result.force,
       backup: result.backupPath ?? "-"
     }
   ]);
-}
-
-async function sqliteStatusFromCli(input: string[]) {
-  const flags = parseFlags(input);
-  const status = sqliteStatus(stringFlag(flags.database));
-  console.table([status]);
 }
 
 async function skuAuditFromCli(input: string[]) {
@@ -756,8 +751,7 @@ Commands:
   npm run inv -- csv-import <file.csv> [--dry-run]
   npm run inv -- export [output.json]
   npm run inv -- backup [backup-directory]
-  npm run inv -- migrate-sqlite [--dry-run] [--database data/inventory.sqlite]
-  npm run inv -- sqlite-status [--database data/inventory.sqlite]
+  npm run inv -- migrate-postgres [--dry-run] [--force]
   npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output data/sku-audit.csv]
   npm run inv -- shopify-test
   npm run inv -- shopify-lookup <sku>

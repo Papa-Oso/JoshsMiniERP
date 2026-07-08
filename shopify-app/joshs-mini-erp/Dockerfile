@@ -13,6 +13,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY . .
 
+RUN node scripts/run-with-default-database-url.mjs npx prisma generate
 RUN npm run build
 
 CMD ["npm", "run", "docker-start"]

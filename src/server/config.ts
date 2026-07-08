@@ -8,9 +8,11 @@ dotenv.config({ quiet: true });
 
 export interface AppConfig {
   port: number;
+  host: string;
+  apiToken?: string;
   dataFile: string;
-  databaseFile: string;
-  storeDriver: "json" | "sqlite";
+  databaseUrl?: string;
+  storeDriver: "json" | "postgres";
   shopify: {
     shopDomain?: string;
     accessToken?: string;
@@ -67,9 +69,11 @@ const readConfigured = (key: string) => {
 
 export const config: AppConfig = {
   port: Number(readConfigured("PORT") ?? 5174),
+  host: readConfigured("HOST") ?? "127.0.0.1",
+  apiToken: readConfigured("ERP_API_TOKEN"),
   dataFile: path.resolve(readConfigured("DATA_FILE") ?? "data/inventory.json"),
-  databaseFile: path.resolve(readConfigured("DATABASE_FILE") ?? "data/inventory.sqlite"),
-  storeDriver: readConfigured("STORE_DRIVER") === "sqlite" ? "sqlite" : "json",
+  databaseUrl: readConfigured("DATABASE_URL"),
+  storeDriver: readConfigured("STORE_DRIVER") === "postgres" ? "postgres" : "json",
   shopify: {
     shopDomain: readConfigured("SHOPIFY_SHOP_DOMAIN"),
     accessToken: readConfigured("SHOPIFY_ADMIN_ACCESS_TOKEN") ?? readConfigured("SHOPIFY_ACCESS_TOKEN"),

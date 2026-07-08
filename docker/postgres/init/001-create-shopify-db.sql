@@ -1,0 +1,1 @@
+CREATE DATABASE joshs_mini_erp_shopify;

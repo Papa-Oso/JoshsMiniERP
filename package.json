@@ -6,14 +6,17 @@
   "main": "dist/server/index.js",
   "scripts": {
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:db": "docker compose up -d postgres",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:postgres": "tsx --test tests/postgresStore.test.ts",
     "start": "tsx src/server/index.ts",
     "inv": "tsx src/server/cli.ts",
     "shopify": "shopify",
     "shopify:dev": "cd shopify-app/joshs-mini-erp && npm run dev",
+    "shopify:dev:full": "concurrently \"npm:dev:server\" \"npm:shopify:dev\"",
     "shopify:deploy": "cd shopify-app/joshs-mini-erp && npm run deploy",
     "shopify:env": "cd shopify-app/joshs-mini-erp && npm run env",
     "shopify:export-session": "cd shopify-app/joshs-mini-erp && npm run export-session",
@@ -32,26 +35,26 @@
     "node": ">=20.19 <22 || >=22.12"
   },
   "dependencies": {
-    "better-sqlite3": "^12.11.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "lucide-react": "^1.23.0",
     "nanoid": "^5.1.16",
     "node-cron": "^4.6.0",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "tsx": "^4.23.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@shopify/cli": "3.92.1",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^9.2.3",
-    "tsx": "^4.23.0",
     "typescript": "^6.0.3",
     "vite": "^6.4.3"
   }
