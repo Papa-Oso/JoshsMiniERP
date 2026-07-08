@@ -200,6 +200,18 @@ Production needs two Cloud Run services:
 
 The local Cloudflare URL from `shopify app dev` is only for development. For production, deploy both services to stable HTTPS Cloud Run URLs, then optionally map Cloudflare subdomains later.
 
+For this personal-store deploy, the helper script performs the Google Cloud setup/deploy steps after you authenticate with `gcloud`:
+
+```powershell
+gcloud auth login
+.\scripts\deploy-personal-shopify-app.ps1 `
+  -ProjectId <google-cloud-project-id> `
+  -ShopifyClientId <shopify-client-id> `
+  -ShopifyClientSecret <shopify-client-secret>
+```
+
+The script prompts for database passwords, generates `ERP_API_TOKEN` if you do not provide one, deploys both Cloud Run services, updates `shopify.app.toml` to the Cloud Run app URL, and can release Shopify config too when run with `-ReleaseShopifyConfig`.
+
 Enable the core Google APIs:
 
 ```powershell
