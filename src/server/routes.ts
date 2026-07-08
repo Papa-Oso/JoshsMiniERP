@@ -10,7 +10,7 @@ import {
   updateSchedule
 } from "./inventoryService";
 import { refreshScheduler } from "./scheduler";
-import { runInventorySync, syncIsRunning } from "./syncEngine";
+import { runInventorySync } from "./syncEngine";
 
 export const router = express.Router();
 
@@ -94,7 +94,7 @@ router.patch("/schedule", asyncHandler(async (req, res) => {
 
 router.post("/sync", asyncHandler(async (_req, res) => {
   const run = await runInventorySync("manual");
-  res.status(syncIsRunning() ? 202 : 200).json(run);
+  res.json(run);
 }));
 
 function asyncHandler(
