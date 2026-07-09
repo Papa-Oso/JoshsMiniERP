@@ -252,6 +252,7 @@ Progress:
 | Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
 | Phase 6: Production Readiness | Complete | Production startup, Secret Manager-backed deploys, Cloud SQL docs, restore rehearsal, helper script, and smoke checklist are aligned. |
 | Phase 7: Data Portability And Analysis | Complete | Spreadsheet-friendly exports now cover inventory, movement history, and Review Center report tables. |
+| Phase 8: Operational Maintenance | In progress | Starting with a local `doctor` command for store, config, backup, inventory, and marketplace health checks. |
 
 Phase 2 progress:
 
@@ -325,6 +326,14 @@ Phase 7 progress:
 | Inventory CSV export | Complete | `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. |
 | Event CSV export | Complete | `export-events-csv` writes inventory movement rows with deltas, resulting quantity, source, platform, notes, and timestamps. |
 | Review report export | Complete | `export-review-csv` writes Review Center tables into a folder of CSV files for analysis and archive snapshots. |
+
+Phase 8 progress:
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| Local doctor command | Complete | `doctor` reports storage mode, production-token safety, inventory readability, duplicate SKUs, stock threshold warnings, backup recency, and marketplace credential status. |
+| Backup rotation guidance | Pending | Add retention guidance once backup volume grows enough to matter. |
+| Recovery dry-run command | Pending | Consider a local restore rehearsal helper after backup rotation rules are settled. |
 
 ### Phase 1: Documentation Alignment
 

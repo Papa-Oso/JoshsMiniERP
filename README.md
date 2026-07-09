@@ -77,6 +77,16 @@ Use [PLAN.md](PLAN.md) as the authoritative execution roadmap. The current direc
 
 The topbar bell shows active alerts and tracks unread alerts locally in the browser. Current alert sources include low item inventory, low instruction inventory, sync errors or warnings, and printer status problems when Windows reports a saved printer as missing, offline, stopped, or unknown. Low and over-max inventory alerts are not dismissible; they clear only when the inventory state or threshold is fixed. Operational alerts such as printer and sync problems can be dismissed locally until they change.
 
+## Doctor Check
+
+Run a local maintenance check without changing inventory counts:
+
+```powershell
+npm run inv -- doctor
+```
+
+The doctor reports storage mode, production token safety, inventory readability, duplicate active SKUs, low/over-max stock counts, backup manifest recency, and marketplace credential status.
+
 ## Review Center
 
 The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, instruction stock trends, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.
@@ -103,6 +113,7 @@ npm run inv -- subtract NEON-MUG 1 "personal use"
 npm run inv -- reconcile shopify
 npm run inv -- sync --dry-run --platform shopify
 npm run inv -- sync
+npm run inv -- doctor
 npm run inv -- csv-import inventory-batch.csv --dry-run
 npm run inv -- csv-import inventory-batch.csv
 npm run inv -- backup

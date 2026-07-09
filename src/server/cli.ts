@@ -10,6 +10,7 @@ import {
   exportInventoryEventsCsv,
   exportOperationsReportCsv
 } from "./dataTools";
+import { runDoctor } from "./diagnostics";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
@@ -71,6 +72,9 @@ try {
       break;
     case "csv-import":
       await csvImportFromCli(args.slice(1));
+      break;
+    case "doctor":
+      await doctorFromCli();
       break;
     case "export":
       await exportFromCli(args.slice(1));
@@ -391,6 +395,22 @@ async function csvImportFromCli(input: string[]) {
       message: row.message
     }))
   );
+}
+
+async function doctorFromCli() {
+  const result = await runDoctor();
+  console.log(
+    `Doctor status: ${result.status.toUpperCase()} (${result.summary.ok} ok, ${result.summary.warn} warn, ${result.summary.error} error)`
+  );
+  console.table(
+    result.checks.map((check) => ({
+      status: check.status,
+      area: check.area,
+      check: check.check,
+      message: check.message
+    }))
+  );
+  if (result.status === "error") process.exitCode = 1;
 }
 
 async function exportFromCli(input: string[]) {
@@ -823,6 +843,7 @@ Commands:
   npm run inv -- sync --dry-run [--platform shopify]
   npm run inv -- reconcile [etsy|ebay|shopify]
   npm run inv -- csv-import <file.csv> [--dry-run]
+  npm run inv -- doctor
   npm run inv -- export [output.json]
   npm run inv -- export-csv [output.csv]
   npm run inv -- export-events-csv [output.csv]
