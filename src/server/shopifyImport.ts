@@ -3,6 +3,7 @@ import type { InventoryItem, PlatformMapping, StoreData } from "../shared/types"
 import { defaultMaxInventory } from "../shared/types";
 import { ShopifyAdapter } from "./adapters/shopify";
 import type { ShopifyInventoryLevel, ShopifySkuVariant } from "./adapters/shopify";
+import { recordImportBatch } from "./importHistory";
 import { makeEvent } from "./inventoryService";
 import { store } from "./store";
 
@@ -57,7 +58,32 @@ export async function importShopifySkus(options: ShopifyImportOptions = {}): Pro
     return planShopifyImport(data, grouped, variants.length, options, false);
   }
 
-  return mutateStore((data) => planShopifyImport(data, grouped, variants.length, options, true));
+  return mutateStore(async (data) => {
+    const result = planShopifyImport(data, grouped, variants.length, options, true);
+    await recordImportBatch({
+      source: "shopify",
+      status: "applied",
+      summary: {
+        rowsTotal: result.rows.length,
+        created: result.summary.created,
+        updated: 0,
+        adjusted: 0,
+        mapped: result.summary.mapped,
+        skipped: result.summary.skipped,
+        failed: 0,
+        variantsScanned: result.summary.variantsScanned
+      },
+      rows: result.rows.map((row) => ({
+        sku: row.sku,
+        action: row.action,
+        previousQuantity: row.localQuantity,
+        nextQuantity: row.action === "create" ? row.shopifyQuantity : row.localQuantity,
+        message: row.message,
+        raw: row
+      }))
+    });
+    return result;
+  });
 }
 
 function planShopifyImport(

@@ -4,8 +4,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import initSqlJs from "sql.js";
-import type { Database, QueryExecResult, SqlJsStatic, SqlValue } from "sql.js";
+import type { Database, SqlJsStatic, SqlValue } from "sql.js";
 import type {
+  ImportBatchRecord,
+  ImportBatchRow,
   InventoryEvent,
   InventoryItem,
   Platform,
@@ -115,6 +117,22 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
       const context = this.requireContext();
       this.upsertSchedule(context.db, schedule);
       context.dirty = true;
+    });
+  }
+
+  async recordImportBatch(batch: ImportBatchRecord) {
+    await this.withLock(async () => {
+      const context = this.requireContext();
+      this.upsertImportBatch(context.db, batch);
+      this.pruneImportBatches(context.db, 200);
+      context.dirty = true;
+    });
+  }
+
+  async listImportBatches(limit = 50): Promise<ImportBatchRecord[]> {
+    return this.withLock(async () => {
+      const context = this.requireContext();
+      return this.readImportBatches(context.db, limit);
     });
   }
 
@@ -468,6 +486,114 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     );
   }
 
+  private upsertImportBatch(db: Database, batch: ImportBatchRecord) {
+    db.run(
+      `
+        INSERT INTO import_batches (
+          id, source, file_name, status, rows_total, rows_created, rows_updated,
+          rows_adjusted, rows_mapped, rows_skipped, rows_failed, variants_scanned, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          source = excluded.source,
+          file_name = excluded.file_name,
+          status = excluded.status,
+          rows_total = excluded.rows_total,
+          rows_created = excluded.rows_created,
+          rows_updated = excluded.rows_updated,
+          rows_adjusted = excluded.rows_adjusted,
+          rows_mapped = excluded.rows_mapped,
+          rows_skipped = excluded.rows_skipped,
+          rows_failed = excluded.rows_failed,
+          variants_scanned = excluded.variants_scanned,
+          created_at = excluded.created_at
+      `,
+      [
+        batch.id,
+        batch.source,
+        batch.fileName ?? null,
+        batch.status,
+        batch.summary.rowsTotal,
+        batch.summary.created,
+        batch.summary.updated,
+        batch.summary.adjusted,
+        batch.summary.mapped,
+        batch.summary.skipped,
+        batch.summary.failed,
+        batch.summary.variantsScanned ?? null,
+        batch.createdAt
+      ]
+    );
+
+    db.run("DELETE FROM import_batch_rows WHERE batch_id = ?", [batch.id]);
+    for (const [position, row] of batch.rows.entries()) {
+      this.insertImportBatchRow(db, batch.id, row, position, batch.createdAt);
+    }
+  }
+
+  private insertImportBatchRow(db: Database, batchId: string, row: ImportBatchRow, position: number, createdAt: string) {
+    db.run(
+      `
+        INSERT INTO import_batch_rows (
+          id, batch_id, position, line_number, sku, action, previous_quantity,
+          next_quantity, message, raw_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        row.id,
+        batchId,
+        position,
+        row.lineNumber ?? null,
+        row.sku ?? null,
+        row.action,
+        row.previousQuantity ?? null,
+        row.nextQuantity ?? null,
+        row.message,
+        row.raw === undefined ? null : JSON.stringify(row.raw),
+        createdAt
+      ]
+    );
+  }
+
+  private readImportBatches(db: Database, limit: number): ImportBatchRecord[] {
+    const batchRows = queryRows(
+      db,
+      `
+        SELECT id, source, file_name, status, rows_total, rows_created, rows_updated,
+          rows_adjusted, rows_mapped, rows_skipped, rows_failed, variants_scanned, created_at
+        FROM import_batches
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `,
+      [Math.max(1, Math.floor(limit))]
+    );
+
+    const batchIds = batchRows.map((row) => stringValue(row.id));
+    const rowRows =
+      batchIds.length === 0
+        ? []
+        : queryRows(
+            db,
+            `
+              SELECT batch_id, id, line_number, sku, action, previous_quantity, next_quantity,
+                message, raw_json
+              FROM import_batch_rows
+              WHERE batch_id IN (${batchIds.map(() => "?").join(", ")})
+              ORDER BY batch_id ASC, position ASC
+            `,
+            batchIds
+          );
+
+    const rowsByBatchId = new Map<string, ImportBatchRow[]>();
+    for (const row of rowRows) {
+      const batchId = stringValue(row.batch_id);
+      const rows = rowsByBatchId.get(batchId) ?? [];
+      rows.push(rowToImportBatchRow(row));
+      rowsByBatchId.set(batchId, rows);
+    }
+
+    return batchRows.map((row) => rowToImportBatch(row, rowsByBatchId.get(stringValue(row.id)) ?? []));
+  }
+
   private pruneInventoryEvents(db: Database, limit: number) {
     db.run(
       `
@@ -483,6 +609,21 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     );
   }
 
+  private pruneImportBatches(db: Database, limit: number) {
+    db.run(
+      `
+        DELETE FROM import_batches
+        WHERE id IN (
+          SELECT id
+          FROM import_batches
+          ORDER BY created_at DESC, id DESC
+          LIMIT -1 OFFSET ?
+        )
+      `,
+      [limit]
+    );
+  }
+
   private requireContext() {
     const context = this.lockContext.getStore();
     if (!context) throw new Error("SQLite inventory store context was not initialized.");
@@ -490,10 +631,17 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
   }
 }
 
-function queryRows(db: Database, sql: string) {
-  const result = db.exec(sql)[0] as QueryExecResult | undefined;
-  if (!result) return [];
-  return result.values.map((values) => Object.fromEntries(result.columns.map((column, index) => [column, values[index]])));
+function queryRows(db: Database, sql: string, params: SqlValue[] = []) {
+  const statement = db.prepare(sql, params);
+  const rows: Record<string, SqlValue>[] = [];
+  try {
+    while (statement.step()) {
+      rows.push(statement.getAsObject());
+    }
+  } finally {
+    statement.free();
+  }
+  return rows;
 }
 
 function ensureColumn(db: Database, tableName: string, columnName: string, definition: string) {
@@ -562,6 +710,40 @@ function rowToSyncRun(row: Record<string, SqlValue>, messages: string[]): SyncRu
   };
 }
 
+function rowToImportBatch(row: Record<string, SqlValue>, rows: ImportBatchRow[]): ImportBatchRecord {
+  return {
+    id: stringValue(row.id),
+    source: stringValue(row.source) as ImportBatchRecord["source"],
+    fileName: optionalString(row.file_name),
+    status: stringValue(row.status) as ImportBatchRecord["status"],
+    createdAt: isoString(row.created_at),
+    summary: {
+      rowsTotal: integer(row.rows_total),
+      created: integer(row.rows_created),
+      updated: integer(row.rows_updated),
+      adjusted: integer(row.rows_adjusted),
+      mapped: integer(row.rows_mapped),
+      skipped: integer(row.rows_skipped),
+      failed: integer(row.rows_failed),
+      variantsScanned: nullableInteger(row.variants_scanned) ?? undefined
+    },
+    rows
+  };
+}
+
+function rowToImportBatchRow(row: Record<string, SqlValue>): ImportBatchRow {
+  return {
+    id: stringValue(row.id),
+    lineNumber: nullableInteger(row.line_number) ?? undefined,
+    sku: optionalString(row.sku),
+    action: stringValue(row.action),
+    previousQuantity: nullableInteger(row.previous_quantity) ?? undefined,
+    nextQuantity: nullableInteger(row.next_quantity) ?? undefined,
+    message: stringValue(row.message),
+    raw: parseRawJson(row.raw_json)
+  };
+}
+
 function rowToSchedule(row: Record<string, SqlValue>): ScheduleSettings {
   return {
     enabled: booleanValue(row.enabled),
@@ -608,6 +790,16 @@ function optionalIsoString(value: unknown) {
 
 function nullableIsoString(value: unknown) {
   return value === null || value === undefined ? null : isoString(value);
+}
+
+function parseRawJson(value: unknown) {
+  const text = optionalString(value);
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
 }
 
 const sqliteSchema = `
@@ -703,6 +895,36 @@ CREATE TABLE IF NOT EXISTS schedule_settings (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS import_batches (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL CHECK (source IN ('csv', 'shopify')),
+  file_name TEXT,
+  status TEXT NOT NULL CHECK (status IN ('applied', 'dry_run', 'failed')),
+  rows_total INTEGER NOT NULL DEFAULT 0,
+  rows_created INTEGER NOT NULL DEFAULT 0,
+  rows_updated INTEGER NOT NULL DEFAULT 0,
+  rows_adjusted INTEGER NOT NULL DEFAULT 0,
+  rows_mapped INTEGER NOT NULL DEFAULT 0,
+  rows_skipped INTEGER NOT NULL DEFAULT 0,
+  rows_failed INTEGER NOT NULL DEFAULT 0,
+  variants_scanned INTEGER,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS import_batch_rows (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  line_number INTEGER,
+  sku TEXT,
+  action TEXT NOT NULL,
+  previous_quantity INTEGER,
+  next_quantity INTEGER,
+  message TEXT NOT NULL,
+  raw_json TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_inventory_events_item_created
   ON inventory_events(item_id, created_at DESC);
 
@@ -711,5 +933,11 @@ CREATE INDEX IF NOT EXISTS idx_platform_mappings_platform_enabled
 
 CREATE INDEX IF NOT EXISTS idx_sync_runs_started
   ON sync_runs(started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_import_batches_created
+  ON import_batches(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_batch
+  ON import_batch_rows(batch_id, position);
 
 `;

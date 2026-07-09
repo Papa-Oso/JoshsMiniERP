@@ -158,7 +158,7 @@ npm run shopify:export-session
 
 Copy the new `SHOPIFY_ADMIN_ACCESS_TOKEN` into the root `.env`, then rerun `shopify-refresh-details`.
 
-Dry-run/reconcile commands pull live marketplace quantities and show what a sync would do without changing `data/inventory.json` or pushing inventory:
+Dry-run/reconcile commands pull live marketplace quantities and show what a sync would do without changing local inventory or pushing inventory:
 
 ```powershell
 npm run inv -- reconcile shopify
@@ -186,7 +186,7 @@ npm run inv -- backup
 npm run inv -- backup D:\InventoryBackups
 ```
 
-`export` prints JSON when no output path is supplied. `backup` writes a timestamped copy under `data/backups` unless you pass a directory.
+`export` prints portable inventory JSON when no output path is supplied. `backup` writes one operational manifest under `data/backups` unless you pass a directory. The backup captures an inventory JSON export, the SQLite database file, printing data/assets, and feedback scan history when those files exist.
 
 SKU pairing audit:
 
@@ -548,10 +548,12 @@ Relevant docs:
 
 Inventory data should live in `data/inventory.sqlite` for normal personal use. SQLite is the default driver; change the file with `DATABASE_FILE` in `.env`.
 
+Applied CSV and Shopify imports also write batch summaries and row outcomes into the SQLite database for future reporting/review screens.
+
 `data/inventory.json` remains the portable backup/export and migration format. Change its location with `DATA_FILE` in `.env`.
 
 Instruction inventory and print settings are currently stored in `data/printing.json`, and uploaded print assets live under `data/printing/`.
 
 The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
 
-The growth roadmap in [PLAN.md](PLAN.md) moves the app toward SQLite-backed local operational data while keeping JSON export available for portability and backups. PostgreSQL remains optional for a future hosted deployment.
+The `backup` command captures these local operational files into one manifest-backed backup when they exist. The growth roadmap in [PLAN.md](PLAN.md) continues moving the app toward SQLite-backed local operational data while keeping JSON export available for portability. PostgreSQL remains optional for a future hosted deployment.

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import type { InventoryItem, StoreData } from "../shared/types";
 import { defaultMaxInventory } from "../shared/types";
+import { recordImportBatch } from "./importHistory";
 import { makeEvent } from "./inventoryService";
 import { store } from "./store";
 
@@ -46,7 +47,33 @@ export async function importCsv(filePath: string, options: CsvImportOptions = {}
     return applyCsvRecords(data, records, true);
   }
 
-  return mutateStore((data) => applyCsvRecords(data, records, false));
+  return mutateStore(async (data) => {
+    const result = applyCsvRecords(data, records, false);
+    await recordImportBatch({
+      source: "csv",
+      fileName: filePath,
+      status: "applied",
+      summary: {
+        rowsTotal: result.rows.length,
+        created: result.summary.created,
+        updated: result.summary.updated,
+        adjusted: result.summary.adjusted,
+        mapped: 0,
+        skipped: result.summary.skipped,
+        failed: result.summary.errors
+      },
+      rows: result.rows.map((row) => ({
+        lineNumber: row.line,
+        sku: row.sku,
+        action: row.action,
+        previousQuantity: row.previousQuantity,
+        nextQuantity: row.nextQuantity,
+        message: row.message,
+        raw: row
+      }))
+    });
+    return result;
+  });
 }
 
 function applyCsvRecords(data: StoreData, records: CsvRecord[], dryRun: boolean): CsvImportResult {

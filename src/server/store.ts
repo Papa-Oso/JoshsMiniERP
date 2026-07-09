@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 import type {
   InventoryEvent,
   InventoryItem,
+  ImportBatchRecord,
   Platform,
   PlatformMapping,
   ScheduleSettings,
@@ -47,6 +48,8 @@ export interface InventoryStoreDriver {
   saveItem?(item: InventoryItem): Promise<void>;
   saveItemWithEvent?(item: InventoryItem, event: InventoryEvent): Promise<void>;
   saveSchedule?(schedule: ScheduleSettings): Promise<void>;
+  recordImportBatch?(batch: ImportBatchRecord): Promise<void>;
+  listImportBatches?(limit?: number): Promise<ImportBatchRecord[]>;
   close?(): Promise<void>;
 }
 

@@ -392,7 +392,10 @@ async function exportFromCli(input: string[]) {
 async function backupFromCli(input: string[]) {
   const [outputDirectory] = positionalArgs(input);
   const result = await backupInventoryData(outputDirectory);
-  console.log(`Backed up ${result.itemCount} items to ${result.path}.`);
+  console.log(`Backed up ${result.itemCount} items to manifest ${result.path}.`);
+  if (result.files?.length) {
+    console.log(`Captured ${result.files.length} file${result.files.length === 1 ? "" : "s"}.`);
+  }
 }
 
 async function migratePostgresFromCli(input: string[]) {

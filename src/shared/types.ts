@@ -88,6 +88,41 @@ export interface SyncRun {
   messages: string[];
 }
 
+export type ImportBatchSource = "csv" | "shopify";
+export type ImportBatchStatus = "applied" | "dry_run" | "failed";
+
+export interface ImportBatchSummary {
+  rowsTotal: number;
+  created: number;
+  updated: number;
+  adjusted: number;
+  mapped: number;
+  skipped: number;
+  failed: number;
+  variantsScanned?: number;
+}
+
+export interface ImportBatchRow {
+  id: string;
+  lineNumber?: number;
+  sku?: string;
+  action: string;
+  previousQuantity?: number;
+  nextQuantity?: number;
+  message: string;
+  raw?: unknown;
+}
+
+export interface ImportBatchRecord {
+  id: string;
+  source: ImportBatchSource;
+  fileName?: string;
+  status: ImportBatchStatus;
+  summary: ImportBatchSummary;
+  rows: ImportBatchRow[];
+  createdAt: string;
+}
+
 export interface PlatformStatus {
   platform: Platform;
   label: string;

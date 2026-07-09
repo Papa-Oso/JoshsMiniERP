@@ -57,7 +57,7 @@ Status legend:
 | Shopify import | Done | `shopify-import` scans Shopify SKUs, creates missing local SKUs, and maps existing SKUs. |
 | Dry-run / reconcile mode | Done | `reconcile` and `sync --dry-run` show local vs marketplace differences without changing local data or pushing inventory. |
 | CSV batch import | Done | `csv-import` can create SKUs, set quantities, apply batch deltas, update safety stock, and save event notes. |
-| Backup/export | Done | `backup` and `export` operate on `data/inventory.json`. |
+| Backup/export | Done | `backup` writes an operational manifest with inventory JSON, SQLite database copy, printing data/assets, and feedback scan history when present. `export` still writes portable inventory JSON. |
 | eBay setup | Done | OAuth URL, callback, refresh, lookup, test, and mapping helpers are in place. |
 | Scheduler polish | Done | Windows startup script preview/install and Task Scheduler command preview/install are in place. |
 | SQLite storage | Done | SQLite is the default local driver. `DATABASE_FILE`, `migrate-sqlite`, and SQLite store contract tests are in place. This is the preferred real local database path. |
@@ -242,8 +242,8 @@ Progress:
 | --- | --- | --- |
 | Phase 1: Documentation Alignment | Complete | Roadmap, README, and UI guide now agree that SQLite is the real local database path and Postgres is optional later. |
 | Phase 2: Professional UI Rework | Complete | Design tokens, shared UI helpers, calmer page visuals, graphite/teal color pass, accessibility basics, and persistent UI smoke screenshots are in place. `npm run build`, `npm test`, and `npm run smoke:ui` pass. |
-| Phase 3: Local SQL Store Hardening | In progress | SQLite runtime storage, migration, and default-driver behavior are in place. Postgres remains optional for future deployment. |
-| Phase 4: Operational Data Consolidation | Pending | Start after SQLite is the trusted local inventory source. |
+| Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
+| Phase 4: Operational Data Consolidation | In progress | Operational backups and import batch history are now SQL-backed; printing, feedback, and reconcile history remain next. |
 | Phase 5: Reporting And Review Workflows | Pending | Start after operational data is consolidated. |
 | Phase 6: Production Readiness | Pending | Start after data and workflow foundations are stable. |
 
@@ -270,11 +270,22 @@ Phase 3 progress:
 | SQLite runtime store | Complete | `SQLiteInventoryStore` persists items, mappings, events, sync runs, messages, and schedule settings in `data/inventory.sqlite` with no extra service. SQLite is now the default driver. |
 | SQLite migration | Complete | `npm run inv -- migrate-sqlite` copies JSON inventory into SQLite and writes a JSON backup first. |
 | SQLite verification | Complete | SQLite store contract and migration tests pass in the normal `npm test` suite. |
+| SQLite workflow verification | Complete | Added coverage for create, add, subtract, map baseline behavior, CSV import, Shopify import, reconcile, sync, backup, and export on a temp SQLite database. |
 | Focused Postgres tests | Complete | Added an optional row-delete audit test that proves routine item updates do not delete the item row when a test database is available. |
 | Row-preserving Postgres writes | Complete | `PostgresInventoryStore` now upserts items, mappings, events, sync runs, and schedule settings, deleting only rows missing from the current bounded store view. |
 | Live Postgres verification | Optional | `npm run test:postgres` was run locally and skipped both tests because `TEST_POSTGRES_DATABASE_URL` is not set. Do not install or start Docker just for this personal app; rerun only if Josh provides an existing test database URL or explicitly asks for hosted/deployment setup. |
 | Core inventory service SQL hooks | Complete | Item create/update/disable, mapping updates, inventory adjustments with events, and schedule updates use direct Postgres hooks when available, with JSON fallback unchanged. |
 | Sync/import targeted mutation hooks | Complete | CSV import, Shopify import, Shopify detail refresh, sync sale/baseline application, failed-run logging, and final sync-run persistence use the Postgres `mutateChanges` path when available, with JSON fallback unchanged. |
+
+Phase 4 progress:
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| Operational backup manifest | Complete | `backup` now creates a manifest and captures inventory JSON, the SQLite database file, printing JSON, printing assets, and feedback SQLite history when those sources exist. |
+| Printing data SQL consolidation | Pending | Move instruction inventory, print settings, print events, instruction matches, and asset metadata out of standalone JSON into durable SQL-backed tables. |
+| Feedback scan history consolidation | Pending | Keep eBay review scan history in the backed-up workflow and later expose it through the same SQL/reporting foundation. |
+| Import batch history | Complete | CSV and Shopify applied imports now write `import_batches` and `import_batch_rows` records in SQLite, including row actions and summaries. |
+| Reconcile snapshot history | Pending | Save local-vs-marketplace review snapshots before live pushes. |
 
 ### Phase 1: Documentation Alignment
 
@@ -363,7 +374,7 @@ Move or formalize these data sets:
 - CSV and Shopify import batch history.
 - Reconcile review snapshots.
 
-Suggested Postgres tables:
+Suggested SQLite tables:
 
 - `print_instructions`
 - `print_instruction_events`
@@ -499,21 +510,24 @@ CREATE TABLE inventory_events (
 
 CREATE TABLE import_batches (
   id TEXT PRIMARY KEY,
-  source TEXT NOT NULL CHECK (source IN ('csv', 'shopify', 'manual')),
+  source TEXT NOT NULL CHECK (source IN ('csv', 'shopify')),
   file_name TEXT,
   status TEXT NOT NULL CHECK (status IN ('dry_run', 'applied', 'failed')),
   rows_total INTEGER NOT NULL DEFAULT 0,
   rows_created INTEGER NOT NULL DEFAULT 0,
   rows_updated INTEGER NOT NULL DEFAULT 0,
   rows_adjusted INTEGER NOT NULL DEFAULT 0,
+  rows_mapped INTEGER NOT NULL DEFAULT 0,
   rows_skipped INTEGER NOT NULL DEFAULT 0,
   rows_failed INTEGER NOT NULL DEFAULT 0,
+  variants_scanned INTEGER,
   created_at TEXT NOT NULL
 );
 
 CREATE TABLE import_batch_rows (
   id TEXT PRIMARY KEY,
   batch_id TEXT NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
   line_number INTEGER,
   sku TEXT,
   action TEXT NOT NULL,
@@ -569,11 +583,17 @@ CREATE INDEX idx_platform_mappings_platform_enabled
   ON platform_mappings(platform, enabled);
 
 CREATE INDEX idx_import_batch_rows_batch
-  ON import_batch_rows(batch_id);
+  ON import_batch_rows(batch_id, position);
 
 CREATE INDEX idx_sync_runs_started
   ON sync_runs(started_at DESC);
 ```
+
+Implemented now:
+
+- `import_batches` stores applied CSV and Shopify import summaries.
+- `import_batch_rows` stores row-level actions, messages, quantities, and raw row context.
+- Dry-runs still preview without changing inventory; applied imports create durable history for future reporting screens.
 
 Optional later tables:
 
@@ -687,7 +707,7 @@ npm run inv -- reconcile-show <run-id>
 
 After SQLite:
 
-- `backup` copies both `data/inventory.sqlite` and a JSON export.
+- `backup` copies `data/inventory.sqlite`, a portable JSON inventory export, printing data/assets, and feedback scan history into one manifest-backed operational backup.
 - `export` still produces JSON for portability.
 - Add optional CSV exports later.
 
