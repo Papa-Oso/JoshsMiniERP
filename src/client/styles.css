@@ -763,16 +763,16 @@ h2 {
 }
 
 .review-center-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--panel-gap);
-  align-items: start;
+  column-count: 2;
+  column-gap: var(--panel-gap);
 }
 
 .review-center-panel {
   display: grid;
   align-content: start;
   gap: 10px;
+  margin: 0 0 var(--panel-gap);
+  break-inside: avoid;
 }
 
 .review-center-panel .panel-header {
@@ -2432,9 +2432,12 @@ tbody tr.selected,
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 
-  .review-center-summary,
-  .review-center-grid {
+  .review-center-summary {
     grid-template-columns: 1fr;
+  }
+
+  .review-center-grid {
+    column-count: 1;
   }
 }
 
