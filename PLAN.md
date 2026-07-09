@@ -249,7 +249,7 @@ Progress:
 | Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
 | Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
 | Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
-| Phase 6: Production Readiness | In progress | Production startup now requires `ERP_API_TOKEN`; deployment docs and restore rehearsal remain. |
+| Phase 6: Production Readiness | In progress | Production startup, deployment docs, restore rehearsal, and smoke checklist are aligned. Secret Manager integration remains. |
 
 Phase 2 progress:
 
@@ -310,11 +310,11 @@ Phase 6 progress:
 | Step | Status | Notes |
 | --- | --- | --- |
 | Production API token requirement | Complete | Server startup fails when `NODE_ENV=production` and `ERP_API_TOKEN` is missing. Local development remains no-token by default. |
-| Secret Manager guidance | Pending | Confirm production docs keep database passwords, marketplace tokens, Shopify secrets, and API tokens out of plain deploy commands where practical. |
-| Cloud SQL connection strings | Pending | Confirm README examples match the Cloud Run and Cloud SQL connection strategy. |
-| Backup/restore documentation | Pending | Add a concise restore rehearsal path for Postgres plus local file assets. |
-| Deploy helper verification | Pending | Check deploy helper scripts against README commands and expected environment variables. |
-| Post-deploy smoke checklist | Pending | Add a short manual checklist for hosted ERP API and embedded Shopify app verification. |
+| Secret Manager integration | Pending | Helper script still passes secrets as Cloud Run environment variables; move database URLs, marketplace tokens, Shopify secrets, and `ERP_API_TOKEN` into Secret Manager before serious hosted use. |
+| Cloud SQL connection strings | Complete | README and helper script use the same Cloud SQL socket-style Postgres URLs for ERP and Shopify session databases. |
+| Backup/restore documentation | Complete | README now includes a restore rehearsal path for ERP data, print assets, feedback history, and reconcile-before-sync review. |
+| Deploy helper verification | Complete | Helper script and README now both set `NODE_ENV=production` for the ERP API and share the same service/database assumptions. |
+| Post-deploy smoke checklist | Complete | README now includes authenticated health, unauthenticated rejection, Shopify app load, dashboard sanity, and reconcile-before-sync checks. |
 
 ### Phase 1: Documentation Alignment
 

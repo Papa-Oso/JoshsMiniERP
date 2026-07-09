@@ -277,7 +277,7 @@ The script prompts for database passwords, generates `ERP_API_TOKEN` if you do n
 Enable the core Google APIs:
 
 ```powershell
-gcloud services enable run.googleapis.com sqladmin.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+gcloud services enable run.googleapis.com sqladmin.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 ```
 
 Create one Cloud SQL for PostgreSQL instance, then create two databases in it:
@@ -299,6 +299,7 @@ When you deploy each Cloud Run service, add that Cloud SQL connection to the ser
 ERP API production environment:
 
 ```text
+NODE_ENV=production
 HOST=0.0.0.0
 ERP_API_TOKEN=<long random shared secret>
 STORE_DRIVER=postgres
@@ -339,6 +340,12 @@ gcloud run deploy joshs-shopify-app --source . --region us-central1 --allow-unau
 
 Set the environment variables above in each Cloud Run service. Prefer Secret Manager for passwords, Shopify secrets, marketplace tokens, and `ERP_API_TOKEN`.
 
+For a manual deploy, keep these values aligned with the helper script:
+
+- ERP API uses `STORE_DRIVER=postgres`, `NODE_ENV=production`, and `DATABASE_URL=postgresql://erp_user:<password>@localhost/erp?host=/cloudsql/<instance-connection-name>`.
+- Shopify app uses its own `shopify_sessions` database and calls the ERP API through `ERP_API_BASE_URL=https://<erp-service-url>/api`.
+- Both services must share the same `ERP_API_TOKEN`; the ERP API rejects unauthenticated API requests in production.
+
 If you already have local JSON inventory data, migrate it once after the ERP database exists:
 
 ```powershell
@@ -348,6 +355,22 @@ npm run inv -- migrate-postgres
 ```
 
 For Cloud SQL, run the migration from a machine that can reach the database, or use the Cloud SQL Auth Proxy locally.
+
+Restore rehearsal:
+
+1. Pick the latest operational backup manifest from `data/backups`.
+2. Restore the ERP database from the backup's exported inventory JSON or from a database dump if you created one.
+3. Restore print assets by copying the backup's `printing-assets-*` directory back to `data/printing/` before starting the ERP API.
+4. Restore feedback history by copying the backup's `feedback-*.sqlite` file back to `data/feedback.sqlite` if eBay review history matters for that deploy.
+5. Start the ERP API with `STORE_DRIVER=postgres`, run `npm run inv -- reconcile shopify`, and review the result before any live sync.
+
+Post-deploy smoke checklist:
+
+- `Invoke-WebRequest https://<erp-api-url>/api/health` returns `401 Unauthorized` without a token.
+- `Invoke-WebRequest https://<erp-api-url>/api/health -Headers @{ Authorization = 'Bearer <ERP_API_TOKEN>' }` returns `{ "ok": true }`.
+- Opening the Shopify app in the store admin loads App Home without an ERP connection error.
+- The embedded app dashboard count matches the local ERP inventory count for a known SKU.
+- `npm run inv -- reconcile shopify` or the hosted equivalent is reviewed before running a live sync.
 
 Before installing on the real store:
 
