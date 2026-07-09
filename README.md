@@ -272,7 +272,7 @@ gcloud auth login
   -ShopifyClientSecret <shopify-client-secret>
 ```
 
-The script prompts for database passwords, generates `ERP_API_TOKEN` if you do not provide one, deploys both Cloud Run services, updates `shopify.app.toml` to the Cloud Run app URL, and can release Shopify config too when run with `-ReleaseShopifyConfig`. It also forwards known Etsy/eBay values from your local `.env` into the ERP API service when those values are present, and forwards the local Etsy OAuth refresh token after the helper saves one.
+The script prompts for database passwords, generates `ERP_API_TOKEN` if you do not provide one, stores sensitive runtime values in Secret Manager, grants the default Cloud Run runtime service account access to those generated secrets, deploys both Cloud Run services, updates `shopify.app.toml` to the Cloud Run app URL, and can release Shopify config too when run with `-ReleaseShopifyConfig`. It also forwards known Etsy/eBay values from your local `.env` into the ERP API service when those values are present, and forwards the local Etsy OAuth refresh token after the helper saves one.
 
 Enable the core Google APIs:
 
@@ -338,7 +338,7 @@ cd shopify-app/joshs-mini-erp
 gcloud run deploy joshs-shopify-app --source . --region us-central1 --allow-unauthenticated --add-cloudsql-instances PROJECT_ID:us-central1:joshs-mini-erp
 ```
 
-Set the environment variables above in each Cloud Run service. Prefer Secret Manager for passwords, Shopify secrets, marketplace tokens, and `ERP_API_TOKEN`.
+Set the environment variables above in each Cloud Run service. Use Secret Manager for passwords, Shopify secrets, marketplace tokens, and `ERP_API_TOKEN`; the helper script does this automatically for sensitive values.
 
 For a manual deploy, keep these values aligned with the helper script:
 

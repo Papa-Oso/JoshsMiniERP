@@ -35,6 +35,7 @@ if (-not (Test-Path $gcloudCommand)) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $shopifyAppRoot = Join-Path $repoRoot "shopify-app\joshs-mini-erp"
 $shopifyConfigPath = Join-Path $shopifyAppRoot "shopify.app.toml"
+$cloudRunServiceAccount = $null
 
 function Invoke-Native {
   param(
@@ -169,6 +170,83 @@ function Write-EnvVarsFile {
   return $file.FullName
 }
 
+function New-SecretId {
+  param(
+    [string]$ServiceName,
+    [string]$Key
+  )
+
+  $secretId = "$ServiceName-$Key".ToLowerInvariant() -replace "[^a-z0-9_-]", "-"
+  $secretId = $secretId.Trim("-_")
+  if ($secretId.Length -gt 255) {
+    $secretId = $secretId.Substring(0, 255).Trim("-_")
+  }
+  return $secretId
+}
+
+function Set-SecretValue {
+  param(
+    [string]$Name,
+    [string]$Value
+  )
+
+  if (-not (Test-Gcloud @("secrets", "describe", $Name, "--project", $ProjectId))) {
+    Invoke-Native $gcloudCommand secrets create $Name --project $ProjectId --replication-policy automatic
+  }
+
+  $file = New-TemporaryFile
+  try {
+    Set-Content -Path $file.FullName -Value $Value -NoNewline -Encoding UTF8
+    Invoke-Native $gcloudCommand secrets versions add $Name --project $ProjectId "--data-file=$($file.FullName)"
+  } finally {
+    Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
+  }
+
+  if ($cloudRunServiceAccount) {
+    Invoke-Native $gcloudCommand secrets add-iam-policy-binding $Name `
+      --project $ProjectId `
+      --member "serviceAccount:$cloudRunServiceAccount" `
+      --role "roles/secretmanager.secretAccessor" `
+      --quiet
+  }
+}
+
+function New-CloudRunEnvConfig {
+  param(
+    [string]$ServiceName,
+    [hashtable]$Values,
+    [string[]]$SecretKeys
+  )
+
+  $plainValues = @{}
+  $secretKeyLookup = @{}
+  foreach ($key in $SecretKeys) {
+    $secretKeyLookup[$key] = $true
+  }
+
+  $secretRefs = @()
+  foreach ($key in $Values.Keys) {
+    $value = [string]$Values[$key]
+    if ($secretKeyLookup.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($value)) {
+      $secretId = New-SecretId $ServiceName $key
+      Set-SecretValue $secretId $value
+      $secretRefs += "$key=$secretId`:latest"
+    } else {
+      $plainValues[$key] = $Values[$key]
+    }
+  }
+
+  $secretArgs = @()
+  if ($secretRefs.Count -gt 0) {
+    $secretArgs = @("--update-secrets", ($secretRefs -join ","))
+  }
+
+  return [pscustomobject]@{
+    EnvFile = Write-EnvVarsFile $plainValues
+    SecretArgs = $secretArgs
+  }
+}
+
 function Get-RunUrl {
   param([string]$ServiceName)
 
@@ -224,6 +302,12 @@ try {
     --project $ProjectId
 
   Start-Sleep -Seconds 45
+
+  $projectNumber = & $gcloudCommand projects describe $ProjectId --format "value(projectNumber)"
+  if ($LASTEXITCODE -ne 0 -or -not $projectNumber) {
+    throw "Unable to read Google Cloud project number for $ProjectId."
+  }
+  $cloudRunServiceAccount = "$($projectNumber.Trim())-compute@developer.gserviceaccount.com"
 
   if (-not (Test-Gcloud @("sql", "instances", "describe", $SqlInstance, "--project", $ProjectId))) {
     Invoke-Native $gcloudCommand sql instances create $SqlInstance `
@@ -300,7 +384,21 @@ try {
     }
   }
 
-  $erpEnvFile = Write-EnvVarsFile $erpEnv
+  $erpSecretKeys = @(
+    "DATABASE_URL",
+    "ERP_API_TOKEN",
+    "SHOPIFY_ADMIN_ACCESS_TOKEN",
+    "SHOPIFY_CLIENT_SECRET",
+    "ETSY_SHARED_SECRET",
+    "ETSY_API_KEY",
+    "ETSY_ACCESS_TOKEN",
+    "ETSY_REFRESH_TOKEN",
+    "EBAY_ACCESS_TOKEN",
+    "EBAY_REFRESH_TOKEN",
+    "EBAY_CLIENT_SECRET"
+  )
+  $erpRunEnv = New-CloudRunEnvConfig $ErpService $erpEnv $erpSecretKeys
+  $erpSecretArgs = $erpRunEnv.SecretArgs
   try {
     Invoke-Native $gcloudCommand run deploy $ErpService `
       --project $ProjectId `
@@ -308,9 +406,10 @@ try {
       --region $Region `
       --allow-unauthenticated `
       --add-cloudsql-instances $connectionName `
-      --env-vars-file $erpEnvFile
+      --env-vars-file $erpRunEnv.EnvFile `
+      @erpSecretArgs
   } finally {
-    Remove-Item $erpEnvFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $erpRunEnv.EnvFile -Force -ErrorAction SilentlyContinue
   }
 
   $erpUrl = Get-RunUrl $ErpService
@@ -328,7 +427,9 @@ try {
       NODE_ENV = "production"
     }
 
-    $shopifyEnvFile = Write-EnvVarsFile $shopifyEnv
+    $shopifySecretKeys = @("DATABASE_URL", "ERP_API_TOKEN", "SHOPIFY_API_SECRET")
+    $shopifyRunEnv = New-CloudRunEnvConfig $ShopifyService $shopifyEnv $shopifySecretKeys
+    $shopifySecretArgs = $shopifyRunEnv.SecretArgs
     try {
       Invoke-Native $gcloudCommand run deploy $ShopifyService `
         --project $ProjectId `
@@ -336,9 +437,10 @@ try {
         --region $Region `
         --allow-unauthenticated `
         --add-cloudsql-instances $connectionName `
-        --env-vars-file $shopifyEnvFile
+        --env-vars-file $shopifyRunEnv.EnvFile `
+        @shopifySecretArgs
     } finally {
-      Remove-Item $shopifyEnvFile -Force -ErrorAction SilentlyContinue
+      Remove-Item $shopifyRunEnv.EnvFile -Force -ErrorAction SilentlyContinue
     }
   } finally {
     Pop-Location
@@ -365,13 +467,14 @@ try {
   Write-Host "Deployment complete."
   Write-Host "ERP API:     $erpUrl"
   Write-Host "Shopify app: $shopifyUrl"
-  Write-Host "ERP token:   $ErpApiToken"
+  Write-Host "ERP token:   stored in Secret Manager as $(New-SecretId $ErpService "ERP_API_TOKEN")"
   Write-Host ""
   Write-Host "Next:"
   Write-Host "1. If not already released, run: cd shopify-app/joshs-mini-erp; npm run deploy"
   Write-Host "2. Install/open the app for $ShopDomain from the Shopify Dev Dashboard."
   Write-Host "3. Test authenticated health:"
-  Write-Host "   Invoke-WebRequest $erpUrl/api/health -Headers @{ Authorization = 'Bearer $ErpApiToken' }"
+  Write-Host "   `$token = & $gcloudCommand secrets versions access latest --secret $(New-SecretId $ErpService "ERP_API_TOKEN") --project $ProjectId"
+  Write-Host "   Invoke-WebRequest $erpUrl/api/health -Headers @{ Authorization = `"Bearer `$token`" }"
 } finally {
   Pop-Location
 }

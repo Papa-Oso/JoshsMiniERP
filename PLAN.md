@@ -249,7 +249,7 @@ Progress:
 | Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
 | Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
 | Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
-| Phase 6: Production Readiness | In progress | Production startup, deployment docs, restore rehearsal, and smoke checklist are aligned. Secret Manager integration remains. |
+| Phase 6: Production Readiness | Complete | Production startup, Secret Manager-backed deploys, Cloud SQL docs, restore rehearsal, helper script, and smoke checklist are aligned. |
 
 Phase 2 progress:
 
@@ -310,7 +310,7 @@ Phase 6 progress:
 | Step | Status | Notes |
 | --- | --- | --- |
 | Production API token requirement | Complete | Server startup fails when `NODE_ENV=production` and `ERP_API_TOKEN` is missing. Local development remains no-token by default. |
-| Secret Manager integration | Pending | Helper script still passes secrets as Cloud Run environment variables; move database URLs, marketplace tokens, Shopify secrets, and `ERP_API_TOKEN` into Secret Manager before serious hosted use. |
+| Secret Manager integration | Complete | Helper script stores database URLs, marketplace tokens, Shopify secrets, and `ERP_API_TOKEN` in Secret Manager and exposes them to Cloud Run as secret-backed environment variables. |
 | Cloud SQL connection strings | Complete | README and helper script use the same Cloud SQL socket-style Postgres URLs for ERP and Shopify session databases. |
 | Backup/restore documentation | Complete | README now includes a restore rehearsal path for ERP data, print assets, feedback history, and reconcile-before-sync review. |
 | Deploy helper verification | Complete | Helper script and README now both set `NODE_ENV=production` for the ERP API and share the same service/database assumptions. |
