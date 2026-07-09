@@ -556,6 +556,6 @@ Instruction inventory, print settings, print events, and SKU-to-instruction matc
 
 Uploaded print assets live under `data/printing/`. The files stay on disk, and SQLite tracks asset metadata when assets are scanned or uploaded.
 
-The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
+The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. Feedback rows and scan-run summaries live in `data/feedback.sqlite`; change that path with `FEEDBACK_DATA_FILE`. The `data/` directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
 
 The `backup` command captures these local operational files into one manifest-backed backup when they exist. The growth roadmap in [PLAN.md](PLAN.md) continues moving the app toward SQLite-backed local operational data while keeping JSON export available for portability. PostgreSQL remains optional for a future hosted deployment.

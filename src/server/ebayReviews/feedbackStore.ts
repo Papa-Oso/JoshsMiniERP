@@ -9,7 +9,7 @@ import { normalizeFeedbackRow } from './normalization';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(process.env.ERP_ROOT_DIR || process.cwd());
 const dataDir = path.join(rootDir, 'data');
-const dbPath = path.join(dataDir, 'feedback.sqlite');
+const dbPath = path.resolve(process.env.FEEDBACK_DATA_FILE || path.join(dataDir, 'feedback.sqlite'));
 let SQL;
 
 // Applies the local scan memory used by incremental mode. Full scans still
@@ -47,22 +47,24 @@ export async function applyFeedbackHistory(rows, { scanMode = 'full' } = {}) {
       outputRows.push(rowWithKey);
     }
 
-    await saveDatabase(db);
-  } finally {
-    db.close();
-  }
-
-  return {
-    rows: outputRows,
-    stats: {
+    const stats = {
       scan_mode: mode,
       rows_seen: rows.length,
       rows_exported: outputRows.length,
       new_rows: newRows,
       skipped_existing_rows: skippedRows,
       database_path: dbPath
-    }
-  };
+    };
+    insertFeedbackScanRun(db, stats, now);
+    await saveDatabase(db);
+
+    return {
+      rows: outputRows,
+      stats
+    };
+  } finally {
+    db.close();
+  }
 }
 
 export async function loadFeedbackHistory() {
@@ -111,12 +113,38 @@ export async function resetFeedbackHistory() {
   try {
     const deletedRows = rowCount(db);
     db.run('DELETE FROM scanned_feedback');
+    db.run('DELETE FROM feedback_scan_runs');
     await saveDatabase(db);
 
     return {
       deleted_rows: deletedRows,
       database_path: dbPath
     };
+  } finally {
+    db.close();
+  }
+}
+
+export async function loadFeedbackScanRuns(limit = 50) {
+  const db = await openDatabase();
+
+  try {
+    const statement = db.prepare(`
+      SELECT id, scan_mode, rows_seen, rows_exported, new_rows, skipped_existing_rows, created_at
+      FROM feedback_scan_runs
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `);
+    try {
+      statement.bind([Math.max(1, Math.floor(Number(limit) || 50))]);
+      const rows = [];
+      while (statement.step()) {
+        rows.push(statement.getAsObject());
+      }
+      return rows;
+    } finally {
+      statement.free();
+    }
   } finally {
     db.close();
   }
@@ -163,7 +191,7 @@ async function openDatabase() {
     locateFile: (file) => path.join(rootDir, 'node_modules', 'sql.js', 'dist', file)
   });
 
-  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(path.dirname(dbPath), { recursive: true });
 
   let db;
   try {
@@ -208,6 +236,19 @@ function createSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_scanned_feedback_item
       ON scanned_feedback (source_item_id, matched_item_id);
+
+    CREATE TABLE IF NOT EXISTS feedback_scan_runs (
+      id TEXT PRIMARY KEY,
+      scan_mode TEXT NOT NULL CHECK (scan_mode IN ('full', 'incremental')),
+      rows_seen INTEGER NOT NULL DEFAULT 0,
+      rows_exported INTEGER NOT NULL DEFAULT 0,
+      new_rows INTEGER NOT NULL DEFAULT 0,
+      skipped_existing_rows INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_feedback_scan_runs_created
+      ON feedback_scan_runs (created_at DESC);
   `);
 
   // sql.js stores a plain SQLite file, so lightweight ALTER migrations keep
@@ -303,6 +344,25 @@ function upsertFeedback(db, feedbackKey, row, now) {
       row.feedback_profile_url || '',
       row.match_type || '',
       now,
+      now
+    ]
+  );
+}
+
+function insertFeedbackScanRun(db, stats, now) {
+  db.run(
+    `
+      INSERT INTO feedback_scan_runs (
+        id, scan_mode, rows_seen, rows_exported, new_rows, skipped_existing_rows, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      crypto.randomUUID(),
+      stats.scan_mode,
+      stats.rows_seen,
+      stats.rows_exported,
+      stats.new_rows,
+      stats.skipped_existing_rows,
       now
     ]
   );

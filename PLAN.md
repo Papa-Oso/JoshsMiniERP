@@ -45,7 +45,7 @@ Related local file data currently lives outside the main inventory store:
 
 - `data/printing.json`: legacy printing data source used to seed SQLite the first time SQLite printing storage is opened, and copied by backup when present.
 - `data/printing/`: label and instruction document assets. The files stay on disk while SQLite tracks metadata.
-- `data/feedback.sqlite`: eBay Reviews incremental scan history.
+- `data/feedback.sqlite`: eBay Reviews incremental scan history and scan-run summaries. Override with `FEEDBACK_DATA_FILE` when needed.
 - `data/browser-profile/`: local browser session state for the eBay scraper.
 
 ## Requested Work
@@ -246,7 +246,7 @@ Progress:
 | Phase 1: Documentation Alignment | Complete | Roadmap, README, and UI guide now agree that SQLite is the real local database path and Postgres is optional later. |
 | Phase 2: Professional UI Rework | Complete | Design tokens, shared UI helpers, calmer page visuals, graphite/teal color pass, accessibility basics, and persistent UI smoke screenshots are in place. `npm run build`, `npm test`, and `npm run smoke:ui` pass. |
 | Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
-| Phase 4: Operational Data Consolidation | In progress | Operational backups, import batch history, printing state, and print asset metadata are now SQL-backed; feedback and reconcile history remain next. |
+| Phase 4: Operational Data Consolidation | In progress | Operational backups, import batch history, printing workflows, and feedback scan history are now SQL-backed; reconcile history remains next. |
 | Phase 5: Reporting And Review Workflows | Pending | Start after operational data is consolidated. |
 | Phase 6: Production Readiness | Pending | Start after data and workflow foundations are stable. |
 
@@ -287,7 +287,7 @@ Phase 4 progress:
 | Operational backup manifest | Complete | `backup` now creates a manifest and captures inventory JSON, the SQLite database file, printing JSON, printing assets, and feedback SQLite history when those sources exist. |
 | Printing state SQL consolidation | Complete | Instruction inventory, print settings, print events, and SKU instruction matches now use SQLite tables through the existing store lock, with legacy JSON seeding on first use. |
 | Print asset metadata consolidation | Complete | Asset scans and uploads now upsert label/instruction document metadata into SQLite while keeping the actual files under `data/printing/`. |
-| Feedback scan history consolidation | Pending | Keep eBay review scan history in the backed-up workflow and later expose it through the same SQL/reporting foundation. |
+| Feedback scan history consolidation | Complete | eBay review history remains in a cheap local SQLite file, now honors `FEEDBACK_DATA_FILE`, records scan-run summaries, and is covered by operational backup. |
 | Import batch history | Complete | CSV and Shopify applied imports now write `import_batches` and `import_batch_rows` records in SQLite, including row actions and summaries. |
 | Reconcile snapshot history | Pending | Save local-vs-marketplace review snapshots before live pushes. |
 
