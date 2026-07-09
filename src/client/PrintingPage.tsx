@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, ExternalLink, FileText, FolderOpen, Minus, Plus, Printer, Settings, Tags, Upload, X } from "lucide-react";
 import { api } from "./api";
 import type { DashboardPayload, InventoryItem, PrintAsset, PrintInstruction, PrinterInfo, PrintingPayload } from "../shared/types";
+import { defaultMaxInventory } from "../shared/types";
 
 const emptyPrinting: PrintingPayload = {
   instructions: [],
@@ -14,17 +15,19 @@ const emptyPrinting: PrintingPayload = {
   instructionMatches: []
 };
 
-type InstructionSettingsMap = Record<string, { lowAlert: number }>;
+type InstructionSettingsMap = Record<string, { lowAlert: number; maxInventory: number }>;
 type NoticeTarget = "labels" | "documents" | "inventory";
 
 export function PrintingPage({
   dashboard,
   printSettingsOpen,
-  onPrintSettingsClose
+  onPrintSettingsClose,
+  onDashboardChange
 }: {
   dashboard: DashboardPayload;
   printSettingsOpen: boolean;
   onPrintSettingsClose: () => void;
+  onDashboardChange: () => Promise<void>;
 }) {
   const [printing, setPrinting] = useState<PrintingPayload>(emptyPrinting);
   const [assets, setAssets] = useState<PrintAsset[]>([]);
@@ -125,9 +128,10 @@ export function PrintingPage({
     await runAction(
       () =>
         api.updateInstruction(instruction.id, {
-          lowAlert: Number(settings.lowAlert)
+          lowAlert: Number(settings.lowAlert),
+          maxInventory: Number(settings.maxInventory)
         }),
-      "Instruction alert saved.",
+      "Instruction settings saved.",
       "inventory"
     );
   }
@@ -188,6 +192,26 @@ export function PrintingPage({
           contentBase64
         }),
       "Label uploaded."
+    );
+  }
+
+  async function printLabelsAndAddInventory() {
+    if (!selectedItem || !selectedLabelAsset) return;
+    const count = Math.max(1, Math.trunc(Number(labelCount)));
+
+    await runAction(
+      async () => {
+        const opened = openLabelPrintWindow(selectedItem, count, matchedInstruction?.label);
+        if (!opened) throw new Error("Label print window could not be opened.");
+        await api.adjustInventory(selectedItem.id, {
+          delta: count,
+          type: "batch_add",
+          note: "Manufactured and ready for sale"
+        });
+        await onDashboardChange();
+      },
+      `Printed ${count} label${count === 1 ? "" : "s"} and added ${count} ${selectedItem.sku} item${count === 1 ? "" : "s"}.`,
+      "labels"
     );
   }
 
@@ -275,8 +299,9 @@ export function PrintingPage({
 
   return (
     <section className="printing-page">
-      <section className="printing-top-grid">
-        <PanelFrame className="printing-label-panel">
+      <section className="printing-workflow-grid">
+        <section className="printing-workflow-stack">
+          <PanelFrame className="printing-label-panel">
           <header className="panel-header">
             <span><Tags size={18} /></span>
             <h2>Product Labels</h2>
@@ -305,8 +330,8 @@ export function PrintingPage({
             <button
               className="icon-button primary full"
               type="button"
-              disabled={!selectedItem || busy}
-              onClick={() => selectedItem && openLabelPrintWindow(selectedItem, labelCount, matchedInstruction?.label)}
+              disabled={!selectedItem || !selectedLabelAsset || busy}
+              onClick={() => void printLabelsAndAddInventory()}
             >
               <Printer size={18} />
               Print Labels
@@ -356,11 +381,11 @@ export function PrintingPage({
             </strong>
           </div>
           {labelNotice ? <p className="notice">{labelNotice}</p> : null}
-        </PanelFrame>
+          </PanelFrame>
 
-        <PanelFrame className="instruction-document-panel">
+          <PanelFrame className="instruction-document-panel">
           <header className="panel-header">
-            <span><Printer size={18} /></span>
+            <span><FileText size={18} /></span>
             <h2>Instruction Documents</h2>
           </header>
           {selectedInstruction ? (
@@ -376,25 +401,6 @@ export function PrintingPage({
                     ))}
                   </select>
                 </label>
-                <label className={`icon-button upload-button ${busy ? "disabled" : ""}`}>
-                  <Upload size={18} />
-                  Upload Doc
-                  <input
-                    type="file"
-                    accept=".doc,.docx,.pdf,.xls,.xlsx,.xlsm"
-                    disabled={busy}
-                    onChange={(event) => void uploadInstructionFile(event)}
-                  />
-                </label>
-              </div>
-              <div className="print-asset-grid">
-                <AssetCard
-                  label="Source Doc"
-                  asset={selectedInstructionAsset}
-                  onOpen={() => void openAsset(selectedInstructionAsset, "documents")}
-                />
-              </div>
-              <div className="printing-form-grid instruction-print-controls">
                 <label>
                   Pages
                   <input
@@ -405,10 +411,6 @@ export function PrintingPage({
                     onChange={(event) => setInstructionPages(Math.max(1, Number(event.target.value)))}
                   />
                 </label>
-                <div className="instruction-match-card instruction-print-total">
-                  <span>Adds</span>
-                  <strong>{printedInstructionCount}</strong>
-                </div>
                 <button
                   className="icon-button primary full"
                   type="button"
@@ -418,17 +420,38 @@ export function PrintingPage({
                   <Printer size={18} />
                   Print + Add
                 </button>
+                <label className={`icon-button upload-button ${busy ? "disabled" : ""}`}>
+                  <Upload size={18} />
+                  Upload
+                  <input
+                    type="file"
+                    accept=".doc,.docx,.pdf,.xls,.xlsx,.xlsm"
+                    disabled={busy}
+                    onChange={(event) => void uploadInstructionFile(event)}
+                  />
+                </label>
+              </div>
+              <div className="print-asset-grid">
+                <AssetCard
+                  label="Instruction Doc"
+                  asset={selectedInstructionAsset}
+                  onOpen={() => void openAsset(selectedInstructionAsset, "documents")}
+                />
+              </div>
+              <div className="instruction-match-card instruction-print-total">
+                <span>Adds to inventory</span>
+                <strong>{printedInstructionCount}</strong>
               </div>
               {documentNotice ? <p className="notice">{documentNotice}</p> : null}
             </>
           ) : (
             <div className="empty">No instruction types</div>
           )}
-        </PanelFrame>
-      </section>
+          </PanelFrame>
+        </section>
 
-      <section className="printing-main-grid">
-        <PanelFrame className="instruction-inventory-panel">
+        <section className="printing-side-stack">
+          <PanelFrame className="instruction-inventory-panel">
           <header className="panel-header">
             <span><FileText size={18} /></span>
             <h2>Instruction Inventory</h2>
@@ -480,9 +503,20 @@ export function PrintingPage({
                     }
                   />
                 </label>
+                <label>
+                  Max Inventory
+                  <input
+                    type="number"
+                    min="1"
+                    value={instructionSettings[selectedInstruction.id]?.maxInventory ?? instructionMaxInventory(selectedInstruction)}
+                    onChange={(event) =>
+                      updateInstructionSettings(selectedInstruction.id, { maxInventory: Number(event.target.value) })
+                    }
+                  />
+                </label>
                 <button className="icon-button" type="button" disabled={busy} onClick={() => saveInstructionSettings(selectedInstruction)}>
                   <FileText size={18} />
-                  Save Alert
+                  Save Settings
                 </button>
               </div>
             </div>
@@ -495,15 +529,14 @@ export function PrintingPage({
                 type="button"
                 onClick={() => setInstructionId(instruction.id)}
               >
-                <span>{instruction.label}</span>
-                <strong className={instruction.onHand <= instruction.lowAlert ? "warn" : "ok"}>{instruction.onHand}</strong>
+                <span className="instruction-row-label">{instruction.label}</span>
+                <InstructionStockCell instruction={instruction} />
               </button>
             ))}
           </div>
           {inventoryNotice ? <p className="notice">{inventoryNotice}</p> : null}
-        </PanelFrame>
+          </PanelFrame>
 
-        <section className="printing-side-stack">
           <PanelFrame>
             <header className="panel-header">
               <span><Box size={18} /></span>
@@ -645,8 +678,61 @@ function AssetCard({
 
 function settingsFor(instruction: PrintInstruction) {
   return {
-    lowAlert: instruction.lowAlert
+    lowAlert: instruction.lowAlert,
+    maxInventory: instructionMaxInventory(instruction)
   };
+}
+
+function InstructionStockCell({ instruction }: { instruction: PrintInstruction }) {
+  const maxInventory = instructionMaxInventory(instruction);
+  const overage = Math.max(0, instruction.onHand - maxInventory);
+
+  return (
+    <div className={`stock-cell instruction-stock-cell ${instructionStockTone(instruction)}`}>
+      <div className="stock-cell-top">
+        <strong>{instruction.onHand}</strong>
+        <span>{instructionStockStatusLabel(instruction)}</span>
+      </div>
+      <div className="stock-bar">
+        <span className="stock-fill" style={{ width: stockPercent(instruction.onHand, maxInventory) }} />
+      </div>
+      <div className="stock-cell-scale">
+        <span>Max {maxInventory}</span>
+        {overage ? <span>+{overage}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function instructionMaxInventory(instruction: PrintInstruction) {
+  return Number.isInteger(instruction.maxInventory) && instruction.maxInventory >= 1
+    ? instruction.maxInventory
+    : defaultMaxInventory;
+}
+
+function instructionStockTone(instruction: PrintInstruction) {
+  if (instruction.onHand > instructionMaxInventory(instruction)) return "over";
+  if (instruction.onHand <= instruction.lowAlert) return "low";
+  if (
+    instruction.lowAlert > 0 &&
+    instruction.onHand <= instruction.lowAlert + Math.max(3, Math.ceil(instruction.lowAlert * 0.25))
+  ) {
+    return "watch";
+  }
+  return "ok";
+}
+
+function instructionStockStatusLabel(instruction: PrintInstruction) {
+  const tone = instructionStockTone(instruction);
+  if (tone === "over") return "Over max";
+  if (tone === "low") return "Low";
+  if (tone === "watch") return "Watch";
+  return "OK";
+}
+
+function stockPercent(quantity: number, maxQuantity: number) {
+  if (quantity <= 0) return "0%";
+  return `${Math.min(100, Math.max(6, Math.round((quantity / maxQuantity) * 100)))}%`;
 }
 
 function resolveInstructionForSku(printing: PrintingPayload, sku: string) {
@@ -725,7 +811,7 @@ function fileToBase64(file: File) {
 
 function openLabelPrintWindow(item: InventoryItem, count: number, instructionLabel?: string) {
   const labels = Array.from({ length: count }, () => item);
-  openPrintWindow(
+  return openPrintWindow(
     "Product Labels",
     `
       <style>
@@ -753,7 +839,7 @@ function openLabelPrintWindow(item: InventoryItem, count: number, instructionLab
 
 function openPrintWindow(title: string, body: string) {
   const printWindow = window.open("", "_blank", "popup=yes,width=900,height=700");
-  if (!printWindow) return;
+  if (!printWindow) return false;
   printWindow.document.write(`
     <!doctype html>
     <html>
@@ -762,6 +848,7 @@ function openPrintWindow(title: string, body: string) {
     </html>
   `);
   printWindow.document.close();
+  return true;
 }
 
 function escapeHtml(value: string) {

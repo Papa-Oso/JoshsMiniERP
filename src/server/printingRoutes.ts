@@ -23,7 +23,8 @@ export const printingRouter = express.Router();
 const updateInstructionSchema = z.object({
   title: z.string().optional(),
   body: z.string().optional(),
-  lowAlert: z.coerce.number().int().min(0).optional()
+  lowAlert: z.coerce.number().int().min(0).optional(),
+  maxInventory: z.coerce.number().int().min(1).optional()
 });
 
 const adjustInstructionSchema = z.object({

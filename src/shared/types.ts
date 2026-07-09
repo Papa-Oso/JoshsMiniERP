@@ -146,6 +146,7 @@ export interface PrintInstruction {
   body: string;
   onHand: number;
   lowAlert: number;
+  maxInventory: number;
   perPage: number;
   updatedAt: string;
 }
@@ -186,6 +187,7 @@ export interface UpdateInstructionInput {
   title?: string;
   body?: string;
   lowAlert?: number;
+  maxInventory?: number;
 }
 
 export interface UpdateInstructionMatchInput {

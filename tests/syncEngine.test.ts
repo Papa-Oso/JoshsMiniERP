@@ -396,6 +396,7 @@ function seedPrintingData(instructionId: string, onHand: number): PrintingPayloa
         body: "",
         onHand,
         lowAlert: 2,
+        maxInventory: 100,
         perPage: 4,
         updatedAt: timestamp
       }
