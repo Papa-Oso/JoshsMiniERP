@@ -12,12 +12,16 @@ import type {
   InventoryItem,
   Platform,
   PlatformMapping,
+  PrintEvent,
+  PrintingPayload,
+  SkuInstructionMatch,
   ScheduleSettings,
   StoreData,
   SyncRun
 } from "../shared/types";
 import { defaultMaxInventory, platforms } from "../shared/types";
 import { config } from "./config";
+import { defaultPrintingData, normalizePrintingData } from "./printingData";
 import type { InventoryStoreDriver } from "./store";
 
 interface SqliteContext {
@@ -133,6 +137,30 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     return this.withLock(async () => {
       const context = this.requireContext();
       return this.readImportBatches(context.db, limit);
+    });
+  }
+
+  async readPrintingData(): Promise<PrintingPayload> {
+    return this.withLock(async () => {
+      const context = this.requireContext();
+      if (await this.ensurePrintingDataSeeded(context.db)) {
+        context.dirty = true;
+      }
+      return this.readPrintingWithDatabase(context.db);
+    });
+  }
+
+  async mutatePrintingData<T>(mutator: (data: PrintingPayload) => T | Promise<T>): Promise<T> {
+    return this.withLock(async () => {
+      const context = this.requireContext();
+      if (await this.ensurePrintingDataSeeded(context.db)) {
+        context.dirty = true;
+      }
+      const data = this.readPrintingWithDatabase(context.db);
+      const result = await mutator(data);
+      this.replacePrintingData(context.db, data);
+      context.dirty = true;
+      return result;
     });
   }
 
@@ -594,6 +622,150 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     return batchRows.map((row) => rowToImportBatch(row, rowsByBatchId.get(stringValue(row.id)) ?? []));
   }
 
+  private async ensurePrintingDataSeeded(db: Database) {
+    const instructionCount = integer(queryRows(db, "SELECT COUNT(*) AS count FROM print_instructions")[0]?.count ?? 0);
+    const settingsCount = integer(queryRows(db, "SELECT COUNT(*) AS count FROM print_settings")[0]?.count ?? 0);
+    if (instructionCount > 0 && settingsCount > 0) return false;
+
+    this.replacePrintingData(db, await this.readLegacyPrintingData());
+    return true;
+  }
+
+  private async readLegacyPrintingData() {
+    const printingFile = path.resolve(process.env.PRINTING_DATA_FILE ?? "data/printing.json");
+    try {
+      const raw = await fs.readFile(printingFile, "utf8");
+      return normalizePrintingData(JSON.parse(raw) as Partial<PrintingPayload>);
+    } catch (error) {
+      if (isMissingFileError(error)) return defaultPrintingData();
+      throw error;
+    }
+  }
+
+  private readPrintingWithDatabase(db: Database): PrintingPayload {
+    const instructionRows = queryRows(db, `
+      SELECT id, label, match_terms_json, title, body, on_hand, low_alert,
+        max_inventory, per_page, updated_at
+      FROM print_instructions
+      ORDER BY position ASC, label ASC
+    `);
+
+    const eventRows = queryRows(db, `
+      SELECT id, instruction_id, type, delta, quantity_after, note, created_at
+      FROM print_instruction_events
+      ORDER BY created_at DESC, id DESC
+      LIMIT 250
+    `);
+
+    const matchRows = queryRows(db, `
+      SELECT sku, mode, instruction_id, updated_at
+      FROM sku_instruction_matches
+      ORDER BY sku ASC
+    `);
+
+    const settingsRow = queryRows(db, `
+      SELECT label_batch_size, instruction_pages, instruction_per_page,
+        label_printer_name, instruction_printer_name
+      FROM print_settings
+      WHERE id = 1
+    `)[0];
+
+    return normalizePrintingData({
+      instructions: instructionRows.map(rowToPrintInstruction),
+      events: eventRows.map(rowToPrintEvent),
+      instructionMatches: matchRows.map(rowToInstructionMatch),
+      defaults: settingsRow
+        ? {
+            labelBatchSize: integer(settingsRow.label_batch_size),
+            instructionPages: integer(settingsRow.instruction_pages),
+            instructionPerPage: integer(settingsRow.instruction_per_page),
+            labelPrinterName: optionalString(settingsRow.label_printer_name),
+            instructionPrinterName: optionalString(settingsRow.instruction_printer_name)
+          }
+        : undefined
+    });
+  }
+
+  private replacePrintingData(db: Database, data: PrintingPayload) {
+    const normalized = normalizePrintingData(data);
+
+    db.run("DELETE FROM print_instruction_events");
+    db.run("DELETE FROM sku_instruction_matches");
+    db.run("DELETE FROM print_instructions");
+    db.run("DELETE FROM print_settings");
+
+    for (const [position, instruction] of normalized.instructions.entries()) {
+      db.run(
+        `
+          INSERT INTO print_instructions (
+            id, position, label, match_terms_json, title, body, on_hand,
+            low_alert, max_inventory, per_page, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          instruction.id,
+          position,
+          instruction.label,
+          JSON.stringify(instruction.matchTerms),
+          instruction.title,
+          instruction.body,
+          instruction.onHand,
+          instruction.lowAlert,
+          instruction.maxInventory,
+          instruction.perPage,
+          instruction.updatedAt
+        ]
+      );
+    }
+
+    for (const event of normalized.events.slice(0, 250)) {
+      db.run(
+        `
+          INSERT INTO print_instruction_events (
+            id, instruction_id, type, delta, quantity_after, note, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          event.id,
+          event.instructionId,
+          event.type,
+          event.delta,
+          event.quantityAfter,
+          event.note ?? null,
+          event.createdAt
+        ]
+      );
+    }
+
+    for (const match of normalized.instructionMatches) {
+      db.run(
+        `
+          INSERT INTO sku_instruction_matches (
+            sku, mode, instruction_id, updated_at
+          ) VALUES (?, ?, ?, ?)
+        `,
+        [match.sku, match.mode, match.instructionId ?? null, match.updatedAt]
+      );
+    }
+
+    db.run(
+      `
+        INSERT INTO print_settings (
+          id, label_batch_size, instruction_pages, instruction_per_page,
+          label_printer_name, instruction_printer_name, updated_at
+        ) VALUES (1, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        normalized.defaults.labelBatchSize,
+        normalized.defaults.instructionPages,
+        normalized.defaults.instructionPerPage,
+        normalized.defaults.labelPrinterName ?? null,
+        normalized.defaults.instructionPrinterName ?? null,
+        now()
+      ]
+    );
+  }
+
   private pruneInventoryEvents(db: Database, limit: number) {
     db.run(
       `
@@ -744,6 +916,42 @@ function rowToImportBatchRow(row: Record<string, SqlValue>): ImportBatchRow {
   };
 }
 
+function rowToPrintInstruction(row: Record<string, SqlValue>) {
+  return {
+    id: stringValue(row.id),
+    label: stringValue(row.label),
+    matchTerms: parseStringArray(row.match_terms_json),
+    title: stringValue(row.title),
+    body: stringValue(row.body),
+    onHand: integer(row.on_hand),
+    lowAlert: integer(row.low_alert),
+    maxInventory: storedMaxInventory(row.max_inventory),
+    perPage: integer(row.per_page),
+    updatedAt: isoString(row.updated_at)
+  };
+}
+
+function rowToPrintEvent(row: Record<string, SqlValue>): PrintEvent {
+  return {
+    id: stringValue(row.id),
+    instructionId: stringValue(row.instruction_id),
+    type: stringValue(row.type) as PrintEvent["type"],
+    delta: integer(row.delta),
+    quantityAfter: integer(row.quantity_after),
+    note: optionalString(row.note),
+    createdAt: isoString(row.created_at)
+  };
+}
+
+function rowToInstructionMatch(row: Record<string, SqlValue>): SkuInstructionMatch {
+  return {
+    sku: stringValue(row.sku),
+    mode: stringValue(row.mode) as SkuInstructionMatch["mode"],
+    instructionId: optionalString(row.instruction_id),
+    updatedAt: isoString(row.updated_at)
+  };
+}
+
 function rowToSchedule(row: Record<string, SqlValue>): ScheduleSettings {
   return {
     enabled: booleanValue(row.enabled),
@@ -800,6 +1008,15 @@ function parseRawJson(value: unknown) {
   } catch {
     return text;
   }
+}
+
+function parseStringArray(value: unknown) {
+  const parsed = parseRawJson(value);
+  return Array.isArray(parsed) ? parsed.map(String) : [];
+}
+
+function isMissingFileError(error: unknown) {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 const sqliteSchema = `
@@ -925,6 +1142,47 @@ CREATE TABLE IF NOT EXISTS import_batch_rows (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS print_instructions (
+  id TEXT PRIMARY KEY,
+  position INTEGER NOT NULL DEFAULT 0,
+  label TEXT NOT NULL,
+  match_terms_json TEXT NOT NULL DEFAULT '[]',
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  on_hand INTEGER NOT NULL DEFAULT 0 CHECK (on_hand >= 0),
+  low_alert INTEGER NOT NULL DEFAULT 0 CHECK (low_alert >= 0),
+  max_inventory INTEGER NOT NULL DEFAULT 100 CHECK (max_inventory >= 1),
+  per_page INTEGER NOT NULL DEFAULT 4 CHECK (per_page >= 1),
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS print_instruction_events (
+  id TEXT PRIMARY KEY,
+  instruction_id TEXT NOT NULL REFERENCES print_instructions(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('print_batch', 'package_use', 'correction')),
+  delta INTEGER NOT NULL,
+  quantity_after INTEGER NOT NULL CHECK (quantity_after >= 0),
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sku_instruction_matches (
+  sku TEXT PRIMARY KEY,
+  mode TEXT NOT NULL CHECK (mode IN ('instruction', 'none')),
+  instruction_id TEXT REFERENCES print_instructions(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS print_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  label_batch_size INTEGER NOT NULL DEFAULT 15 CHECK (label_batch_size >= 1),
+  instruction_pages INTEGER NOT NULL DEFAULT 10 CHECK (instruction_pages >= 1),
+  instruction_per_page INTEGER NOT NULL DEFAULT 4 CHECK (instruction_per_page >= 1),
+  label_printer_name TEXT,
+  instruction_printer_name TEXT,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_inventory_events_item_created
   ON inventory_events(item_id, created_at DESC);
 
@@ -939,5 +1197,11 @@ CREATE INDEX IF NOT EXISTS idx_import_batches_created
 
 CREATE INDEX IF NOT EXISTS idx_import_batch_rows_batch
   ON import_batch_rows(batch_id, position);
+
+CREATE INDEX IF NOT EXISTS idx_print_instruction_events_created
+  ON print_instruction_events(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sku_instruction_matches_instruction
+  ON sku_instruction_matches(instruction_id);
 
 `;

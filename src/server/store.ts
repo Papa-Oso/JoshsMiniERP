@@ -11,6 +11,7 @@ import type {
   ImportBatchRecord,
   Platform,
   PlatformMapping,
+  PrintingPayload,
   ScheduleSettings,
   StoreData,
   SyncRun
@@ -50,6 +51,8 @@ export interface InventoryStoreDriver {
   saveSchedule?(schedule: ScheduleSettings): Promise<void>;
   recordImportBatch?(batch: ImportBatchRecord): Promise<void>;
   listImportBatches?(limit?: number): Promise<ImportBatchRecord[]>;
+  readPrintingData?(): Promise<PrintingPayload>;
+  mutatePrintingData?<T>(mutator: (data: PrintingPayload) => T | Promise<T>): Promise<T>;
   close?(): Promise<void>;
 }
 

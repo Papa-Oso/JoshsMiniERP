@@ -26,6 +26,7 @@ const { adjustInventory, createItem, listData, updateItem } = await import("../s
 const { backupInventoryData, exportInventoryData } = await import("../src/server/dataTools.ts");
 const { importCsv } = await import("../src/server/csvImport.ts");
 const { listImportBatches } = await import("../src/server/importHistory.ts");
+const { adjustInstruction, getPrintingData, updatePrintSettings, updateSkuInstructionMatch } = await import("../src/server/printingService.ts");
 const { importShopifySkus } = await import("../src/server/shopifyImport.ts");
 const { reconcileInventory } = await import("../src/server/reconcile.ts");
 const { runInventorySync } = await import("../src/server/syncEngine.ts");
@@ -98,6 +99,18 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   });
   const shopifyImport = await importShopifySkus({ location: "Main" });
   assert.equal(shopifyImport.summary.created, 1);
+
+  await updatePrintSettings({ labelPrinterName: "SQLite Label Printer", instructionPrinterName: "SQLite Instruction Printer" });
+  await updateSkuInstructionMatch("LOCAL-SKU", { mode: "instruction", instructionId: "hjc" });
+  await adjustInstruction("hjc", { delta: 12, type: "print_batch", note: "SQLite print batch" });
+  const printing = await getPrintingData();
+  const hjc = printing.instructions.find((instruction) => instruction.id === "hjc");
+  assert.equal(hjc?.onHand, 12);
+  assert.equal(printing.defaults.labelPrinterName, "SQLite Label Printer");
+  assert.equal(printing.defaults.instructionPrinterName, "SQLite Instruction Printer");
+  assert.equal(printing.instructionMatches.find((match) => match.sku === "LOCAL-SKU")?.instructionId, "hjc");
+  assert.equal(printing.events[0]?.delta, 12);
+  await assert.rejects(() => readFile(printingFile, "utf8"), /ENOENT/);
 
   const importBatches = await listImportBatches();
   const csvBatch = importBatches.find((batch) => batch.source === "csv");

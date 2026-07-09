@@ -11,20 +11,12 @@ import type {
   UpdatePrintSettingsInput,
   UpdateInstructionInput
 } from "../shared/types";
-import { defaultMaxInventory } from "../shared/types";
+import { defaultPrintingData, makeInstruction, normalizePrintingData } from "./printingData";
+import { store } from "./store";
 
 const printingFile = path.resolve(process.env.PRINTING_DATA_FILE ?? "data/printing.json");
 const now = () => new Date().toISOString();
 let writeQueue = Promise.resolve();
-
-const defaultInstructions = (): PrintInstruction[] => [
-  makeInstruction("nexx", "NEXX", ["NEXX"]),
-  makeInstruction("scorpion", "SCORPION", ["SCORPION"]),
-  makeInstruction("hjc", "HJC", ["HJC"]),
-  makeInstruction("shoei", "SHOEI", ["SHOEI", "SHOIE"]),
-  makeInstruction("z3-seat-clips", "Z3 Seat Clips", ["Z3", "SEAT"]),
-  makeInstruction("z3-visor", "Z3 Visor", ["Z3", "VISOR"])
-];
 
 export type InstructionUseResult =
   | { status: "recorded"; instruction: PrintInstruction }
@@ -202,6 +194,10 @@ function adjustInstructionInData(
 }
 
 async function readPrintingData(): Promise<PrintingPayload> {
+  if (store.readPrintingData) {
+    return store.readPrintingData();
+  }
+
   await fs.mkdir(path.dirname(printingFile), { recursive: true });
 
   try {
@@ -216,6 +212,10 @@ async function readPrintingData(): Promise<PrintingPayload> {
 }
 
 async function mutatePrintingData<T>(mutator: (data: PrintingPayload) => T) {
+  if (store.mutatePrintingData) {
+    return store.mutatePrintingData(mutator);
+  }
+
   const run = async () => {
     const data = await readPrintingData();
     const result = mutator(data);
@@ -236,100 +236,6 @@ async function writePrintingData(data: PrintingPayload) {
   const tempPath = `${printingFile}.tmp`;
   await fs.writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   await fs.rename(tempPath, printingFile);
-}
-
-function normalizePrintingData(value: Partial<PrintingPayload>): PrintingPayload {
-  const defaults = defaultPrintingData();
-  const incoming = Array.isArray(value.instructions) ? value.instructions : [];
-  const incomingById = new Map(incoming.map((instruction) => [instruction.id, instruction]));
-  const defaultIds = new Set(defaults.instructions.map((instruction) => instruction.id));
-  const customInstructions = incoming
-    .filter((instruction) => instruction.id && !defaultIds.has(instruction.id))
-    .map((instruction) => normalizeCustomInstruction(instruction));
-
-  return {
-    instructions: [
-      ...defaults.instructions.map((fallback) => ({
-        ...fallback,
-        ...(incomingById.get(fallback.id) ?? {}),
-        matchTerms: fallback.matchTerms,
-        perPage: fallback.perPage
-      })),
-      ...customInstructions
-    ],
-    instructionMatches: normalizeInstructionMatches(value.instructionMatches),
-    events: Array.isArray(value.events) ? value.events.slice(0, 250) : [],
-    defaults: {
-      ...defaults.defaults,
-      ...(value.defaults ?? {}),
-      labelPrinterName: clean(value.defaults?.labelPrinterName),
-      instructionPrinterName: clean(value.defaults?.instructionPrinterName)
-    }
-  };
-}
-
-function defaultPrintingData(): PrintingPayload {
-  return {
-    instructions: defaultInstructions(),
-    instructionMatches: [],
-    events: [],
-    defaults: {
-      labelBatchSize: 15,
-      instructionPages: 10,
-      instructionPerPage: 4
-    }
-  };
-}
-
-function normalizeCustomInstruction(instruction: Partial<PrintInstruction>): PrintInstruction {
-  const id = clean(instruction.id) ?? `custom-${randomUUID()}`;
-  const label = clean(instruction.label) ?? "Custom";
-  return {
-    id,
-    label,
-    matchTerms: Array.isArray(instruction.matchTerms) ? instruction.matchTerms.map(String) : [],
-    title: clean(instruction.title) ?? `${label} Instructions`,
-    body: String(instruction.body ?? ""),
-    onHand: nonNegativeInteger(instruction.onHand ?? 0, "Instruction count"),
-    lowAlert: nonNegativeInteger(instruction.lowAlert ?? 8, "Low alert"),
-    maxInventory: positiveInteger(instruction.maxInventory ?? defaultMaxInventory, "Max inventory"),
-    perPage: nonNegativeInteger(instruction.perPage ?? 4, "Instructions per page") || 4,
-    updatedAt: clean(instruction.updatedAt) ?? now()
-  };
-}
-
-function normalizeInstructionMatches(value: unknown): SkuInstructionMatch[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((match) => {
-    const candidate = match as Partial<SkuInstructionMatch>;
-    const sku = normalizeExactSku(candidate.sku ?? "");
-    if (!sku || (candidate.mode !== "instruction" && candidate.mode !== "none")) return [];
-    const instructionId = clean(candidate.instructionId);
-    if (candidate.mode === "instruction" && !instructionId) return [];
-    return [
-      {
-        sku,
-        mode: candidate.mode,
-        instructionId: candidate.mode === "instruction" ? instructionId : undefined,
-        updatedAt: clean(candidate.updatedAt) ?? now()
-      }
-    ];
-  });
-}
-
-function makeInstruction(id: string, label: string, matchTerms: string[]): PrintInstruction {
-  return {
-    id,
-    label,
-    matchTerms,
-    title: `${label} Instructions`,
-    body: "",
-    onHand: 0,
-    lowAlert: 8,
-    maxInventory: defaultMaxInventory,
-    perPage: 4,
-    updatedAt: now()
-  };
 }
 
 function findInstruction(data: PrintingPayload, id: string) {

@@ -550,9 +550,11 @@ Inventory data should live in `data/inventory.sqlite` for normal personal use. S
 
 Applied CSV and Shopify imports also write batch summaries and row outcomes into the SQLite database for future reporting/review screens.
 
+Instruction inventory, print settings, print events, and SKU-to-instruction matches also live in SQLite when `STORE_DRIVER=sqlite`. If `data/printing.json` already exists, SQLite seeds from it the first time printing data is opened.
+
 `data/inventory.json` remains the portable backup/export and migration format. Change its location with `DATA_FILE` in `.env`.
 
-Instruction inventory and print settings are currently stored in `data/printing.json`, and uploaded print assets live under `data/printing/`.
+Uploaded print assets live under `data/printing/`. The files stay on disk; the roadmap tracks adding SQLite asset metadata around those files.
 
 The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
 
