@@ -168,6 +168,8 @@ export interface PrintingPayload {
     labelBatchSize: number;
     instructionPages: number;
     instructionPerPage: number;
+    labelPrinterName?: string;
+    instructionPrinterName?: string;
   };
 }
 
@@ -189,6 +191,19 @@ export interface UpdateInstructionInput {
 export interface UpdateInstructionMatchInput {
   mode: InstructionMatchMode;
   instructionId?: string;
+}
+
+export interface UpdatePrintSettingsInput {
+  labelPrinterName?: string;
+  instructionPrinterName?: string;
+}
+
+export interface PrinterInfo {
+  name: string;
+  isDefault: boolean;
+  portName?: string;
+  status?: number;
+  workOffline?: boolean;
 }
 
 export interface UploadInstructionInput {

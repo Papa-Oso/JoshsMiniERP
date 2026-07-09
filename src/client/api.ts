@@ -5,7 +5,9 @@ import type {
   DashboardPayload,
   AdjustInstructionInput,
   InventoryItem,
+  PrinterInfo,
   PrintingPayload,
+  UpdatePrintSettingsInput,
   UpdateInstructionMatchInput,
   UpdateInstructionInput,
   UploadInstructionInput,
@@ -44,9 +46,20 @@ export const api = {
     request("/api/schedule", { method: "PATCH", body: JSON.stringify(input) }),
   runSync: () => request("/api/sync", { method: "POST" }),
   printing: () => request<PrintingPayload>("/api/printing"),
+  printers: () => request<PrinterInfo[]>("/api/printing/printers"),
+  updatePrintSettings: (input: UpdatePrintSettingsInput) =>
+    request<PrintingPayload["defaults"]>("/api/printing/settings", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    }),
   printingAssets: () => request<PrintAsset[]>("/api/printing/assets"),
   openPrintingAsset: (id: string) =>
     request<PrintAsset>(`/api/printing/assets/${encodeURIComponent(id)}/open`, { method: "POST" }),
+  printPrintingAsset: (id: string, input?: { printerName?: string }) =>
+    request<PrintAsset>(`/api/printing/assets/${encodeURIComponent(id)}/print`, {
+      method: "POST",
+      body: JSON.stringify(input ?? {})
+    }),
   uploadInstruction: (input: UploadInstructionInput) =>
     request<UploadInstructionResult>("/api/printing/instructions/upload", {
       method: "POST",
@@ -65,7 +78,5 @@ export const api = {
       body: JSON.stringify(input)
     }),
   adjustInstruction: (id: string, input: AdjustInstructionInput) =>
-    request(`/api/printing/instructions/${id}/adjust`, { method: "POST", body: JSON.stringify(input) }),
-  useMatchedInstruction: (input: { sku: string; quantity: number }) =>
-    request("/api/printing/use-matched-instruction", { method: "POST", body: JSON.stringify(input) })
+    request(`/api/printing/instructions/${id}/adjust`, { method: "POST", body: JSON.stringify(input) })
 };

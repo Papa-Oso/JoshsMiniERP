@@ -2,8 +2,10 @@ import express from "express";
 import { z } from "zod";
 import {
   instructionLabelForFilename,
+  listWindowsPrinters,
   listPrintingAssets,
   openPrintingAsset,
+  printPrintingAsset,
   saveUploadedInstructionAsset,
   saveUploadedLabelAsset
 } from "./printingAssets";
@@ -12,8 +14,8 @@ import {
   ensureInstruction,
   getPrintingData,
   updateInstruction,
-  updateSkuInstructionMatch,
-  useMatchedInstruction
+  updatePrintSettings,
+  updateSkuInstructionMatch
 } from "./printingService";
 
 export const printingRouter = express.Router();
@@ -28,11 +30,6 @@ const adjustInstructionSchema = z.object({
   delta: z.coerce.number().int().refine((value) => value !== 0),
   type: z.enum(["print_batch", "package_use", "correction"]).optional(),
   note: z.string().optional()
-});
-
-const useMatchedInstructionSchema = z.object({
-  sku: z.string().min(1),
-  quantity: z.coerce.number().int().min(1)
 });
 
 const updateInstructionMatchSchema = z.discriminatedUnion("mode", [
@@ -54,8 +51,25 @@ const uploadLabelSchema = z.object({
   contentBase64: z.string().min(1)
 });
 
+const printAssetSchema = z.object({
+  printerName: z.string().optional()
+});
+
+const printSettingsSchema = z.object({
+  labelPrinterName: z.string().optional(),
+  instructionPrinterName: z.string().optional()
+});
+
 printingRouter.get("/", asyncHandler(async (_req, res) => {
   res.json(await getPrintingData());
+}));
+
+printingRouter.get("/printers", asyncHandler(async (_req, res) => {
+  res.json(await listWindowsPrinters());
+}));
+
+printingRouter.patch("/settings", asyncHandler(async (req, res) => {
+  res.json(await updatePrintSettings(printSettingsSchema.parse(req.body ?? {})));
 }));
 
 printingRouter.get("/assets", asyncHandler(async (_req, res) => {
@@ -64,6 +78,11 @@ printingRouter.get("/assets", asyncHandler(async (_req, res) => {
 
 printingRouter.post("/assets/:id/open", asyncHandler(async (req, res) => {
   res.json(await openPrintingAsset(routeParam(req.params.id)));
+}));
+
+printingRouter.post("/assets/:id/print", asyncHandler(async (req, res) => {
+  const input = printAssetSchema.parse(req.body ?? {});
+  res.json(await printPrintingAsset(routeParam(req.params.id), input.printerName));
 }));
 
 printingRouter.post("/instructions/upload", asyncHandler(async (req, res) => {
@@ -101,11 +120,6 @@ printingRouter.patch("/instruction-matches/:sku", asyncHandler(async (req, res) 
 
 printingRouter.post("/instructions/:id/adjust", asyncHandler(async (req, res) => {
   res.json(await adjustInstruction(routeParam(req.params.id), adjustInstructionSchema.parse(req.body)));
-}));
-
-printingRouter.post("/use-matched-instruction", asyncHandler(async (req, res) => {
-  const input = useMatchedInstructionSchema.parse(req.body);
-  res.json(await useMatchedInstruction(input.sku, input.quantity));
 }));
 
 function asyncHandler(

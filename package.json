@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/**/*.test.ts",
     "test:postgres": "tsx --test tests/postgresStore.test.ts",
+    "check": "npm run build && npm test && npm run shopify:typecheck",
     "start": "tsx src/server/index.ts",
     "inv": "tsx src/server/cli.ts",
     "shopify": "shopify",
@@ -20,7 +21,8 @@
     "shopify:env": "cd shopify-app/joshs-mini-erp && npm run env",
     "shopify:export-session": "cd shopify-app/joshs-mini-erp && npm run export-session",
     "shopify:typecheck": "cd shopify-app/joshs-mini-erp && npm run typecheck",
-    "audit": "npm audit"
+    "audit": "npm audit",
+    "audit:all": "npm audit --audit-level=moderate && cd shopify-app/joshs-mini-erp && npm audit --audit-level=moderate"
   },
   "keywords": [
     "inventory",

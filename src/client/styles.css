@@ -126,7 +126,11 @@ h2 {
 }
 
 .settings-button {
-  align-self: stretch;
+  align-self: center;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
 }
 
 .tool-trigger {
@@ -369,6 +373,47 @@ h2 {
   color: var(--cyan);
 }
 
+.inventory-panel > .panel-header,
+.item-create-panel > .panel-header,
+.printing-label-panel > .panel-header {
+  height: auto;
+  min-height: 54px;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(199, 188, 228, 0.14);
+}
+
+.inventory-panel > .panel-header > span,
+.item-create-panel > .panel-header > span,
+.printing-label-panel > .panel-header > span,
+.review-mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 230, 107, 0.54);
+  border-radius: 8px;
+  color: #10081f;
+}
+
+.inventory-panel > .panel-header > span {
+  background: linear-gradient(135deg, rgba(85, 247, 255, 0.92), rgba(109, 255, 181, 0.84));
+}
+
+.item-create-panel > .panel-header > span {
+  background: linear-gradient(135deg, rgba(255, 75, 225, 0.9), rgba(255, 230, 107, 0.84));
+}
+
+.item-create-panel > .panel-header .icon-button {
+  margin-left: auto;
+}
+
+.printing-label-panel > .panel-header > span {
+  background: linear-gradient(135deg, rgba(109, 255, 181, 0.9), rgba(85, 247, 255, 0.82));
+}
+
 .review-tool {
   display: grid;
   gap: var(--panel-gap);
@@ -397,14 +442,7 @@ h2 {
 }
 
 .review-mark {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border: 1px solid rgba(255, 230, 107, 0.54);
-  border-radius: 8px;
   background: linear-gradient(135deg, rgba(255, 230, 107, 0.9), rgba(85, 247, 255, 0.82));
-  color: #10081f;
 }
 
 .review-form {
@@ -433,7 +471,8 @@ h2 {
 }
 
 .review-action-row {
-  grid-template-columns: minmax(220px, 0.6fr) auto auto;
+  grid-template-columns: repeat(3, minmax(130px, auto));
+  justify-content: start;
 }
 
 .review-check {
@@ -451,10 +490,6 @@ h2 {
   width: 42px;
   min-height: 24px;
   accent-color: var(--pink);
-}
-
-.review-segmented {
-  margin: 0;
 }
 
 .danger-button {
@@ -685,6 +720,16 @@ h2 {
   grid-template-columns: minmax(520px, 1fr) minmax(320px, 0.5fr);
 }
 
+.printing-side-stack {
+  display: grid;
+  gap: var(--panel-gap);
+  align-content: start;
+}
+
+.settings-button[aria-expanded="true"] {
+  border-color: var(--line-hot);
+}
+
 .printing-form-grid {
   display: grid;
   gap: 8px;
@@ -697,7 +742,8 @@ h2 {
 }
 
 .printing-label-panel,
-.instruction-template-panel {
+.instruction-document-panel,
+.instruction-inventory-panel {
   display: grid;
   align-content: start;
   gap: 10px;
@@ -728,6 +774,13 @@ h2 {
   font-size: 1rem;
 }
 
+.instruction-match-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
 .print-asset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -752,6 +805,13 @@ h2 {
 
 .print-asset-card.neutral-empty {
   border-color: rgba(255, 230, 107, 0.28);
+}
+
+.print-asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
 }
 
 .print-asset-card span {
@@ -993,19 +1053,95 @@ h2 {
   color: var(--green);
 }
 
-.instruction-print-controls {
-  grid-template-columns: minmax(180px, 1fr) 90px 120px auto;
+.instruction-document-controls {
+  grid-template-columns: minmax(180px, 1fr) auto;
 }
 
-.template-editor-grid {
+.instruction-print-controls {
+  grid-template-columns: minmax(90px, 120px) minmax(100px, 120px) auto;
+  justify-content: start;
+}
+
+.instruction-print-total {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+.instruction-print-total strong {
+  color: var(--green);
+}
+
+.label-print-controls {
+  grid-template-columns: minmax(180px, 1fr) minmax(90px, 120px) auto auto;
+}
+
+.instruction-adjust-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 110px auto;
+  gap: 10px;
+  border: 1px solid rgba(85, 247, 255, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(6, 5, 17, 0.54);
+}
+
+.selected-instruction-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+.selected-instruction-summary span {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.selected-instruction-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-instruction-summary span:last-child {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--yellow);
+}
+
+.instruction-adjust-controls {
+  grid-template-columns: minmax(90px, 120px) auto auto;
+  justify-content: start;
+}
+
+.instruction-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) auto;
   gap: 8px;
   align-items: end;
+  justify-content: start;
 }
 
-.template-body-field {
-  grid-column: 1 / -1;
+.instruction-settings-grid label {
+  margin-bottom: 0;
+}
+
+.printer-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr);
+  gap: 8px;
+}
+
+.printer-settings-grid label {
+  margin-bottom: 0;
+}
+
+.printer-settings-grid .icon-button {
+  justify-self: start;
 }
 
 .print-event-row {
@@ -1103,6 +1239,13 @@ textarea {
   background: linear-gradient(135deg, rgba(255, 75, 225, 0.92), rgba(85, 247, 255, 0.82));
   color: #10081f;
   text-shadow: none;
+}
+
+.icon-button:disabled,
+.segmented button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  filter: saturate(0.65);
 }
 
 .danger-button {
@@ -1399,10 +1542,6 @@ tbody tr.selected {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-bottom: 10px;
-}
-
-.review-action-row .review-segmented {
-  margin-bottom: 0;
 }
 
 .switch-row {
@@ -1775,15 +1914,37 @@ tbody tr.selected {
   .item-create-grid,
   .item-print-setup,
   .item-setup-row,
+  .instruction-document-controls,
   .instruction-print-controls,
+  .instruction-adjust-controls,
   .printing-form-grid,
-  .template-editor-grid,
+  .instruction-match-row,
+  .instruction-settings-grid,
+  .print-event-row,
   .review-action-row,
   .review-options,
   .grid,
   .lower-grid,
   .create-form {
     grid-template-columns: 1fr;
+  }
+
+  .print-asset-card,
+  .selected-instruction-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .print-asset-actions {
+    justify-content: stretch;
+  }
+
+  .print-asset-actions .icon-button {
+    flex: 1 1 120px;
+  }
+
+  .selected-instruction-summary span:last-child {
+    grid-row: auto;
+    grid-column: auto;
   }
 
   .grid {

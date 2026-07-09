@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Box, ExternalLink, FileText, FolderOpen, PackageMinus, Printer, Save, Tags, Upload } from "lucide-react";
+import { Box, ExternalLink, FileText, FolderOpen, Minus, Plus, Printer, Settings, Tags, Upload, X } from "lucide-react";
 import { api } from "./api";
-import type { DashboardPayload, InventoryItem, PrintAsset, PrintInstruction, PrintingPayload } from "../shared/types";
+import type { DashboardPayload, InventoryItem, PrintAsset, PrintInstruction, PrinterInfo, PrintingPayload } from "../shared/types";
 
 const emptyPrinting: PrintingPayload = {
   instructions: [],
@@ -14,44 +14,48 @@ const emptyPrinting: PrintingPayload = {
   instructionMatches: []
 };
 
-type DraftMap = Record<string, { title: string; body: string; lowAlert: number }>;
+type InstructionSettingsMap = Record<string, { lowAlert: number }>;
+type NoticeTarget = "labels" | "documents" | "inventory";
 
-export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
+export function PrintingPage({
+  dashboard,
+  printSettingsOpen,
+  onPrintSettingsClose
+}: {
+  dashboard: DashboardPayload;
+  printSettingsOpen: boolean;
+  onPrintSettingsClose: () => void;
+}) {
   const [printing, setPrinting] = useState<PrintingPayload>(emptyPrinting);
   const [assets, setAssets] = useState<PrintAsset[]>([]);
-  const [drafts, setDrafts] = useState<DraftMap>({});
+  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
+  const [instructionSettings, setInstructionSettings] = useState<InstructionSettingsMap>({});
+  const [printerSettings, setPrinterSettings] = useState({
+    labelPrinterName: "",
+    instructionPrinterName: ""
+  });
+  const [printersLoading, setPrintersLoading] = useState(false);
   const [selectedLabelItemId, setSelectedLabelItemId] = useState("");
-  const [selectedInstructionItemId, setSelectedInstructionItemId] = useState("");
   const [labelCount, setLabelCount] = useState(15);
   const [instructionId, setInstructionId] = useState("");
   const [instructionPages, setInstructionPages] = useState(10);
-  const [packageCount, setPackageCount] = useState(1);
+  const [inventoryAdjustment, setInventoryAdjustment] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [labelNotice, setLabelNotice] = useState("");
+  const [documentNotice, setDocumentNotice] = useState("");
+  const [inventoryNotice, setInventoryNotice] = useState("");
+  const [settingsNotice, setSettingsNotice] = useState("");
 
-  const labelItems = useMemo(
-    () => dashboard.items.filter((item) => Boolean(findLabelAsset(assets, item.sku))),
-    [assets, dashboard.items]
-  );
-  const instructionItems = useMemo(
-    () => dashboard.items.filter((item) => Boolean(resolveInstructionForSku(printing, item.sku))),
-    [dashboard.items, printing]
-  );
+  const labelItems = useMemo(() => dashboard.items, [dashboard.items]);
   const selectedItem = labelItems.find((item) => item.id === selectedLabelItemId) ?? labelItems[0] ?? null;
-  const selectedInstructionItem =
-    instructionItems.find((item) => item.id === selectedInstructionItemId) ??
-    instructionItems.find((item) => item.id === selectedItem?.id) ??
-    instructionItems[0] ??
-    null;
   const selectedInstruction =
     printing.instructions.find((instruction) => instruction.id === instructionId) ?? printing.instructions[0] ?? null;
   const matchedInstruction = selectedItem ? resolveInstructionForSku(printing, selectedItem.sku) : undefined;
   const instructionMatchValue = selectedItem ? instructionMatchValueFor(printing, selectedItem.sku) : "auto";
   const instructionMatchMode = selectedItem ? getInstructionMatch(printing, selectedItem.sku)?.mode ?? "auto" : "auto";
   const selectedLabelAsset = selectedItem ? findLabelAsset(assets, selectedItem.sku) : undefined;
-  const matchedInstructionAsset = matchedInstruction ? findInstructionAsset(assets, matchedInstruction.id) : undefined;
   const selectedInstructionAsset = selectedInstruction ? findInstructionAsset(assets, selectedInstruction.id) : undefined;
-  const printableInserts = selectedInstruction ? instructionPages * selectedInstruction.perPage : 0;
+  const printedInstructionCount = selectedInstruction ? instructionPages * selectedInstruction.perPage : 0;
   const recentEvents = printing.events.slice(0, 8);
 
   const lowCount = useMemo(
@@ -61,22 +65,13 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
 
   useEffect(() => {
     void loadPrinting();
+    void loadPrinters();
   }, []);
 
   useEffect(() => {
     if (selectedLabelItemId && labelItems.some((item) => item.id === selectedLabelItemId)) return;
     if (labelItems[0]) setSelectedLabelItemId(labelItems[0].id);
   }, [labelItems, selectedLabelItemId]);
-
-  useEffect(() => {
-    if (
-      selectedInstructionItemId &&
-      instructionItems.some((item) => item.id === selectedInstructionItemId)
-    ) {
-      return;
-    }
-    if (instructionItems[0]) setSelectedInstructionItemId(instructionItems[0].id);
-  }, [instructionItems, selectedInstructionItemId]);
 
   useEffect(() => {
     if (printing.defaults.labelBatchSize) setLabelCount(printing.defaults.labelBatchSize);
@@ -88,60 +83,68 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
     const [data, assetData] = await Promise.all([api.printing(), api.printingAssets()]);
     setPrinting(data);
     setAssets(assetData);
-    setDrafts(Object.fromEntries(data.instructions.map((instruction) => [instruction.id, draftFor(instruction)])));
+    setPrinterSettings({
+      labelPrinterName: data.defaults.labelPrinterName ?? "",
+      instructionPrinterName: data.defaults.instructionPrinterName ?? ""
+    });
+    setInstructionSettings(
+      Object.fromEntries(data.instructions.map((instruction) => [instruction.id, settingsFor(instruction)]))
+    );
   }
 
-  async function runAction(action: () => Promise<unknown>, success: string) {
+  async function loadPrinters() {
+    setPrintersLoading(true);
+    try {
+      setPrinters(await api.printers());
+    } catch (error) {
+      setSettingsNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPrintersLoading(false);
+    }
+  }
+
+  async function runAction(action: () => Promise<unknown>, success: string, noticeTarget: NoticeTarget = "labels") {
     setBusy(true);
-    setNotice("");
+    setLabelNotice("");
+    setDocumentNotice("");
+    setInventoryNotice("");
+    setSettingsNotice("");
     try {
       await action();
       await loadPrinting();
-      setNotice(success);
+      setPaneNotice(noticeTarget, success);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setPaneNotice(noticeTarget, error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
   }
 
-  async function saveInstruction(instruction: PrintInstruction) {
-    const draft = drafts[instruction.id] ?? draftFor(instruction);
+  async function saveInstructionSettings(instruction: PrintInstruction) {
+    const settings = instructionSettings[instruction.id] ?? settingsFor(instruction);
     await runAction(
       () =>
         api.updateInstruction(instruction.id, {
-          title: draft.title,
-          body: draft.body,
-          lowAlert: Number(draft.lowAlert)
+          lowAlert: Number(settings.lowAlert)
         }),
-      "Instruction template saved."
+      "Instruction alert saved.",
+      "inventory"
     );
   }
 
-  async function printInstructionBatch() {
+  async function adjustSelectedInstruction(direction: 1 | -1) {
     if (!selectedInstruction) return;
-    const draft = drafts[selectedInstruction.id] ?? draftFor(selectedInstruction);
-    openInstructionPrintWindow({
-      ...selectedInstruction,
-      title: draft.title,
-      body: draft.body
-    }, instructionPages);
+    const count = Math.max(1, Math.trunc(Number(inventoryAdjustment)));
+    const delta = direction * count;
     await runAction(
       () =>
         api.adjustInstruction(selectedInstruction.id, {
-          delta: printableInserts,
-          type: "print_batch",
-          note: `${instructionPages} page batch`
+          delta,
+          type: "correction",
+          note: direction > 0 ? "Manual add" : "Manual remove"
         }),
-      `Added ${printableInserts} instruction inserts.`
-    );
-  }
-
-  async function useForSelectedSku() {
-    if (!selectedInstructionItem) return;
-    await runAction(
-      () => api.useMatchedInstruction({ sku: selectedInstructionItem.sku, quantity: packageCount }),
-      "Instruction inventory reduced."
+      `${direction > 0 ? "Added" : "Removed"} ${count} ${selectedInstruction.label} instruction${count === 1 ? "" : "s"}.`,
+      "inventory"
     );
   }
 
@@ -156,7 +159,7 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
   async function uploadInstructionFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !selectedItem) return;
+    if (!file || !selectedInstruction) return;
 
     const contentBase64 = await fileToBase64(file);
     await runAction(
@@ -164,26 +167,110 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
         api.uploadInstruction({
           filename: file.name,
           contentBase64,
-          label: instructionLabelFromSku(selectedItem),
-          sku: selectedItem.sku
+          label: selectedInstruction.label
         }),
-      "Instruction uploaded and matched."
+      "Instruction document uploaded.",
+      "documents"
     );
   }
 
-  async function openAsset(asset: PrintAsset | undefined) {
-    if (!asset) return;
-    await runAction(() => api.openPrintingAsset(asset.id), `Opened ${asset.filename}.`);
+  async function uploadLabelFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !selectedItem) return;
+
+    const contentBase64 = await fileToBase64(file);
+    await runAction(
+      () =>
+        api.uploadLabel({
+          sku: selectedItem.sku,
+          filename: file.name,
+          contentBase64
+        }),
+      "Label uploaded."
+    );
   }
 
-  function updateDraft(id: string, patch: Partial<DraftMap[string]>) {
-    setDrafts((current) => ({
+  async function printInstructionBatch() {
+    if (!selectedInstruction || !selectedInstructionAsset) return;
+    const pages = Math.max(1, Math.trunc(Number(instructionPages)));
+    const instructions = pages * selectedInstruction.perPage;
+    const printerName = printerForAsset(selectedInstructionAsset);
+
+    await runAction(
+      async () => {
+        await api.printPrintingAsset(selectedInstructionAsset.id, { printerName });
+        await api.adjustInstruction(selectedInstruction.id, {
+          delta: instructions,
+          type: "print_batch",
+          note: `${pages} printed page${pages === 1 ? "" : "s"}`
+        });
+      },
+      `Sent ${selectedInstructionAsset.filename} to ${printerLabel(printerName)} and added ${instructions} ${selectedInstruction.label} instruction${instructions === 1 ? "" : "s"}.`,
+      "documents"
+    );
+  }
+
+  async function openAsset(asset: PrintAsset | undefined, noticeTarget: NoticeTarget = "labels") {
+    if (!asset) return;
+    await runAction(() => api.openPrintingAsset(asset.id), `Opened ${asset.filename}.`, noticeTarget);
+  }
+
+  async function printAsset(asset: PrintAsset | undefined, noticeTarget: NoticeTarget = "documents") {
+    if (!asset) return;
+    const printerName = printerForAsset(asset);
+    await runAction(
+      () => api.printPrintingAsset(asset.id, { printerName }),
+      `Sent ${asset.filename} to ${printerLabel(printerName)}.`,
+      noticeTarget
+    );
+  }
+
+  async function savePrinterSettings() {
+    setBusy(true);
+    setLabelNotice("");
+    setDocumentNotice("");
+    setInventoryNotice("");
+    setSettingsNotice("");
+    try {
+      await api.updatePrintSettings(printerSettings);
+      await loadPrinting();
+      setSettingsNotice("Print settings saved.");
+    } catch (error) {
+      setSettingsNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function setPaneNotice(noticeTarget: NoticeTarget, message: string) {
+    if (noticeTarget === "documents") {
+      setDocumentNotice(message);
+      return;
+    }
+    if (noticeTarget === "inventory") {
+      setInventoryNotice(message);
+      return;
+    }
+    setLabelNotice(message);
+  }
+
+  function updateInstructionSettings(id: string, patch: Partial<InstructionSettingsMap[string]>) {
+    setInstructionSettings((current) => ({
       ...current,
       [id]: {
-        ...(current[id] ?? { title: "", body: "", lowAlert: 0 }),
+        ...(current[id] ?? { lowAlert: 0 }),
         ...patch
       }
     }));
+  }
+
+  function printerForAsset(asset: PrintAsset) {
+    return asset.kind === "label" ? printing.defaults.labelPrinterName : printing.defaults.instructionPrinterName;
+  }
+
+  function printerLabel(printerName?: string) {
+    return printerName ? printerName : "the default printer";
   }
 
   return (
@@ -194,7 +281,7 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
             <span><Tags size={18} /></span>
             <h2>Product Labels</h2>
           </header>
-          <div className="printing-form-grid">
+          <div className="printing-form-grid label-print-controls">
             <label>
               SKU
               <select value={selectedItem?.id ?? ""} onChange={(event) => setSelectedLabelItemId(event.target.value)}>
@@ -218,17 +305,36 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
             <button
               className="icon-button primary full"
               type="button"
-              disabled={!selectedItem || !selectedLabelAsset}
+              disabled={!selectedItem || busy}
               onClick={() => selectedItem && openLabelPrintWindow(selectedItem, labelCount, matchedInstruction?.label)}
             >
               <Printer size={18} />
               Print Labels
             </button>
+            <label className={`icon-button upload-button ${!selectedItem || busy ? "disabled" : ""}`}>
+              <Upload size={18} />
+              Upload
+              <input
+                type="file"
+                accept=".doc,.docx,.pdf,.xls,.xlsx,.xlsm"
+                disabled={!selectedItem || busy}
+                onChange={(event) => void uploadLabelFile(event)}
+              />
+            </label>
+          </div>
+          <div className="print-asset-grid">
+            <AssetCard
+              label="Label Doc"
+              asset={selectedLabelAsset}
+              emptyText={labelItems.length ? "No matching doc" : "No inventory items"}
+              onOpen={() => void openAsset(selectedLabelAsset, "labels")}
+              onPrint={() => void printAsset(selectedLabelAsset, "labels")}
+            />
           </div>
           <div className="instruction-match-card">
             <div className="instruction-match-row">
               <label>
-                Instructions
+                Instruction Match
                 <select
                   value={instructionMatchValue}
                   disabled={!selectedItem || busy}
@@ -243,101 +349,23 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
                   ))}
                 </select>
               </label>
-              <label className={`icon-button upload-button ${!selectedItem || busy ? "disabled" : ""}`}>
-                <Upload size={18} />
-                Upload
-                <input
-                  type="file"
-                  accept=".doc,.docx,.pdf,.xls,.xlsx,.xlsm"
-                  disabled={!selectedItem || busy}
-                  onChange={(event) => void uploadInstructionFile(event)}
-                />
-              </label>
             </div>
-            <span>Current Match</span>
+            <span>Current Instruction</span>
             <strong>
               {instructionMatchMode === "none" ? "No instructions" : matchedInstruction?.label ?? "No match"}
             </strong>
           </div>
-          <div className="print-asset-grid">
-            <AssetCard
-              label="Label Doc"
-              asset={selectedLabelAsset}
-              emptyText={labelItems.length ? "No matching doc" : "No label docs"}
-              onOpen={() => void openAsset(selectedLabelAsset)}
-            />
-            <AssetCard
-              label="Instruction Doc"
-              asset={matchedInstructionAsset}
-              emptyText="No matching doc"
-              onOpen={() => void openAsset(matchedInstructionAsset)}
-            />
-          </div>
-          <div className="printing-form-grid">
-            <label>
-              Instruction SKU
-              <select
-                value={selectedInstructionItem?.id ?? ""}
-                onChange={(event) => setSelectedInstructionItemId(event.target.value)}
-              >
-                {instructionItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.sku} - {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Packages
-              <input
-                type="number"
-                min="1"
-                max="250"
-                value={packageCount}
-                onChange={(event) => setPackageCount(Math.max(1, Number(event.target.value)))}
-              />
-            </label>
-            <button className="icon-button" type="button" disabled={!selectedInstructionItem || busy} onClick={useForSelectedSku}>
-              <PackageMinus size={18} />
-              Use Matched
-            </button>
-          </div>
-          {notice ? <p className="notice">{notice}</p> : null}
+          {labelNotice ? <p className="notice">{labelNotice}</p> : null}
         </PanelFrame>
 
-        <PanelFrame>
-          <header className="panel-header">
-            <span><Box size={18} /></span>
-            <h2>Print Activity</h2>
-          </header>
-          <div className="print-event-list">
-            {recentEvents.map((event) => {
-              const instruction = printing.instructions.find((item) => item.id === event.instructionId);
-              return (
-                <div className="print-event-row" key={event.id}>
-                  <span>{instruction?.label ?? event.instructionId}</span>
-                  <strong className={event.delta < 0 ? "danger" : "ok"}>
-                    {event.delta > 0 ? `+${event.delta}` : event.delta}
-                  </strong>
-                  <span>{event.note ?? event.type.replaceAll("_", " ")}</span>
-                  <time>{formatDate(event.createdAt)}</time>
-                </div>
-              );
-            })}
-            {recentEvents.length === 0 ? <div className="empty">No print activity</div> : null}
-          </div>
-        </PanelFrame>
-      </section>
-
-      <section className="printing-main-grid">
-        <PanelFrame className="instruction-template-panel">
+        <PanelFrame className="instruction-document-panel">
           <header className="panel-header">
             <span><Printer size={18} /></span>
-            <h2>Instruction Sheets</h2>
+            <h2>Instruction Documents</h2>
           </header>
           {selectedInstruction ? (
             <>
-              <div className="printing-form-grid instruction-print-controls">
+              <div className="printing-form-grid instruction-document-controls">
                 <label>
                   Type
                   <select value={selectedInstruction.id} onChange={(event) => setInstructionId(event.target.value)}>
@@ -348,6 +376,25 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
                     ))}
                   </select>
                 </label>
+                <label className={`icon-button upload-button ${busy ? "disabled" : ""}`}>
+                  <Upload size={18} />
+                  Upload Doc
+                  <input
+                    type="file"
+                    accept=".doc,.docx,.pdf,.xls,.xlsx,.xlsm"
+                    disabled={busy}
+                    onChange={(event) => void uploadInstructionFile(event)}
+                  />
+                </label>
+              </div>
+              <div className="print-asset-grid">
+                <AssetCard
+                  label="Source Doc"
+                  asset={selectedInstructionAsset}
+                  onOpen={() => void openAsset(selectedInstructionAsset, "documents")}
+                />
+              </div>
+              <div className="printing-form-grid instruction-print-controls">
                 <label>
                   Pages
                   <input
@@ -358,58 +405,30 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
                     onChange={(event) => setInstructionPages(Math.max(1, Number(event.target.value)))}
                   />
                 </label>
-                <div className="instruction-match-card">
-                  <span>Will Add</span>
-                  <strong>{printableInserts}</strong>
+                <div className="instruction-match-card instruction-print-total">
+                  <span>Adds</span>
+                  <strong>{printedInstructionCount}</strong>
                 </div>
-                <button className="icon-button primary full" type="button" disabled={busy} onClick={printInstructionBatch}>
+                <button
+                  className="icon-button primary full"
+                  type="button"
+                  disabled={!selectedInstructionAsset || busy}
+                  onClick={printInstructionBatch}
+                >
                   <Printer size={18} />
                   Print + Add
                 </button>
               </div>
-              <div className="print-asset-grid">
-                <AssetCard
-                  label="Source Doc"
-                  asset={selectedInstructionAsset}
-                  onOpen={() => void openAsset(selectedInstructionAsset)}
-                />
-              </div>
-              <div className="template-editor-grid">
-                <label>
-                  Title
-                  <input
-                    value={drafts[selectedInstruction.id]?.title ?? selectedInstruction.title}
-                    onChange={(event) => updateDraft(selectedInstruction.id, { title: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Low Alert
-                  <input
-                    type="number"
-                    min="0"
-                    value={drafts[selectedInstruction.id]?.lowAlert ?? selectedInstruction.lowAlert}
-                    onChange={(event) => updateDraft(selectedInstruction.id, { lowAlert: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="template-body-field">
-                  Body
-                  <textarea
-                    value={drafts[selectedInstruction.id]?.body ?? selectedInstruction.body}
-                    onChange={(event) => updateDraft(selectedInstruction.id, { body: event.target.value })}
-                  />
-                </label>
-                <button className="icon-button" type="button" disabled={busy} onClick={() => saveInstruction(selectedInstruction)}>
-                  <Save size={18} />
-                  Save Template
-                </button>
-              </div>
+              {documentNotice ? <p className="notice">{documentNotice}</p> : null}
             </>
           ) : (
             <div className="empty">No instruction types</div>
           )}
         </PanelFrame>
+      </section>
 
-        <PanelFrame>
+      <section className="printing-main-grid">
+        <PanelFrame className="instruction-inventory-panel">
           <header className="panel-header">
             <span><FileText size={18} /></span>
             <h2>Instruction Inventory</h2>
@@ -422,6 +441,52 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
               value={printing.instructions.reduce((sum, instruction) => sum + instruction.onHand, 0)}
             />
           </div>
+          {selectedInstruction ? (
+            <div className="instruction-adjust-card">
+              <div className="selected-instruction-summary">
+                <span>Selected</span>
+                <strong>{selectedInstruction.label}</strong>
+                <span>On hand: {selectedInstruction.onHand}</span>
+              </div>
+              <div className="printing-form-grid instruction-adjust-controls">
+                <label>
+                  Adjust
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={inventoryAdjustment}
+                    onChange={(event) => setInventoryAdjustment(Math.max(1, Number(event.target.value)))}
+                  />
+                </label>
+                <button className="icon-button primary" type="button" disabled={busy} onClick={() => void adjustSelectedInstruction(1)}>
+                  <Plus size={18} />
+                  Add
+                </button>
+                <button className="icon-button danger-button" type="button" disabled={busy} onClick={() => void adjustSelectedInstruction(-1)}>
+                  <Minus size={18} />
+                  Remove
+                </button>
+              </div>
+              <div className="instruction-settings-grid">
+                <label>
+                  Low Alert
+                  <input
+                    type="number"
+                    min="0"
+                    value={instructionSettings[selectedInstruction.id]?.lowAlert ?? selectedInstruction.lowAlert}
+                    onChange={(event) =>
+                      updateInstructionSettings(selectedInstruction.id, { lowAlert: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                <button className="icon-button" type="button" disabled={busy} onClick={() => saveInstructionSettings(selectedInstruction)}>
+                  <FileText size={18} />
+                  Save Alert
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="instruction-inventory-list">
             {printing.instructions.map((instruction) => (
               <button
@@ -435,8 +500,95 @@ export function PrintingPage({ dashboard }: { dashboard: DashboardPayload }) {
               </button>
             ))}
           </div>
+          {inventoryNotice ? <p className="notice">{inventoryNotice}</p> : null}
         </PanelFrame>
+
+        <section className="printing-side-stack">
+          <PanelFrame>
+            <header className="panel-header">
+              <span><Box size={18} /></span>
+              <h2>Print Activity</h2>
+            </header>
+            <div className="print-event-list">
+              {recentEvents.map((event) => {
+                const instruction = printing.instructions.find((item) => item.id === event.instructionId);
+                return (
+                  <div className="print-event-row" key={event.id}>
+                    <span>{instruction?.label ?? event.instructionId}</span>
+                    <strong className={event.delta < 0 ? "danger" : "ok"}>
+                      {event.delta > 0 ? `+${event.delta}` : event.delta}
+                    </strong>
+                    <span>{event.note ?? event.type.replaceAll("_", " ")}</span>
+                    <time>{formatDate(event.createdAt)}</time>
+                  </div>
+                );
+              })}
+              {recentEvents.length === 0 ? <div className="empty">No print activity</div> : null}
+            </div>
+          </PanelFrame>
+        </section>
       </section>
+
+      {printSettingsOpen ? (
+        <div className="modal-backdrop" role="presentation" onMouseDown={onPrintSettingsClose}>
+          <section
+            className="settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="print-settings-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="settings-modal-header">
+              <div>
+                <h2 id="print-settings-title">Print Settings</h2>
+                <p>Labels + instruction printers</p>
+              </div>
+              <button className="icon-button" type="button" aria-label="Close print settings" onClick={onPrintSettingsClose}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className="printer-settings-grid">
+              <label>
+                Label Printer
+                <select
+                  value={printerSettings.labelPrinterName}
+                  onChange={(event) =>
+                    setPrinterSettings((current) => ({ ...current, labelPrinterName: event.target.value }))
+                  }
+                >
+                  <option value="">{printersLoading ? "Loading printers..." : "Windows default"}</option>
+                  {printers.map((printer) => (
+                    <option key={printer.name} value={printer.name}>
+                      {printer.name}{printer.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Instruction Printer
+                <select
+                  value={printerSettings.instructionPrinterName}
+                  onChange={(event) =>
+                    setPrinterSettings((current) => ({ ...current, instructionPrinterName: event.target.value }))
+                  }
+                >
+                  <option value="">{printersLoading ? "Loading printers..." : "Windows default"}</option>
+                  {printers.map((printer) => (
+                    <option key={printer.name} value={printer.name}>
+                      {printer.name}{printer.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="icon-button primary" type="button" disabled={busy} onClick={savePrinterSettings}>
+                <Settings size={18} />
+                Save Printers
+              </button>
+            </div>
+            {settingsNotice ? <p className="notice">{settingsNotice}</p> : null}
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -459,13 +611,15 @@ function AssetCard({
   asset,
   emptyText = "No matching doc",
   neutralEmpty = false,
-  onOpen
+  onOpen,
+  onPrint
 }: {
   label: string;
   asset?: PrintAsset;
   emptyText?: string;
   neutralEmpty?: boolean;
   onOpen: () => void;
+  onPrint?: () => void;
 }) {
   return (
     <div className={`print-asset-card ${asset ? "" : neutralEmpty ? "neutral-empty" : "missing"}`}>
@@ -473,18 +627,24 @@ function AssetCard({
         <span>{label}</span>
         <strong>{asset?.displayName ?? emptyText}</strong>
       </div>
-      <button className="icon-button" type="button" disabled={!asset} onClick={onOpen}>
-        {asset ? <FolderOpen size={18} /> : <ExternalLink size={18} />}
-        Open
-      </button>
+      <div className="print-asset-actions">
+        <button className="icon-button" type="button" disabled={!asset} onClick={onOpen}>
+          {asset ? <FolderOpen size={18} /> : <ExternalLink size={18} />}
+          Open
+        </button>
+        {onPrint ? (
+          <button className="icon-button primary" type="button" disabled={!asset} onClick={onPrint}>
+            <Printer size={18} />
+            Print
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function draftFor(instruction: PrintInstruction) {
+function settingsFor(instruction: PrintInstruction) {
   return {
-    title: instruction.title,
-    body: instruction.body,
     lowAlert: instruction.lowAlert
   };
 }
@@ -551,14 +711,6 @@ function findInstructionAsset(assets: PrintAsset[], instructionId: string) {
   return assets.find((asset) => asset.kind === "instruction" && asset.instructionId === instructionId);
 }
 
-function instructionLabelFromSku(item: InventoryItem) {
-  const parts = item.sku.toUpperCase().split("-").filter(Boolean);
-  const family = parts[1];
-  if (family === "Z3" && parts.includes("VISOR")) return "Z3 Visor";
-  if (family === "Z3" && (parts.includes("SEATBELT") || parts.includes("SEAT"))) return "Z3 Seat Clips";
-  return family || item.name;
-}
-
 function fileToBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -595,42 +747,6 @@ function openLabelPrintWindow(item: InventoryItem, count: number, instructionLab
           `
         )
         .join("")}
-    `
-  );
-}
-
-function openInstructionPrintWindow(instruction: PrintInstruction, pages: number) {
-  const pageMarkup = Array.from({ length: pages }, () => instruction)
-    .map(
-      () => `
-        <section class="sheet">
-          ${Array.from({ length: instruction.perPage }, () => instruction)
-            .map(
-              () => `
-                <article class="card">
-                  <h1>${escapeHtml(instruction.title || instruction.label)}</h1>
-                  <p>${escapeHtml(instruction.body || "").replaceAll("\n", "<br>")}</p>
-                </article>
-              `
-            )
-            .join("")}
-        </section>
-      `
-    )
-    .join("");
-
-  openPrintWindow(
-    `${instruction.label} Instructions`,
-    `
-      <style>
-        @page { size: letter; margin: 0.35in; }
-        body { margin: 0; font-family: Arial, sans-serif; color: #111; }
-        .sheet { height: 10.3in; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.18in; page-break-after: always; }
-        .card { border: 1px dashed #777; padding: 0.16in; overflow: hidden; }
-        h1 { margin: 0 0 0.1in; font-size: 14pt; }
-        p { margin: 0; font-size: 10pt; line-height: 1.25; white-space: normal; }
-      </style>
-      ${pageMarkup}
     `
   );
 }

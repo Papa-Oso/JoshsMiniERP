@@ -6,8 +6,7 @@ import {
   ExternalLink,
   FileSpreadsheet,
   Loader2,
-  RotateCcw,
-  Search
+  RotateCcw
 } from "lucide-react";
 
 const columns = [
@@ -24,6 +23,7 @@ const columns = [
 ];
 
 type ScanMode = "full" | "incremental";
+type ExportScope = "latest" | "all";
 
 type ReviewRow = {
   feedback_key?: string;
@@ -84,13 +84,18 @@ const emptyResult: ReviewResult = {
   }
 };
 
+function emptyExportMessage(scanMode: ScanMode) {
+  return scanMode === "incremental"
+    ? "No new feedback found. No CSV was created."
+    : "No feedback rows found. No CSV was created.";
+}
+
 export function EbayReviewsPage() {
   const [url, setUrl] = useState("");
   const [maxItems, setMaxItems] = useState(25);
   const [maxPages, setMaxPages] = useState(100);
-  const [scanMode, setScanMode] = useState<ScanMode>("incremental");
   const [allowManualVerification, setAllowManualVerification] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState<ScanMode | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [resetLoading, setResetLoading] = useState(false);
   const [result, setResult] = useState<ReviewResult>(emptyResult);
@@ -102,6 +107,8 @@ export function EbayReviewsPage() {
   }, [result.rows]);
   const latestCount = result.latestRows?.length ?? 0;
   const allCount = result.rows?.length ?? 0;
+  const loading = loadingMode !== null;
+  const canExport = Boolean(url.trim()) && !loading && !historyLoading;
 
   useEffect(() => {
     void loadSavedReviews();
@@ -123,9 +130,14 @@ export function EbayReviewsPage() {
     }
   }
 
-  async function runScrape(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
+  async function scrapeAndDownload(scanMode: ScanMode) {
+    if (!url.trim()) {
+      setError("Enter an eBay URL before exporting.");
+      return;
+    }
+
+    const scope: ExportScope = scanMode === "full" ? "all" : "latest";
+    setLoadingMode(scanMode);
     setError("");
     setResult(emptyResult);
     setLog(["Starting saved eBay browser session", "Checking eBay login before scraping"]);
@@ -155,11 +167,18 @@ export function EbayReviewsPage() {
             : ""
         ].filter(Boolean)
       );
+
+      const rows = scope === "latest" ? payload.latestRows : payload.rows;
+      if (rows?.length) {
+        downloadCsv(rows, scope, payload);
+      } else {
+        setLog((entries) => [...entries, emptyExportMessage(scanMode)]);
+      }
     } catch (caught) {
       setError(errorMessage(caught));
       setLog((entries) => [...entries, "Stopped before export"]);
     } finally {
-      setLoading(false);
+      setLoadingMode(null);
     }
   }
 
@@ -197,13 +216,13 @@ export function EbayReviewsPage() {
     }
   }
 
-  function downloadCsv(rows: ReviewRow[] | undefined, scope: "latest" | "all") {
+  function downloadCsv(rows: ReviewRow[] | undefined, scope: ExportScope, source = result) {
     if (!rows?.length) return;
     const csv = toCsv(rows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = csvFilename(result, scope);
+    link.download = csvFilename(source, scope);
     link.click();
     URL.revokeObjectURL(link.href);
   }
@@ -221,7 +240,7 @@ export function EbayReviewsPage() {
           </div>
         </header>
 
-        <form onSubmit={runScrape} className="review-form">
+        <form onSubmit={(event) => event.preventDefault()} className="review-form">
           <label className="review-field review-url-field">
             <span>eBay URL</span>
             <input
@@ -264,27 +283,13 @@ export function EbayReviewsPage() {
           </div>
 
           <div className="review-action-row">
-            <div className="segmented review-segmented" aria-label="Scan history mode">
-              <button
-                type="button"
-                className={scanMode === "full" ? "active" : ""}
-                onClick={() => setScanMode("full")}
-              >
-                <CheckCircle2 size={16} />
-                Full
-              </button>
-              <button
-                type="button"
-                className={scanMode === "incremental" ? "active" : ""}
-                onClick={() => setScanMode("incremental")}
-              >
-                <Search size={16} />
-                Incremental
-              </button>
-            </div>
-            <button className="icon-button primary" type="submit" disabled={loading}>
-              {loading ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
-              {loading ? "Scraping" : "Scrape"}
+            <button className="icon-button primary" type="button" disabled={!canExport} onClick={() => void scrapeAndDownload("incremental")}>
+              {loadingMode === "incremental" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+              {loadingMode === "incremental" ? "Exporting" : "Incremental CSV"}
+            </button>
+            <button className="icon-button" type="button" disabled={!canExport} onClick={() => void scrapeAndDownload("full")}>
+              {loadingMode === "full" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+              {loadingMode === "full" ? "Exporting" : "Full CSV"}
             </button>
             <button
               type="button"
@@ -320,14 +325,6 @@ export function EbayReviewsPage() {
           <ReviewMetric label="Exact Matches" value={exactCount} />
           <ReviewMetric label="Latest Export" value={latestCount} />
           <ReviewMetric label="Skipped" value={result.history?.skipped_existing_rows ?? 0} />
-          <button className="icon-button primary" onClick={() => downloadCsv(result.latestRows, "latest")} disabled={!latestCount}>
-            <Download size={18} />
-            Latest CSV
-          </button>
-          <button className="icon-button" onClick={() => downloadCsv(result.rows, "all")} disabled={!allCount}>
-            <Download size={18} />
-            All CSV
-          </button>
         </div>
 
         {result.warnings?.length ? (

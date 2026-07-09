@@ -67,6 +67,7 @@ export function App() {
   const [sortField, setSortField] = useState<SortField>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [storeSettingsOpen, setStoreSettingsOpen] = useState(false);
+  const [printSettingsOpen, setPrintSettingsOpen] = useState(false);
   const [schedule, setSchedule] = useState({ enabled: false, intervalMinutes: 60 });
   const [mappingDraft, setMappingDraft] = useState<Partial<Record<Platform, PlatformMapping>>>({});
   const [busy, setBusy] = useState(false);
@@ -262,9 +263,14 @@ export function App() {
                 <Metric label="Global Units" value={stockTotal} />
                 <Metric label="Low Alerts" value={lowStock} tone={lowStock ? "warn" : "ok"} />
               </div>
-              <button className="icon-button settings-button" type="button" onClick={() => setStoreSettingsOpen(true)}>
+              <button
+                className="icon-button settings-button"
+                type="button"
+                aria-label="Store settings"
+                title="Store settings"
+                onClick={() => setStoreSettingsOpen(true)}
+              >
                 <Settings size={18} />
-                Stores
               </button>
             </>
           ) : page === "items" ? (
@@ -273,10 +279,22 @@ export function App() {
               <strong>SKU library</strong>
             </div>
           ) : page === "printing" ? (
-            <div className="tool-summary">
-              <span>Labels + Instructions</span>
-              <strong>Packaging station</strong>
-            </div>
+            <>
+              <div className="tool-summary">
+                <span>Labels + Instructions</span>
+                <strong>Packaging station</strong>
+              </div>
+              <button
+                className="icon-button settings-button"
+                type="button"
+                aria-label="Print settings"
+                aria-expanded={printSettingsOpen}
+                title="Print settings"
+                onClick={() => setPrintSettingsOpen(true)}
+              >
+                <Settings size={18} />
+              </button>
+            </>
           ) : (
             <div className="tool-summary">
               <span>Judge.me CSV</span>
@@ -629,7 +647,11 @@ export function App() {
       ) : page === "items" ? (
         <ItemManagementPage dashboard={dashboard} onDashboardChange={load} />
       ) : page === "printing" ? (
-        <PrintingPage dashboard={activeDashboard} />
+        <PrintingPage
+          dashboard={activeDashboard}
+          printSettingsOpen={printSettingsOpen}
+          onPrintSettingsClose={() => setPrintSettingsOpen(false)}
+        />
       ) : (
         <EbayReviewsPage />
       )}

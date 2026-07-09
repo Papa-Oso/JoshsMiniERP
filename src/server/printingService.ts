@@ -8,6 +8,7 @@ import type {
   PrintInstruction,
   PrintingPayload,
   SkuInstructionMatch,
+  UpdatePrintSettingsInput,
   UpdateInstructionInput
 } from "../shared/types";
 
@@ -24,6 +25,11 @@ const defaultInstructions = (): PrintInstruction[] => [
   makeInstruction("z3-visor", "Z3 Visor", ["Z3", "VISOR"])
 ];
 
+export type InstructionUseResult =
+  | { status: "recorded"; instruction: PrintInstruction }
+  | { status: "none" }
+  | { status: "missing" };
+
 export async function getPrintingData() {
   return readPrintingData();
 }
@@ -38,6 +44,18 @@ export async function updateInstruction(id: string, input: UpdateInstructionInpu
 
     instruction.updatedAt = now();
     return instruction;
+  });
+}
+
+export async function updatePrintSettings(input: UpdatePrintSettingsInput) {
+  return mutatePrintingData((data) => {
+    if (input.labelPrinterName !== undefined) {
+      data.defaults.labelPrinterName = clean(input.labelPrinterName);
+    }
+    if (input.instructionPrinterName !== undefined) {
+      data.defaults.instructionPrinterName = clean(input.instructionPrinterName);
+    }
+    return data.defaults;
   });
 }
 
@@ -99,25 +117,41 @@ export async function adjustInstruction(id: string, input: AdjustInstructionInpu
   return mutatePrintingData((data) => adjustInstructionInData(data, id, delta, type, input.note));
 }
 
-export async function useMatchedInstruction(sku: string, quantity: number) {
+export async function consumeInstructionForSku(
+  sku: string,
+  quantity: number,
+  note?: string
+): Promise<InstructionUseResult> {
   const count = nonNegativeInteger(quantity, "Package count");
   if (count === 0) throw new Error("Package count must be greater than zero.");
 
   return mutatePrintingData((data) => {
-    const instruction = resolveInstructionForSku(data, sku);
-    if (!instruction) throw new Error(`No instruction type matched SKU ${sku}.`);
-    return adjustInstructionInData(data, instruction.id, -count, "package_use", `Packages for ${sku}`);
+    const resolution = resolveInstructionForSku(data, sku);
+    if (resolution.status !== "recorded") return resolution;
+
+    return {
+      status: "recorded" as const,
+      instruction: adjustInstructionInData(
+        data,
+        resolution.instruction.id,
+        -count,
+        "package_use",
+        note ?? `Sale for ${sku}`
+      )
+    };
   });
 }
 
 export function resolveInstructionForSku(data: PrintingPayload, sku: string) {
   const normalizedSku = normalizeExactSku(sku);
   const savedMatch = data.instructionMatches.find((match) => normalizeExactSku(match.sku) === normalizedSku);
-  if (savedMatch?.mode === "none") return undefined;
+  if (savedMatch?.mode === "none") return { status: "none" as const };
   if (savedMatch?.mode === "instruction" && savedMatch.instructionId) {
-    return data.instructions.find((instruction) => instruction.id === savedMatch.instructionId);
+    const instruction = data.instructions.find((candidate) => candidate.id === savedMatch.instructionId);
+    return instruction ? { status: "recorded" as const, instruction } : { status: "missing" as const };
   }
-  return matchInstruction(data.instructions, sku);
+  const instruction = matchInstruction(data.instructions, sku);
+  return instruction ? { status: "recorded" as const, instruction } : { status: "missing" as const };
 }
 
 export function matchInstruction(instructions: PrintInstruction[], sku: string) {
@@ -225,7 +259,9 @@ function normalizePrintingData(value: Partial<PrintingPayload>): PrintingPayload
     events: Array.isArray(value.events) ? value.events.slice(0, 250) : [],
     defaults: {
       ...defaults.defaults,
-      ...(value.defaults ?? {})
+      ...(value.defaults ?? {}),
+      labelPrinterName: clean(value.defaults?.labelPrinterName),
+      instructionPrinterName: clean(value.defaults?.instructionPrinterName)
     }
   };
 }

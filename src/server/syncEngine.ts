@@ -4,6 +4,7 @@ import { platformLabels, platforms } from "../shared/types";
 import { adapterByPlatform, adapters } from "./adapters";
 import type { RemoteQuantity } from "./adapters/types";
 import { makeEvent } from "./inventoryService";
+import { consumeInstructionForSku } from "./printingService";
 import { store } from "./store";
 
 interface PullReading extends RemoteQuantity {
@@ -18,6 +19,11 @@ interface PushTarget {
 
 interface PushSuccess extends PushTarget {
   at: string;
+}
+
+interface InstructionSaleUse {
+  sku: string;
+  units: number;
 }
 
 let activeRun: Promise<SyncRun> | null = null;
@@ -122,7 +128,9 @@ async function applySalesAndPlanPushes(
   const salesByItem = new Map<string, { units: number; notes: string[] }>();
   const pushableMappings = new Set<string>();
 
-  const pushTargets = await store.mutate((data) => {
+  const result = await store.mutate((data) => {
+    const instructionUses: InstructionSaleUse[] = [];
+
     for (const reading of readings) {
       const item = data.items.find((candidate) => candidate.id === reading.itemId);
       const mapping = item?.mappings[reading.platform];
@@ -179,6 +187,7 @@ async function applySalesAndPlanPushes(
       data.events.unshift(
         makeEvent(item, "platform_sale", -sale.units, nextQuantity, "sync", sale.notes.join("; "))
       );
+      instructionUses.push({ sku: item.sku, units: sale.units });
       messages.push(`${item.sku}: subtracted ${sale.units} from platform sales.`);
     }
 
@@ -198,10 +207,41 @@ async function applySalesAndPlanPushes(
     }
 
     data.events = data.events.slice(0, 500);
-    return targets;
+    return { targets, instructionUses };
   });
 
-  return pushTargets;
+  await consumeInstructionsForSales(result.instructionUses, messages, summary);
+
+  return result.targets;
+}
+
+async function consumeInstructionsForSales(
+  instructionUses: InstructionSaleUse[],
+  messages: string[],
+  summary: SyncSummary
+) {
+  for (const usage of instructionUses) {
+    try {
+      const result = await consumeInstructionForSku(
+        usage.sku,
+        usage.units,
+        `Marketplace sale for ${usage.sku}`
+      );
+
+      if (result.status === "recorded") {
+        messages.push(`${usage.sku}: used ${usage.units} ${result.instruction.label} instruction${usage.units === 1 ? "" : "s"}.`);
+        continue;
+      }
+
+      if (result.status === "missing") {
+        summary.warnings += 1;
+        messages.push(`${usage.sku}: no instruction mapping matched; instruction inventory was not changed.`);
+      }
+    } catch (error) {
+      summary.warnings += 1;
+      messages.push(`${usage.sku}: instruction inventory was not changed: ${errorMessage(error)}`);
+    }
+  }
 }
 
 async function pushCanonicalQuantities(

@@ -27,6 +27,21 @@ npm run build
 npm start
 ```
 
+## Quality Checks
+
+Run the standard local checks before committing app changes:
+
+```powershell
+npm run check
+npm run audit:all
+```
+
+`check` runs the root TypeScript/Vite build, the Node test suite, and the embedded Shopify app typecheck. `audit:all` checks both npm dependency trees. The Postgres store test is optional and requires `TEST_POSTGRES_DATABASE_URL`.
+
+## UI Style Guide
+
+Use [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) before changing app screens, buttons, panels, settings, or user-facing workflow copy.
+
 ## Inventory Rules
 
 - Add inventory only in this tool.
@@ -120,6 +135,7 @@ CSV batch import supports these columns:
 - `quantity` or `qty` sets an absolute on-hand count.
 - `add`, `delta`, `adjustment`, or `received` applies a batch quantity change.
 - `safety_stock` or `safety` updates safety stock.
+- `max_inventory`, `max_stock`, or `capacity` updates the visual max inventory level.
 - `note` is saved on inventory events.
 
 Use either an absolute `quantity` or an adjustment column on a row, not both.
@@ -485,3 +501,5 @@ Relevant docs:
 ## Data
 
 Inventory data is stored in `data/inventory.json` by default. Change it with `DATA_FILE` in `.env`.
+
+The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
