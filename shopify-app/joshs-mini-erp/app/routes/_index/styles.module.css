@@ -21,7 +21,7 @@
 
 .content {
   display: grid;
-  gap: 2rem;
+  gap: 1rem;
 }
 
 .form {
@@ -46,28 +46,4 @@
 
 .button {
   padding: 0.4rem;
-}
-
-.list {
-  list-style: none;
-  padding: 0;
-  padding-top: 3rem;
-  margin: 0;
-  display: flex;
-  gap: 2rem;
-}
-
-.list > li {
-  max-width: 20rem;
-  text-align: left;
-}
-
-@media only screen and (max-width: 50rem) {
-  .list {
-    display: block;
-  }
-
-  .list > li {
-    padding-bottom: 1rem;
-  }
 }

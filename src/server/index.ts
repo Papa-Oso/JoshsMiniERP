@@ -8,6 +8,21 @@ import { startScheduler } from "./scheduler";
 const app = express();
 
 app.use(express.json({ limit: "1mb" }));
+app.use("/api", (req, res, next) => {
+  if (!config.apiToken) {
+    next();
+    return;
+  }
+
+  const bearerToken = req.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const headerToken = req.get("x-erp-api-token");
+  if (bearerToken === config.apiToken || headerToken === config.apiToken) {
+    next();
+    return;
+  }
+
+  res.status(401).json({ error: "Unauthorized." });
+});
 app.use("/api", router);
 
 const clientDist = path.resolve("dist/client");
@@ -29,6 +44,6 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 await startScheduler();
 
-app.listen(config.port, "127.0.0.1", () => {
-  console.log(`Inventory API listening at http://127.0.0.1:${config.port}`);
+app.listen(config.port, config.host, () => {
+  console.log(`Inventory API listening at http://${config.host}:${config.port}`);
 });

@@ -28,10 +28,7 @@ export async function readJson<T>(response: Response): Promise<T> {
   const payload = text ? JSON.parse(text) : {};
 
   if (!response.ok) {
-    const message =
-      typeof payload === "object" && payload && "message" in payload
-        ? String((payload as { message: unknown }).message)
-        : text || response.statusText;
+    const message = errorMessageFromPayload(payload) ?? (text || response.statusText);
     throw new Error(`${response.status} ${response.statusText}: ${message}`);
   }
 
@@ -40,4 +37,17 @@ export async function readJson<T>(response: Response): Promise<T> {
 
 export function mappingSku(item: InventoryItem, mapping: PlatformMapping) {
   return mapping.remoteSku?.trim() || item.sku;
+}
+
+function errorMessageFromPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object") return undefined;
+  if ("error_description" in payload) return String((payload as { error_description: unknown }).error_description);
+  if ("message" in payload) return String((payload as { message: unknown }).message);
+  if ("error" in payload) return String((payload as { error: unknown }).error);
+  if ("errors" in payload && Array.isArray((payload as { errors: unknown }).errors)) {
+    return (payload as { errors: Array<Record<string, unknown>> }).errors
+      .map((error) => error.longMessage ?? error.message ?? error.errorId ?? "unknown error")
+      .join("; ");
+  }
+  return undefined;
 }

@@ -11,7 +11,7 @@ import type {
   UpdateItemInput,
   UpdateScheduleInput
 } from "../shared/types";
-import { platformLabels, platforms } from "../shared/types";
+import { defaultMaxInventory, platformLabels, platforms } from "../shared/types";
 import { store } from "./store";
 
 const now = () => new Date().toISOString();
@@ -31,6 +31,17 @@ const normalizeQuantity = (value: number) => {
   return value;
 };
 
+const normalizeMaxInventory = (value: number) => {
+  const maxInventory = Number(value);
+  if (!Number.isInteger(maxInventory)) {
+    throw new Error("Max inventory must be a whole number.");
+  }
+  if (maxInventory < 1) {
+    throw new Error("Max inventory must be at least 1.");
+  }
+  return maxInventory;
+};
+
 const normalizeDelta = (value: number) => {
   if (!Number.isInteger(value) || value === 0) {
     throw new Error("Adjustment must be a non-zero whole number.");
@@ -39,14 +50,21 @@ const normalizeDelta = (value: number) => {
 };
 
 export async function listData() {
-  return store.read();
+  const data = await store.read();
+  return {
+    ...data,
+    items: data.items.map(normalizeItem)
+  };
 }
 
 export async function createItem(input: CreateItemInput) {
   const sku = clean(input.sku)?.toUpperCase();
   const name = clean(input.name);
+  const description = clean(input.description);
   const quantity = normalizeQuantity(Number(input.quantity));
   const safetyStock = Math.max(0, Number(input.safetyStock ?? 0));
+  const maxInventory =
+    input.maxInventory === undefined ? defaultMaxInventory : normalizeMaxInventory(Number(input.maxInventory));
 
   if (!sku) throw new Error("SKU is required.");
   if (!name) throw new Error("Name is required.");
@@ -61,8 +79,11 @@ export async function createItem(input: CreateItemInput) {
       id: randomUUID(),
       sku,
       name,
+      description,
       quantity,
       safetyStock,
+      maxInventory,
+      active: true,
       mappings: {},
       createdAt: timestamp,
       updatedAt: timestamp
@@ -92,14 +113,40 @@ export async function updateItem(id: string, input: UpdateItemInput) {
     const nextName = clean(input.name);
     if (nextName) item.name = nextName;
 
+    if (input.description !== undefined) {
+      const nextDescription = clean(input.description);
+      if (nextDescription) {
+        item.description = nextDescription;
+      } else {
+        delete item.description;
+      }
+    }
+
     if (input.safetyStock !== undefined) {
       item.safetyStock = Math.max(0, Number(input.safetyStock));
+    }
+
+    if (input.maxInventory !== undefined) {
+      item.maxInventory = normalizeMaxInventory(Number(input.maxInventory));
+    }
+
+    if (input.active !== undefined) {
+      item.active = Boolean(input.active);
     }
 
     if (input.mappings) {
       item.mappings = mergeMappings(item.mappings, input.mappings);
     }
 
+    item.updatedAt = now();
+    return item;
+  });
+}
+
+export async function deleteItem(id: string) {
+  return store.mutate((data) => {
+    const item = findItem(data, id);
+    item.active = false;
     item.updatedAt = now();
     return item;
   });
@@ -176,7 +223,22 @@ export function makeEvent(
 function findItem(data: StoreData, id: string) {
   const item = data.items.find((candidate) => candidate.id === id);
   if (!item) throw new Error("Item not found.");
+  if (item.active === undefined) item.active = true;
+  item.maxInventory = storedMaxInventory(item.maxInventory);
   return item;
+}
+
+function normalizeItem(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    maxInventory: storedMaxInventory(item.maxInventory),
+    active: item.active !== false
+  };
+}
+
+function storedMaxInventory(value: unknown) {
+  const maxInventory = Number(value);
+  return Number.isInteger(maxInventory) && maxInventory >= 1 ? maxInventory : defaultMaxInventory;
 }
 
 function mergeMappings(

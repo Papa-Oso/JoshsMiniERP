@@ -129,7 +129,7 @@ export async function hasStoredEtsyToken() {
 
 function etsyClientId() {
   const clientId = config.etsy.clientId ?? config.etsy.apiKey?.split(":")[0];
-  if (!clientId) throw new Error("ETSY_CLIENT_ID or ETSY_API_KEY is required.");
+  if (!clientId) throw new Error("ETSY_KEYSTRING, ETSY_CLIENT_ID, or ETSY_API_KEY is required.");
   return clientId;
 }
 

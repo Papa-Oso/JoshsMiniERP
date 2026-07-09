@@ -1,10 +1,9 @@
 import { platformLabels } from "../../shared/types";
 import type { InventoryItem, PlatformMapping } from "../../shared/types";
-import { config } from "../config";
+import { config, ebayMissingEnv, ebayReadyForSync } from "../config";
+import { getEbayAccessToken } from "../ebayAuth";
 import type { PlatformAdapter, PushResult, RemoteQuantity } from "./types";
 import { mappingSku, readJson } from "./types";
-
-const baseUrl = "https://api.ebay.com/sell/inventory/v1";
 
 interface EbayErrorDetail {
   errorId?: number;
@@ -23,18 +22,31 @@ interface BulkPriceQuantityResponse {
   errors?: EbayErrorDetail[];
 }
 
+export interface EbayInventoryItemSummary {
+  sku: string;
+  availability?: { shipToLocationAvailability?: { quantity?: number } };
+  product?: { title?: string };
+}
+
+interface InventoryItemsResponse {
+  inventoryItems?: EbayInventoryItemSummary[];
+  total?: number;
+  size?: number;
+  limit?: number;
+  offset?: number;
+  next?: string;
+}
+
 export class EbayAdapter implements PlatformAdapter {
   platform = "ebay" as const;
   label = platformLabels.ebay;
 
   isConfigured() {
-    return Boolean(config.ebay.accessToken);
+    return ebayReadyForSync();
   }
 
   missingEnv() {
-    return [["EBAY_ACCESS_TOKEN", config.ebay.accessToken]]
-      .filter(([, value]) => !value)
-      .map(([key]) => key as string);
+    return ebayMissingEnv();
   }
 
   hasRequiredMapping(item: InventoryItem, mapping: PlatformMapping) {
@@ -49,7 +61,7 @@ export class EbayAdapter implements PlatformAdapter {
     const sku = mappingSku(item, mapping);
     const payload = await readJson<{
       availability?: { shipToLocationAvailability?: { quantity?: number } };
-    }>(await fetch(`${baseUrl}/inventory_item/${encodeURIComponent(sku)}`, { headers: this.headers() }));
+    }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
     const quantity = payload.availability?.shipToLocationAvailability?.quantity;
     if (typeof quantity !== "number") {
       throw new Error("eBay returned no ship-to-home quantity for this SKU.");
@@ -73,14 +85,51 @@ export class EbayAdapter implements PlatformAdapter {
     }
 
     const payload = await readJson<BulkPriceQuantityResponse>(
-      await fetch(`${baseUrl}/bulk_update_price_quantity`, {
+      await fetch(`${this.baseUrl()}/bulk_update_price_quantity`, {
         method: "POST",
-        headers: this.headers(),
+        headers: await this.headers(),
         body: JSON.stringify({ requests: [request] })
       })
     );
     this.assertBulkUpdateSucceeded(payload, sku);
     return { platform: this.platform, quantity, raw: payload };
+  }
+
+  async testConnection() {
+    return readJson<{ version?: string }>(await fetch(`${this.baseUrl()}/getVersion`, { headers: await this.headers() }));
+  }
+
+  async lookupSku(sku: string) {
+    return readJson<{
+      sku?: string;
+      availability?: { shipToLocationAvailability?: { quantity?: number } };
+      product?: { title?: string };
+    }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
+  }
+
+  async listInventoryItems() {
+    const items: EbayInventoryItemSummary[] = [];
+    const limit = 200;
+    let offset = 0;
+
+    while (true) {
+      const url = new URL(`${this.baseUrl()}/inventory_item`);
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("offset", String(offset));
+
+      const payload = await readJson<InventoryItemsResponse>(
+        await fetch(url, { headers: await this.headers() })
+      );
+      const page = payload.inventoryItems ?? [];
+      items.push(...page.filter((item) => item.sku?.trim()));
+
+      const total = payload.total;
+      if (typeof total === "number" && offset + page.length >= total) break;
+      if (page.length === 0 || page.length < limit) break;
+      offset += page.length;
+    }
+
+    return items;
   }
 
   private assertBulkUpdateSucceeded(payload: BulkPriceQuantityResponse, sku: string) {
@@ -103,9 +152,14 @@ export class EbayAdapter implements PlatformAdapter {
     }
   }
 
-  private headers() {
+  private baseUrl() {
+    const host = config.ebay.environment === "sandbox" ? "api.sandbox.ebay.com" : "api.ebay.com";
+    return `https://${host}/sell/inventory/v1`;
+  }
+
+  private async headers() {
     return {
-      Authorization: `Bearer ${config.ebay.accessToken}`,
+      Authorization: `Bearer ${await getEbayAccessToken()}`,
       "Content-Type": "application/json",
       "Content-Language": "en-US",
       "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId

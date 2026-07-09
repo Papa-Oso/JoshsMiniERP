@@ -41,7 +41,7 @@ export class EtsyAdapter implements PlatformAdapter {
 
   missingEnv() {
     const missing: string[] = [];
-    if (!config.etsy.apiKey) missing.push("ETSY_API_KEY");
+    if (!config.etsy.apiKey) missing.push("ETSY_API_KEY or ETSY_KEYSTRING/ETSY_SHARED_SECRET");
     if (!etsyHasToken()) missing.push("ETSY_ACCESS_TOKEN or ETSY_REFRESH_TOKEN or Etsy OAuth token file");
     return missing;
   }

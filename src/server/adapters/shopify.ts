@@ -38,18 +38,68 @@ type SkuLookupQuery = {
       id: string;
       sku: string | null;
       displayName: string;
-      inventoryItem: {
-        id: string;
-        inventoryLevels: {
-          nodes: Array<{
+      inventoryItem: ShopifyInventoryItem;
+    }>;
+  };
+};
+
+type SkuListQuery = {
+  productVariants: {
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor: string | null;
+    };
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      displayName: string;
+      title?: string | null;
+      product?: {
+        title?: string | null;
+        descriptionHtml?: string | null;
+      } | null;
+      inventoryItem: ShopifyInventoryItem;
+    }>;
+  };
+};
+
+type InventoryItemsQuery = {
+  inventoryItems: {
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor: string | null;
+    };
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      inventoryLevels: {
+        nodes: Array<{
+          id: string;
+          location: {
             id: string;
-            location: {
-              id: string;
-              name: string;
-            };
-            quantities: Array<{ name: string; quantity: number }>;
-          }>;
-        };
+            name?: string;
+          };
+          quantities: Array<{ name: string; quantity: number }>;
+        }>;
+      };
+    }>;
+  };
+};
+
+type ProductDetailsQuery = {
+  productVariants: {
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor: string | null;
+    };
+    nodes: Array<{
+      id: string;
+      sku: string | null;
+      displayName: string;
+      title: string;
+      product: {
+        title: string;
+        descriptionHtml?: string | null;
       };
     }>;
   };
@@ -60,6 +110,39 @@ type ClientCredentialsToken = {
   scope?: string;
   expires_in?: number;
 };
+
+export interface ShopifyInventoryLevel {
+  id: string;
+  location: {
+    id: string;
+    name: string;
+  };
+  quantities: Array<{ name: string; quantity: number }>;
+}
+
+export interface ShopifyInventoryItem {
+  id: string;
+  inventoryLevels: {
+    nodes: ShopifyInventoryLevel[];
+  };
+}
+
+export interface ShopifySkuVariant {
+  id: string;
+  sku: string | null;
+  displayName: string;
+  variantTitle?: string | null;
+  productTitle?: string | null;
+  descriptionHtml?: string | null;
+  inventoryItem: ShopifyInventoryItem;
+}
+
+export interface ShopifySkuProductDetails {
+  sku: string;
+  title: string;
+  description?: string;
+  displayName: string;
+}
 
 const toShopifyGid = (type: "InventoryItem" | "Location", value: string) => {
   const trimmed = value.trim();
@@ -208,7 +291,6 @@ export class ShopifyAdapter implements PlatformAdapter {
                   id
                   location {
                     id
-                    name
                   }
                   quantities(names: ["available"]) {
                     name
@@ -222,6 +304,180 @@ export class ShopifyAdapter implements PlatformAdapter {
       }`,
       {}
     );
+  }
+
+  async listSkuVariants() {
+    try {
+      return await this.listProductVariantSkus();
+    } catch (error) {
+      if (!isAccessDenied(error)) throw error;
+      return this.listInventoryItemSkus();
+    }
+  }
+
+  private async listProductVariantSkus() {
+    const variants: ShopifySkuVariant[] = [];
+    let after: string | null = null;
+
+    do {
+      const payload: SkuListQuery = await this.graphql<SkuListQuery>(
+        `query ListSkuVariants($first: Int!, $after: String) {
+          productVariants(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              sku
+              displayName
+              title
+              product {
+                title
+                descriptionHtml
+              }
+              inventoryItem {
+                id
+                inventoryLevels(first: 10) {
+                  nodes {
+                    id
+                    location {
+                      id
+                      name
+                    }
+                    quantities(names: ["available"]) {
+                      name
+                      quantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        { first: 100, after }
+      );
+
+      variants.push(
+        ...payload.productVariants.nodes
+          .filter((variant) => variant.sku?.trim())
+          .map((variant) => ({
+            id: variant.id,
+            sku: variant.sku,
+            displayName: variant.displayName,
+            variantTitle: variant.title,
+            productTitle: variant.product?.title,
+            descriptionHtml: variant.product?.descriptionHtml,
+            inventoryItem: variant.inventoryItem
+          }))
+      );
+      after = payload.productVariants.pageInfo.hasNextPage ? payload.productVariants.pageInfo.endCursor : null;
+    } while (after);
+
+    return variants;
+  }
+
+  async listSkuProductDetails(): Promise<ShopifySkuProductDetails[]> {
+    const details: ShopifySkuProductDetails[] = [];
+    let after: string | null = null;
+
+    do {
+      const payload: ProductDetailsQuery = await this.graphql<ProductDetailsQuery>(
+        `query ListSkuProductDetails($first: Int!, $after: String) {
+          productVariants(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              sku
+              displayName
+              title
+              product {
+                title
+                descriptionHtml
+              }
+            }
+          }
+        }`,
+        { first: 100, after }
+      );
+
+      details.push(
+        ...payload.productVariants.nodes
+          .filter((variant) => variant.sku?.trim())
+          .map((variant) => ({
+            sku: variant.sku!.trim(),
+            title: variant.product.title || variant.displayName || variant.title,
+            description: htmlToText(variant.product.descriptionHtml),
+            displayName: variant.displayName
+          }))
+      );
+      after = payload.productVariants.pageInfo.hasNextPage ? payload.productVariants.pageInfo.endCursor : null;
+    } while (after);
+
+    return details;
+  }
+
+  private async listInventoryItemSkus() {
+    const variants: ShopifySkuVariant[] = [];
+    let after: string | null = null;
+
+    do {
+      const payload: InventoryItemsQuery = await this.graphql<InventoryItemsQuery>(
+        `query ListInventoryItemSkus($first: Int!, $after: String) {
+          inventoryItems(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              sku
+              inventoryLevels(first: 10) {
+                nodes {
+                  id
+                  location {
+                    id
+                  }
+                  quantities(names: ["available"]) {
+                    name
+                    quantity
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        { first: 100, after }
+      );
+
+      variants.push(
+        ...payload.inventoryItems.nodes
+          .filter((item) => item.sku?.trim())
+          .map((item) => ({
+            id: item.id,
+            sku: item.sku,
+            displayName: item.sku ?? item.id,
+            inventoryItem: {
+              id: item.id,
+              inventoryLevels: {
+                nodes: item.inventoryLevels.nodes.map((level) => ({
+                  ...level,
+                  location: {
+                    id: level.location.id,
+                    name: level.location.name ?? level.location.id
+                  }
+                }))
+              }
+            }
+          }))
+      );
+      after = payload.inventoryItems.pageInfo.hasNextPage ? payload.inventoryItems.pageInfo.endCursor : null;
+    } while (after);
+
+    return variants;
   }
 
   private domain() {
@@ -286,4 +542,24 @@ export class ShopifyAdapter implements PlatformAdapter {
 
     return this.tokenCache.token;
   }
+}
+
+function isAccessDenied(error: unknown) {
+  return error instanceof Error && /access denied/i.test(error.message);
+}
+
+function htmlToText(value?: string | null) {
+  if (!value) return undefined;
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
