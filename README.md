@@ -47,6 +47,8 @@ Use [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) before changing app screens, buttons,
 - Add inventory only in this tool.
 - Batch adds increase the local master count and are pushed to mapped stores on sync.
 - Manual subtracts reduce the local master count for discards, personal use, damage, or corrections.
+- Item and instruction inventory both use configurable max inventory values for their visual status bars. Counts can go over max and should show an over-max warning.
+- Printing product labels records a batch add for newly manufactured, sellable stock using the printed label quantity and the activity note `Manufactured and ready for sale`.
 - Store sales are detected on sync by comparing each platform's current quantity to the last quantity this tool successfully pushed.
 - First sync for a newly mapped store captures a baseline only. It does not push that store until a later sync, so you can confirm the local count before anything writes to the marketplace.
 

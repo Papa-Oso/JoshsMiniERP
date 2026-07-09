@@ -651,6 +651,7 @@ export function App() {
           dashboard={activeDashboard}
           printSettingsOpen={printSettingsOpen}
           onPrintSettingsClose={() => setPrintSettingsOpen(false)}
+          onDashboardChange={load}
         />
       ) : (
         <EbayReviewsPage />

@@ -11,6 +11,7 @@ import type {
   UpdatePrintSettingsInput,
   UpdateInstructionInput
 } from "../shared/types";
+import { defaultMaxInventory } from "../shared/types";
 
 const printingFile = path.resolve(process.env.PRINTING_DATA_FILE ?? "data/printing.json");
 const now = () => new Date().toISOString();
@@ -41,6 +42,7 @@ export async function updateInstruction(id: string, input: UpdateInstructionInpu
     if (input.title !== undefined) instruction.title = clean(input.title) ?? `${instruction.label} Instructions`;
     if (input.body !== undefined) instruction.body = String(input.body ?? "");
     if (input.lowAlert !== undefined) instruction.lowAlert = nonNegativeInteger(input.lowAlert, "Low alert");
+    if (input.maxInventory !== undefined) instruction.maxInventory = positiveInteger(input.maxInventory, "Max inventory");
 
     instruction.updatedAt = now();
     return instruction;
@@ -290,6 +292,7 @@ function normalizeCustomInstruction(instruction: Partial<PrintInstruction>): Pri
     body: String(instruction.body ?? ""),
     onHand: nonNegativeInteger(instruction.onHand ?? 0, "Instruction count"),
     lowAlert: nonNegativeInteger(instruction.lowAlert ?? 8, "Low alert"),
+    maxInventory: positiveInteger(instruction.maxInventory ?? defaultMaxInventory, "Max inventory"),
     perPage: nonNegativeInteger(instruction.perPage ?? 4, "Instructions per page") || 4,
     updatedAt: clean(instruction.updatedAt) ?? now()
   };
@@ -323,6 +326,7 @@ function makeInstruction(id: string, label: string, matchTerms: string[]): Print
     body: "",
     onHand: 0,
     lowAlert: 8,
+    maxInventory: defaultMaxInventory,
     perPage: 4,
     updatedAt: now()
   };
@@ -359,6 +363,12 @@ function integer(value: unknown, label: string) {
 function nonNegativeInteger(value: unknown, label: string) {
   const next = integer(value, label);
   if (next < 0) throw new Error(`${label} cannot be negative.`);
+  return next;
+}
+
+function positiveInteger(value: unknown, label: string) {
+  const next = integer(value, label);
+  if (next < 1) throw new Error(`${label} must be at least 1.`);
   return next;
 }
 

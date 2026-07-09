@@ -33,6 +33,7 @@ function instruction(id: string, label: string, matchTerms: string[]): PrintInst
     body: "",
     onHand: 0,
     lowAlert: 8,
+    maxInventory: 100,
     perPage: 4,
     updatedAt
   };

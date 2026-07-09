@@ -67,11 +67,17 @@ The icon should sit near the page title or primary page header. Do not rely on n
 - Inventory charts should use the configured max inventory value, not a hard-coded 100.
 - Inventory can exceed max. Over-max values should be visibly warned, such as red chart bars or red count text.
 - Max inventory should be editable from Item Management.
+- Instruction inventory should use the same max-based visualization pattern: current count, status, progress bar, max label, and over-max warning.
+- Instruction max inventory should be editable from the Instruction Inventory pane.
 - Instruction inventory is driven by item sales and item-to-instruction mappings, not manual use recording.
 
 ## Printing Rules
 
 - Keep product labels and instruction documents as separate workflows.
+- Product Labels and Instruction Documents should use matching panel structure: marked header icon, selector/quantity/primary print/upload controls in the same top-row positions, document asset card, and print action feedback inside the same pane.
+- Printing page layout should group Product Labels directly above Instruction Documents, with Instruction Inventory on the right and Print Activity under it.
+- Printing product labels means the products have been made, finished, and are entering sellable inventory. It adds item inventory based on the number of labels printed and records the activity note `Manufactured and ready for sale`.
+- Product label print actions should stay visible but disabled when the selected SKU has no matching label file.
 - Uploaded instruction documents should be printable from the instruction documents pane.
 - Printing instruction pages adds instruction inventory based on pages times instructions per page.
 - Printer selection belongs in hidden Print Settings.

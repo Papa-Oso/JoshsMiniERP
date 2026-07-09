@@ -39,6 +39,27 @@ Status legend:
 | Small SQL database | In progress | SQLite dependency, schema, status command, and JSON-to-SQLite migration command are in place. Runtime storage still defaults to JSON. |
 | SKU pairing audit | Done | `sku-audit` compares local SKUs with Shopify and eBay SKU catalogs. |
 | Shopify names/descriptions | In progress | App data model and refresh command are in place. Requires Shopify `read_products` scope approval and a fresh token before product details can populate. |
+| Inventory max visualization | Done | Item inventory and instruction inventory use configurable max values, progress bars, status labels, and over-max warnings. |
+| Printing workflow cleanup | Done | Product labels, instruction documents, instruction inventory, print activity, upload/print actions, and printer settings are separated into clearer panes. |
+| Instruction consumption on sales | Done | Marketplace sales consume mapped instruction inventory through item-to-instruction mappings. |
+| Printer settings | Done | Label and instruction printers can be saved separately from a centered Print Settings modal. |
+| eBay reviews controls | Done | CSV buttons own the scrape/export actions, incremental is preferred, and early feedback prevents empty CSV creation. |
+| UI consistency guide | Done | `UI_STYLE_GUIDE.md` captures page identity, settings, buttons, panels, feedback, inventory visuals, and verification rules. |
+
+## Recent UI and Fulfillment Work
+
+- Inventory charts no longer assume a hard-coded max of 100; each item can define its own max inventory.
+- Instruction inventory now follows the same visualization pattern as item inventory: count, status, progress bar, max label, and over-max warning.
+- Instruction max inventory and low alert are editable from the Instruction Inventory pane.
+- Printing product labels records a batch add for newly manufactured, sellable stock using the printed label quantity and the activity note `Manufactured and ready for sale`.
+- Instruction inventory is reduced automatically when marketplace sales are detected for SKUs mapped to an instruction type.
+- Printing now separates product labels, instruction documents, instruction inventory, print activity, and printer settings.
+- Print Settings opens as the same centered modal pattern used by Inventory store settings.
+- Printer settings support separate saved printers for labels and instruction documents.
+- Uploaded instruction documents can be printed from the instruction documents workflow.
+- Printing instruction pages adds instruction inventory based on pages times instructions per page.
+- eBay Reviews uses the CSV buttons as the scrape/export actions, with Incremental emphasized over Full.
+- `UI_STYLE_GUIDE.md` is the UI consistency reference for future screen changes.
 
 ## Implemented Command Reference
 
@@ -87,6 +108,7 @@ CSV columns:
 | `quantity` or `qty` | No | Absolute on-hand count. |
 | `add`, `delta`, `adjustment`, or `received` | No | Batch adjustment. Positive adds stock, negative subtracts stock. |
 | `safety_stock` or `safety` | No | Safety stock value. |
+| `max_inventory`, `max_stock`, or `capacity` | No | Visual max inventory value. Counts can exceed max and should warn visually. |
 | `note` | No | Saved on the inventory event. |
 
 Use either an absolute quantity or a delta on one CSV row, not both.
@@ -489,10 +511,9 @@ Before calling the SQL migration complete:
 
 ## Suggested Next Work Order
 
-1. Commit the current command/import/OAuth work.
-2. Add `PLAN.md` to that commit.
-3. Create the SQLite schema and migration command.
-4. Add SQLite integration tests using a temporary database file.
-5. Switch services to use the store interface.
-6. Add import batch tables to CSV and Shopify import flows.
-7. Add reconcile history only after the basic SQLite cutover is stable.
+1. Finish the SQLite/Postgres storage decision and keep JSON as the local fallback/export format.
+2. Switch runtime services fully onto the chosen store interface.
+3. Add import batch tables to CSV and Shopify import flows.
+4. Add reconcile history only after the database cutover is stable.
+5. Add focused UI regression checks for Printing, Inventory, and eBay Reviews workflows.
+6. Keep `README.md` and `UI_STYLE_GUIDE.md` updated as workflow rules change.
