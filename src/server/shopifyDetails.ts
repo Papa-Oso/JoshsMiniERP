@@ -1,5 +1,6 @@
 import { ShopifyAdapter } from "./adapters/shopify";
 import { store } from "./store";
+import type { StoreData } from "../shared/types";
 
 export interface ShopifyDetailsRefreshOptions {
   dryRun?: boolean;
@@ -50,7 +51,7 @@ export async function refreshShopifyDetails(
     return planRefresh(data.items, detailsBySku, Boolean(options.overwrite), false);
   }
 
-  return store.mutate((data) => planRefresh(data.items, detailsBySku, Boolean(options.overwrite), true));
+  return mutateStore((data) => planRefresh(data.items, detailsBySku, Boolean(options.overwrite), true));
 }
 
 function planRefresh(
@@ -115,4 +116,9 @@ function planRefresh(
       skipped: rows.filter((row) => row.action === "skip").length
     }
   };
+}
+
+function mutateStore<T>(mutator: (data: StoreData) => T | Promise<T>) {
+  const mutate = store.mutateChanges?.bind(store) ?? store.mutate.bind(store);
+  return mutate(mutator);
 }

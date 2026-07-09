@@ -5,29 +5,38 @@ This document captures the requested inventory work, what is already implemented
 ## Authoritative Direction
 
 - Keep the working app stable. Inventory, printing, sync, and CSV workflows are already useful and should not be rewritten casually.
-- Treat PostgreSQL as the growth database. JSON remains the local fallback/export format, and Cloud SQL for PostgreSQL remains the production target.
-- Treat the old SQLite inventory plan as historical context only. `data/inventory.sqlite` may exist locally from earlier experiments, but it is not the current source of truth.
+- Keep this cheap and local by default. This is a personal store app, so avoid adding infrastructure unless it clearly pays for itself.
+- Treat SQLite as the real day-to-day local database path. It is SQL, file-backed, cheap, and requires no server, Docker, or cloud service.
+- Keep JSON as a portable backup/export/migration format, not the long-term working database.
+- Keep PostgreSQL as an optional later deployment path only if the app moves beyond local single-user use.
+- Do not install, start, or depend on Docker, local database services, cloud services, or extra background daemons unless Josh explicitly asks for that in the current task.
 - Rework the local Vite UI as a professional operations tool: calm, compact, durable, and designer-grade.
 - Keep the embedded Shopify app on Shopify's native Admin components. It should share product language and API contracts with the local ERP, not the local ERP's visual theme.
 
 ## Current Storage
 
-The app is currently JSON-backed.
+The app now has a local SQLite inventory store and JSON fallback/export support.
 
-Default file:
+Preferred local SQL file:
+
+```text
+data/inventory.sqlite
+```
+
+JSON fallback/export file:
 
 ```text
 data/inventory.json
 ```
 
-That JSON file currently stores:
+The SQLite inventory database stores:
 
 - `items`: local SKUs, names, quantities, safety stock, and platform mappings.
 - `events`: creates, batch adds, manual subtracts, corrections, platform-sale deductions, sync baselines, and sync pushes.
 - `schedule`: local scheduler settings.
 - `syncRuns`: recent sync run summaries and messages.
 
-So today, batch entries and CSV adjustments are saved as inventory events in `data/inventory.json`. The next storage step is to complete and harden the PostgreSQL path, then move related operational data into the same backed-up system.
+SQLite is the default real local database driver. Use `DATABASE_FILE=data/inventory.sqlite` for the database file. `migrate-sqlite` copies existing JSON inventory into SQLite and writes a JSON backup first. PostgreSQL remains available only as an optional deployment/growth path.
 
 Related local data currently lives outside the main inventory store:
 
@@ -51,7 +60,8 @@ Status legend:
 | Backup/export | Done | `backup` and `export` operate on `data/inventory.json`. |
 | eBay setup | Done | OAuth URL, callback, refresh, lookup, test, and mapping helpers are in place. |
 | Scheduler polish | Done | Windows startup script preview/install and Task Scheduler command preview/install are in place. |
-| Postgres storage | In progress | JSON remains the default local driver. `STORE_DRIVER=postgres`, `migrate-postgres`, and a Postgres store contract test are in place. Runtime behavior still uses a document-style store interface. |
+| SQLite storage | Done | SQLite is the default local driver. `DATABASE_FILE`, `migrate-sqlite`, and SQLite store contract tests are in place. This is the preferred real local database path. |
+| Postgres storage | Optional | `STORE_DRIVER=postgres`, `migrate-postgres`, and optional Postgres tests exist for future hosted/deployment use only. |
 | SKU pairing audit | Done | `sku-audit` compares local SKUs with Shopify and eBay SKU catalogs. |
 | Shopify names/descriptions | In progress | App data model and refresh command are in place. Requires Shopify `read_products` scope approval and a fresh token before product details can populate. |
 | Inventory max visualization | Done | Item inventory and instruction inventory use configurable max values, progress bars, status labels, and over-max warnings. |
@@ -226,14 +236,54 @@ npm start
 
 This is the sequence to follow when you tell Codex to continue without further planning. Complete one phase at a time, run the verification listed for that phase, and avoid broad refactors outside the phase.
 
+Progress:
+
+| Phase | Status | Notes |
+| --- | --- | --- |
+| Phase 1: Documentation Alignment | Complete | Roadmap, README, and UI guide now agree that SQLite is the real local database path and Postgres is optional later. |
+| Phase 2: Professional UI Rework | Complete | Design tokens, shared UI helpers, calmer page visuals, graphite/teal color pass, accessibility basics, and persistent UI smoke screenshots are in place. `npm run build`, `npm test`, and `npm run smoke:ui` pass. |
+| Phase 3: Local SQL Store Hardening | In progress | SQLite runtime storage, migration, and default-driver behavior are in place. Postgres remains optional for future deployment. |
+| Phase 4: Operational Data Consolidation | Pending | Start after SQLite is the trusted local inventory source. |
+| Phase 5: Reporting And Review Workflows | Pending | Start after operational data is consolidated. |
+| Phase 6: Production Readiness | Pending | Start after data and workflow foundations are stable. |
+
+Phase 2 progress:
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| Design tokens | Complete | Added a neutral operational token layer in `src/client/styles.css`. |
+| Color palette pass | Complete | Retuned the local ERP from blue/neon accents to graphite surfaces, teal UI accents, green success, amber warning, and red danger. |
+| Shell/topbar visual pass | Complete | Reduced glow/ornament, softened background, and improved mobile settings/notification placement. |
+| Shared component/helpers | Complete | `src/client/ui.tsx` centralizes panel, header, metric, and mini-stat helpers used across the local ERP. |
+| Inventory visual pass | Complete | Inventory uses the calmer foundation and passed desktop/mobile screenshot review. |
+| Printing visual pass | Complete | Printing uses the calmer foundation and passed desktop screenshot review. |
+| Item Management visual pass | Complete | Added visible SKU Print Setup column labels and passed desktop screenshot review. |
+| eBay Reviews visual pass | Complete | Clarified scan/export actions and passed desktop screenshot review. |
+| Accessibility pass | Complete | Focus-visible styling is in place, disabled states are clearer, and Escape closes open topbar dialogs/drawers. |
+| Playwright smoke checks | Complete | `npm run smoke:ui` captures desktop screenshots for Inventory, Item Management, Printing, eBay Reviews, plus mobile Inventory. |
+
+Phase 3 progress:
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| Store contract review | Complete | Shared store contract now covers nested locking, mapping removal, event pruning, sync-run pruning, and schedule updates. |
+| SQLite runtime store | Complete | `SQLiteInventoryStore` persists items, mappings, events, sync runs, messages, and schedule settings in `data/inventory.sqlite` with no extra service. SQLite is now the default driver. |
+| SQLite migration | Complete | `npm run inv -- migrate-sqlite` copies JSON inventory into SQLite and writes a JSON backup first. |
+| SQLite verification | Complete | SQLite store contract and migration tests pass in the normal `npm test` suite. |
+| Focused Postgres tests | Complete | Added an optional row-delete audit test that proves routine item updates do not delete the item row when a test database is available. |
+| Row-preserving Postgres writes | Complete | `PostgresInventoryStore` now upserts items, mappings, events, sync runs, and schedule settings, deleting only rows missing from the current bounded store view. |
+| Live Postgres verification | Optional | `npm run test:postgres` was run locally and skipped both tests because `TEST_POSTGRES_DATABASE_URL` is not set. Do not install or start Docker just for this personal app; rerun only if Josh provides an existing test database URL or explicitly asks for hosted/deployment setup. |
+| Core inventory service SQL hooks | Complete | Item create/update/disable, mapping updates, inventory adjustments with events, and schedule updates use direct Postgres hooks when available, with JSON fallback unchanged. |
+| Sync/import targeted mutation hooks | Complete | CSV import, Shopify import, Shopify detail refresh, sync sale/baseline application, failed-run logging, and final sync-run persistence use the Postgres `mutateChanges` path when available, with JSON fallback unchanged. |
+
 ### Phase 1: Documentation Alignment
 
 Goal: make the repository tell one consistent story.
 
-- Update `PLAN.md` so PostgreSQL is the official growth database and SQLite is historical only.
+- Update `PLAN.md` so SQLite is the official local SQL database and PostgreSQL is optional for later deployment.
 - Update `UI_STYLE_GUIDE.md` with the professional redesign direction and component rules.
 - Keep `README.md` focused on operator setup, command reference, production deployment, and links to the planning docs.
-- Remove or archive claims that `migrate-sqlite`, `sqlite-status`, or `STORE_DRIVER=sqlite` are current supported commands unless those commands are intentionally restored later.
+- Keep unsupported commands out of docs. `migrate-sqlite` and `STORE_DRIVER=sqlite` are current; `sqlite-status` is not implemented.
 
 Acceptance:
 
@@ -272,32 +322,32 @@ Acceptance:
 - Desktop and mobile screenshots show no overlapping text, broken buttons, or unclear disabled states.
 - The app still opens directly to the working tool, not a landing page.
 
-### Phase 3: Postgres Store Hardening
+### Phase 3: Local SQL Store Hardening
 
-Goal: move from JSON-compatible document replacement toward durable relational storage without breaking current workflows.
+Goal: move from JSON-compatible document storage toward a durable local SQL database without breaking current workflows or adding a background service.
 
 Current bridge:
 
 - `InventoryStoreDriver` supports `read`, `mutate`, and `withLock`.
-- `PostgresInventoryStore` exists and uses advisory locks.
-- `migrate-postgres` copies JSON inventory into Postgres and writes a JSON backup first.
-- The current Postgres driver still replaces document-shaped data by deleting and reinserting core rows during mutation.
+- `SQLiteInventoryStore` exists and writes a real SQLite database at `data/inventory.sqlite`.
+- `migrate-sqlite` copies JSON inventory into SQLite and writes a JSON backup first.
+- `PostgresInventoryStore` still exists as an optional hosted/deployment path, but it is not required for normal personal use.
 
 Implementation sequence:
 
-1. Keep the existing store contract while adding focused Postgres tests.
-2. Run the optional Postgres contract test with `TEST_POSTGRES_DATABASE_URL`.
-3. Add targeted SQL methods behind the service layer for item create/update, inventory adjustment, mapping update, sync run insert, schedule update, and event insert.
-4. Stop deleting/reinserting all core tables for routine mutations.
+1. Keep the existing store contract while adding focused SQLite tests.
+2. Add `STORE_DRIVER=sqlite` and `DATABASE_FILE=data/inventory.sqlite`.
+3. Add `migrate-sqlite --dry-run` and `migrate-sqlite`.
+4. Confirm `list`, item edits, inventory adjustments, imports, sync, backup, and export work with SQLite.
 5. Keep JSON export as a portable backup format.
-6. Confirm `STORE_DRIVER=json` and `STORE_DRIVER=postgres` both work during the transition.
+6. Keep Postgres support optional for later hosted deployment.
 
 Acceptance:
 
 - `npm run build` passes.
 - `npm test` passes.
-- `npm run test:postgres` passes when `TEST_POSTGRES_DATABASE_URL` is set.
-- `list`, `create`, `add`, `subtract`, `map`, `shopify-import`, `csv-import`, `reconcile`, `sync`, `backup`, and `export` work with `STORE_DRIVER=postgres`.
+- SQLite store contract and migration tests pass in the normal test suite.
+- `list`, `create`, `add`, `subtract`, `map`, `shopify-import`, `csv-import`, `reconcile`, `sync`, `backup`, and `export` work with `STORE_DRIVER=sqlite`.
 
 ### Phase 4: Operational Data Consolidation
 
@@ -367,9 +417,9 @@ Acceptance:
 - Production setup can be repeated from README without hidden local assumptions.
 - A restore can be rehearsed from backup files and database dump.
 
-## Historical SQLite Notes (Not Current Direction)
+## SQLite Local Database Notes
 
-The following SQLite notes are preserved as context from an earlier local-storage plan. They are not the current implementation direction. Current growth work should target PostgreSQL, as described in the execution roadmap above and in `README.md`.
+The following SQLite notes are now the active local database direction for personal-store use.
 
 Move from one JSON document to a small SQLite database:
 
@@ -385,7 +435,7 @@ Why SQLite:
 - Easier reports later: sales by SKU, import history, marketplace differences, and adjustments by date.
 - Keeps the app local and simple.
 
-Old assumption: the current JSON store could stay as a fallback/export format while SQLite became the source of truth. This is no longer the active direction.
+JSON stays as a fallback/export format while SQLite becomes the real local source of truth.
 
 ## Proposed SQLite Schema
 
@@ -532,7 +582,7 @@ Optional later tables:
 - `oauth_tokens`: only if token storage is wanted in SQLite. Keep file-based token storage unless we also add encryption.
 - `app_settings`: generic key/value settings after schedule grows beyond one row.
 
-## Historical SQLite Implementation Plan
+## SQLite Implementation Plan
 
 ### Step 1: Add SQLite storage alongside JSON
 
@@ -548,15 +598,15 @@ Add env:
 
 ```text
 DATABASE_FILE=data/inventory.sqlite
-STORE_DRIVER=json
+STORE_DRIVER=sqlite
 ```
 
 Initial behavior:
 
-- `STORE_DRIVER=json` keeps current behavior. This is currently implemented.
+- `STORE_DRIVER=sqlite` runs the local ERP against `data/inventory.sqlite`. This is currently implemented.
 - `DATABASE_FILE=data/inventory.sqlite` points at the SQLite database file. This is currently implemented.
-- `migrate-sqlite --dry-run`, `migrate-sqlite`, and `sqlite-status` are currently implemented.
-- `STORE_DRIVER=sqlite` is the next implementation step. The schema and migration exist, but runtime reads/writes still use JSON.
+- `migrate-sqlite --dry-run` and `migrate-sqlite` are currently implemented.
+- `STORE_DRIVER=json` remains available as a fallback/export bridge.
 
 ### Step 2: Create a store interface
 
@@ -659,7 +709,7 @@ STORE_DRIVER=sqlite
 
 Then later, once stable, make SQLite the default and keep JSON as an import/export format.
 
-## Historical SQLite Acceptance Checklist
+## SQLite Acceptance Checklist
 
 Before calling the SQL migration complete:
 
@@ -673,11 +723,9 @@ Before calling the SQL migration complete:
 - A backup is created before any migration writes.
 - No marketplace tokens are committed or printed.
 
-## Historical SQLite Work Order
+## SQLite Work Order
 
-Do not use this as the current work order. The current sequence is the `Execution Roadmap` above.
-
-Former SQLite sequence:
+Current SQLite sequence:
 
 1. Finish the SQLite/Postgres storage decision and keep JSON as the local fallback/export format.
 2. Switch runtime services fully onto the chosen store interface.

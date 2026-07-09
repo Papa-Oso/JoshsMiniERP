@@ -111,4 +111,20 @@ export async function assertInventoryStoreContract(store: InventoryStoreDriver) 
   assert.equal(updated.events.length, 2);
   assert.equal(updated.events[0].type, "platform_sale");
   assert.equal(updated.events[0].platform, "shopify");
+
+  await store.mutate((data) => {
+    data.items[0].mappings = {};
+    data.events = data.events.slice(0, 1);
+    data.syncRuns = [];
+    data.schedule.enabled = false;
+    data.schedule.updatedAt = "2026-01-01T00:10:00.000Z";
+  });
+
+  const pruned = await store.read();
+  assert.equal(pruned.items.length, 1);
+  assert.deepEqual(pruned.items[0].mappings, {});
+  assert.equal(pruned.events.length, 1);
+  assert.equal(pruned.events[0].id, "event-2");
+  assert.equal(pruned.syncRuns.length, 0);
+  assert.equal(pruned.schedule.enabled, false);
 }

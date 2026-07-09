@@ -309,6 +309,14 @@ export function ItemManagementPage({
             <span><FileText size={18} /></span>
             <h2>SKU Print Setup</h2>
           </header>
+          <div className="item-setup-column-labels" aria-hidden="true">
+            <span>Item</span>
+            <span>Label Doc</span>
+            <span>Instructions</span>
+            <span>Low</span>
+            <span>Max</span>
+            <span>Status</span>
+          </div>
           <div className="item-setup-list">
             {sortedItems.map((item) => (
               <ItemSetupRow

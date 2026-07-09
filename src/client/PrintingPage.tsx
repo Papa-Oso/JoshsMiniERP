@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, ExternalLink, FileText, FolderOpen, Minus, Plus, Printer, Settings, Tags, Upload, X } from "lucide-react";
 import { api } from "./api";
+import { MiniStat, PanelFrame } from "./ui";
 import type { DashboardPayload, InventoryItem, PrintAsset, PrintInstruction, PrinterInfo, PrintingPayload } from "../shared/types";
 import { defaultMaxInventory } from "../shared/types";
 
@@ -457,9 +458,9 @@ export function PrintingPage({
             <h2>Instruction Inventory</h2>
           </header>
           <div className="instruction-metric-grid">
-            <MiniPrintMetric label="Types" value={printing.instructions.length} />
-            <MiniPrintMetric label="Low" value={lowCount} tone={lowCount ? "warn" : "ok"} />
-            <MiniPrintMetric
+            <MiniStat label="Types" value={printing.instructions.length} />
+            <MiniStat label="Low" value={lowCount} tone={lowCount ? "warn" : "ok"} />
+            <MiniStat
               label="On Hand"
               value={printing.instructions.reduce((sum, instruction) => sum + instruction.onHand, 0)}
             />
@@ -623,19 +624,6 @@ export function PrintingPage({
         </div>
       ) : null}
     </section>
-  );
-}
-
-function PanelFrame({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={`panel ${className ?? ""}`}>{children}</section>;
-}
-
-function MiniPrintMetric({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
-  return (
-    <div className={`mini-stat ${tone ?? ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 

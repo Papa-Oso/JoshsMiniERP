@@ -16,6 +16,7 @@ import type {
 } from "../shared/types";
 import { defaultMaxInventory, platforms } from "../shared/types";
 import { config } from "./config";
+import { SQLiteInventoryStore } from "./sqliteStore";
 
 const { Pool } = pg;
 
@@ -41,7 +42,11 @@ const defaultSchedule = (): ScheduleSettings => ({
 export interface InventoryStoreDriver {
   read(): Promise<StoreData>;
   mutate<T>(mutator: (data: StoreData) => T | Promise<T>): Promise<T>;
+  mutateChanges?<T>(mutator: (data: StoreData) => T | Promise<T>): Promise<T>;
   withLock<T>(callback: () => Promise<T>): Promise<T>;
+  saveItem?(item: InventoryItem): Promise<void>;
+  saveItemWithEvent?(item: InventoryItem, event: InventoryEvent): Promise<void>;
+  saveSchedule?(schedule: ScheduleSettings): Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -217,6 +222,19 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
     });
   }
 
+  async mutateChanges<T>(mutator: (data: StoreData) => T | Promise<T>): Promise<T> {
+    const activeClient = this.transactionContext.getStore();
+    if (activeClient) {
+      return this.mutateChangesWithClient(activeClient, mutator);
+    }
+
+    return this.inTransaction(async () => {
+      const client = this.transactionContext.getStore();
+      if (!client) throw new Error("Postgres transaction was not initialized.");
+      return this.mutateChangesWithClient(client, mutator);
+    });
+  }
+
   async withLock<T>(callback: () => Promise<T>): Promise<T> {
     if (this.transactionContext.getStore()) {
       return callback();
@@ -227,6 +245,26 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
 
   async close() {
     await this.pool.end();
+  }
+
+  async saveItem(item: InventoryItem) {
+    await this.withWriteClient(async (client) => {
+      await this.upsertItem(client, item);
+      await this.syncMappings(client, item);
+    });
+  }
+
+  async saveItemWithEvent(item: InventoryItem, event: InventoryEvent) {
+    await this.withWriteClient(async (client) => {
+      await this.upsertItem(client, item);
+      await this.syncMappings(client, item);
+      await this.upsertInventoryEvent(client, event);
+      await this.pruneInventoryEvents(client, 500);
+    });
+  }
+
+  async saveSchedule(schedule: ScheduleSettings) {
+    await this.withWriteClient((client) => this.upsertSchedule(client, schedule));
   }
 
   private async inTransaction<T>(callback: () => Promise<T>): Promise<T> {
@@ -249,6 +287,19 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
     } finally {
       client.release();
     }
+  }
+
+  private async withWriteClient<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
+    const activeClient = this.transactionContext.getStore();
+    if (activeClient) {
+      return callback(activeClient);
+    }
+
+    return this.inTransaction(async () => {
+      const client = this.transactionContext.getStore();
+      if (!client) throw new Error("Postgres transaction was not initialized.");
+      return callback(client);
+    });
   }
 
   private ensureSchema() {
@@ -363,96 +414,262 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
   }
 
   private async replaceData(client: PoolClient, data: StoreData) {
-    await client.query("DELETE FROM sync_run_messages");
-    await client.query("DELETE FROM sync_runs");
-    await client.query("DELETE FROM inventory_events");
-    await client.query("DELETE FROM platform_mappings");
-    await client.query("DELETE FROM inventory_items");
+    await this.syncInventoryItems(client, data.items);
+    await this.syncInventoryEvents(client, data.events);
+    await this.syncSyncRuns(client, data.syncRuns);
+    await this.upsertSchedule(client, data.schedule);
+  }
 
-    for (const item of data.items) {
-      await client.query(
-        `
+  private async mutateChangesWithClient<T>(
+    client: PoolClient,
+    mutator: (data: StoreData) => T | Promise<T>
+  ): Promise<T> {
+    const data = await this.readWithClient(client);
+    const before = cloneStoreData(data);
+    const result = await mutator(data);
+    await this.applyStoreDiff(client, before, data);
+    return result;
+  }
+
+  private async applyStoreDiff(client: PoolClient, before: StoreData, after: StoreData) {
+    await this.applyItemDiff(client, before.items, after.items);
+    await this.applyEventDiff(client, before.events, after.events);
+    await this.applySyncRunDiff(client, before.syncRuns, after.syncRuns);
+
+    if (!sameStoreValue(before.schedule, after.schedule)) {
+      await this.upsertSchedule(client, after.schedule);
+    }
+  }
+
+  private async applyItemDiff(client: PoolClient, before: InventoryItem[], after: InventoryItem[]) {
+    const beforeById = new Map(before.map((item) => [item.id, item]));
+    const afterIds = new Set(after.map((item) => item.id));
+    const removedIds = before.filter((item) => !afterIds.has(item.id)).map((item) => item.id);
+    if (removedIds.length > 0) {
+      await client.query("DELETE FROM inventory_items WHERE id = ANY($1::text[])", [removedIds]);
+    }
+
+    for (const item of after) {
+      if (sameStoreValue(beforeById.get(item.id), item)) continue;
+      await this.upsertItem(client, item);
+      await this.syncMappings(client, item);
+    }
+  }
+
+  private async applyEventDiff(client: PoolClient, before: InventoryEvent[], after: InventoryEvent[]) {
+    const beforeById = new Map(before.map((event) => [event.id, event]));
+    const afterIds = new Set(after.map((event) => event.id));
+    const removedIds = before.filter((event) => !afterIds.has(event.id)).map((event) => event.id);
+    if (removedIds.length > 0) {
+      await client.query("DELETE FROM inventory_events WHERE id = ANY($1::text[])", [removedIds]);
+    }
+
+    for (const event of after) {
+      if (sameStoreValue(beforeById.get(event.id), event)) continue;
+      await this.upsertInventoryEvent(client, event);
+    }
+
+    await this.pruneInventoryEvents(client, 500);
+  }
+
+  private async applySyncRunDiff(client: PoolClient, before: SyncRun[], after: SyncRun[]) {
+    const beforeById = new Map(before.map((run) => [run.id, run]));
+    const afterIds = new Set(after.map((run) => run.id));
+    const removedIds = before.filter((run) => !afterIds.has(run.id)).map((run) => run.id);
+    if (removedIds.length > 0) {
+      await client.query("DELETE FROM sync_runs WHERE id = ANY($1::text[])", [removedIds]);
+    }
+
+    for (const run of after) {
+      if (sameStoreValue(beforeById.get(run.id), run)) continue;
+      await this.upsertSyncRun(client, run);
+    }
+
+    await this.pruneSyncRuns(client, 100);
+  }
+
+  private async syncInventoryItems(client: PoolClient, items: InventoryItem[]) {
+    const itemIds = items.map((item) => item.id);
+    await client.query("DELETE FROM inventory_items WHERE NOT (id = ANY($1::text[]))", [itemIds]);
+    for (const item of items) {
+      await this.upsertItem(client, item);
+      await this.syncMappings(client, item);
+    }
+  }
+
+  private async upsertItem(client: PoolClient, item: InventoryItem) {
+    await client.query(
+      `
           INSERT INTO inventory_items (
             id, sku, name, description, quantity, safety_stock, max_inventory, active, created_at, updated_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (id) DO UPDATE SET
+            sku = EXCLUDED.sku,
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            quantity = EXCLUDED.quantity,
+            safety_stock = EXCLUDED.safety_stock,
+            max_inventory = EXCLUDED.max_inventory,
+            active = EXCLUDED.active,
+            created_at = EXCLUDED.created_at,
+            updated_at = EXCLUDED.updated_at
         `,
-        [
-          item.id,
-          item.sku,
-          item.name,
-          item.description ?? null,
-          item.quantity,
-          item.safetyStock,
-          storedMaxInventory(item.maxInventory),
-          item.active !== false,
-          item.createdAt,
-          item.updatedAt
-        ]
-      );
+      [
+        item.id,
+        item.sku,
+        item.name,
+        item.description ?? null,
+        item.quantity,
+        item.safetyStock,
+        storedMaxInventory(item.maxInventory),
+        item.active !== false,
+        item.createdAt,
+        item.updatedAt
+      ]
+    );
+  }
 
-      for (const platform of platforms) {
-        const mapping = item.mappings[platform];
-        if (!mapping) continue;
-        await this.insertMapping(client, item, platform, mapping);
-      }
+  private async syncMappings(client: PoolClient, item: InventoryItem) {
+    const mappedPlatforms = platforms.filter((platform) => Boolean(item.mappings[platform]));
+    await client.query("DELETE FROM platform_mappings WHERE item_id = $1 AND NOT (platform = ANY($2::text[]))", [
+      item.id,
+      mappedPlatforms
+    ]);
+
+    for (const platform of platforms) {
+      const mapping = item.mappings[platform];
+      if (!mapping) continue;
+      await this.upsertMapping(client, item, platform, mapping);
     }
+  }
 
-    for (const event of data.events) {
+  private async syncInventoryEvents(client: PoolClient, events: InventoryEvent[]) {
+    const eventIds = events.map((event) => event.id);
+    await client.query("DELETE FROM inventory_events WHERE NOT (id = ANY($1::text[]))", [eventIds]);
+
+    for (const event of events) {
+      await this.upsertInventoryEvent(client, event);
+    }
+  }
+
+  private async upsertInventoryEvent(client: PoolClient, event: InventoryEvent) {
+    await client.query(
+      `
+        INSERT INTO inventory_events (
+          id, item_id, sku, type, delta, quantity_after, source, platform, note, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (id) DO UPDATE SET
+          item_id = EXCLUDED.item_id,
+          sku = EXCLUDED.sku,
+          type = EXCLUDED.type,
+          delta = EXCLUDED.delta,
+          quantity_after = EXCLUDED.quantity_after,
+          source = EXCLUDED.source,
+          platform = EXCLUDED.platform,
+          note = EXCLUDED.note,
+          created_at = EXCLUDED.created_at
+      `,
+      [
+        event.id,
+        event.itemId,
+        event.sku,
+        event.type,
+        event.delta,
+        event.quantityAfter,
+        event.source,
+        event.platform ?? null,
+        event.note ?? null,
+        event.createdAt
+      ]
+    );
+  }
+
+  private async pruneInventoryEvents(client: PoolClient, limit: number) {
+    await client.query(
+      `
+        DELETE FROM inventory_events
+        WHERE id IN (
+          SELECT id
+          FROM inventory_events
+          ORDER BY created_at DESC, id DESC
+          OFFSET $1
+        )
+      `,
+      [limit]
+    );
+  }
+
+  private async syncSyncRuns(client: PoolClient, syncRuns: SyncRun[]) {
+    const runIds = syncRuns.map((run) => run.id);
+    await client.query("DELETE FROM sync_run_messages WHERE NOT (sync_run_id = ANY($1::text[]))", [runIds]);
+    await client.query("DELETE FROM sync_runs WHERE NOT (id = ANY($1::text[]))", [runIds]);
+
+    for (const run of syncRuns) {
+      await this.upsertSyncRun(client, run);
+    }
+  }
+
+  private async upsertSyncRun(client: PoolClient, run: SyncRun) {
+    await client.query(
+      `
+        INSERT INTO sync_runs (
+          id, mode, status, items_checked, sales_detected, pushes, warnings,
+          errors, started_at, finished_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (id) DO UPDATE SET
+          mode = EXCLUDED.mode,
+          status = EXCLUDED.status,
+          items_checked = EXCLUDED.items_checked,
+          sales_detected = EXCLUDED.sales_detected,
+          pushes = EXCLUDED.pushes,
+          warnings = EXCLUDED.warnings,
+          errors = EXCLUDED.errors,
+          started_at = EXCLUDED.started_at,
+          finished_at = EXCLUDED.finished_at
+      `,
+      [
+        run.id,
+        run.mode,
+        run.status,
+        run.summary.itemsChecked,
+        run.summary.salesDetected,
+        run.summary.pushes,
+        run.summary.warnings,
+        run.summary.errors,
+        run.startedAt,
+        run.finishedAt ?? null
+      ]
+    );
+
+    await client.query("DELETE FROM sync_run_messages WHERE sync_run_id = $1", [run.id]);
+    for (const [position, message] of run.messages.entries()) {
       await client.query(
         `
-          INSERT INTO inventory_events (
-            id, item_id, sku, type, delta, quantity_after, source, platform, note, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          INSERT INTO sync_run_messages (
+            id, sync_run_id, position, message, created_at
+          ) VALUES ($1, $2, $3, $4, $5)
         `,
-        [
-          event.id,
-          event.itemId,
-          event.sku,
-          event.type,
-          event.delta,
-          event.quantityAfter,
-          event.source,
-          event.platform ?? null,
-          event.note ?? null,
-          event.createdAt
-        ]
+        [randomUUID(), run.id, position, message, run.finishedAt ?? now()]
       );
     }
+  }
 
-    for (const run of data.syncRuns) {
-      await client.query(
-        `
-          INSERT INTO sync_runs (
-            id, mode, status, items_checked, sales_detected, pushes, warnings,
-            errors, started_at, finished_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        `,
-        [
-          run.id,
-          run.mode,
-          run.status,
-          run.summary.itemsChecked,
-          run.summary.salesDetected,
-          run.summary.pushes,
-          run.summary.warnings,
-          run.summary.errors,
-          run.startedAt,
-          run.finishedAt ?? null
-        ]
-      );
+  private async pruneSyncRuns(client: PoolClient, limit: number) {
+    await client.query(
+      `
+        DELETE FROM sync_runs
+        WHERE id IN (
+          SELECT id
+          FROM sync_runs
+          ORDER BY started_at DESC, id DESC
+          OFFSET $1
+        )
+      `,
+      [limit]
+    );
+  }
 
-      for (const [position, message] of run.messages.entries()) {
-        await client.query(
-          `
-            INSERT INTO sync_run_messages (
-              id, sync_run_id, position, message, created_at
-            ) VALUES ($1, $2, $3, $4, $5)
-          `,
-          [randomUUID(), run.id, position, message, run.finishedAt ?? now()]
-        );
-      }
-    }
-
+  private async upsertSchedule(client: PoolClient, schedule: ScheduleSettings) {
     await client.query(
       `
         INSERT INTO schedule_settings (
@@ -466,16 +683,16 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
           updated_at = EXCLUDED.updated_at
       `,
       [
-        data.schedule.enabled,
-        data.schedule.intervalMinutes,
-        data.schedule.lastRunAt ?? null,
-        data.schedule.nextRunAt ?? null,
-        data.schedule.updatedAt
+        schedule.enabled,
+        schedule.intervalMinutes,
+        schedule.lastRunAt ?? null,
+        schedule.nextRunAt ?? null,
+        schedule.updatedAt
       ]
     );
   }
 
-  private async insertMapping(
+  private async upsertMapping(
     client: PoolClient,
     item: InventoryItem,
     platform: Platform,
@@ -490,6 +707,20 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
         )
+        ON CONFLICT (item_id, platform) DO UPDATE SET
+          id = EXCLUDED.id,
+          enabled = EXCLUDED.enabled,
+          remote_sku = EXCLUDED.remote_sku,
+          listing_id = EXCLUDED.listing_id,
+          inventory_item_id = EXCLUDED.inventory_item_id,
+          location_id = EXCLUDED.location_id,
+          offer_id = EXCLUDED.offer_id,
+          last_synced_quantity = EXCLUDED.last_synced_quantity,
+          last_remote_quantity = EXCLUDED.last_remote_quantity,
+          last_synced_at = EXCLUDED.last_synced_at,
+          warning = EXCLUDED.warning,
+          created_at = EXCLUDED.created_at,
+          updated_at = EXCLUDED.updated_at
       `,
       [
         `${item.id}:${platform}`,
@@ -513,7 +744,11 @@ export class PostgresInventoryStore implements InventoryStoreDriver {
 }
 
 export const store: InventoryStoreDriver =
-  config.storeDriver === "postgres" ? new PostgresInventoryStore() : new InventoryStore();
+  config.storeDriver === "postgres"
+    ? new PostgresInventoryStore()
+    : config.storeDriver === "sqlite"
+      ? new SQLiteInventoryStore()
+      : new InventoryStore();
 
 export async function closeStore() {
   await store.close?.();
@@ -672,6 +907,14 @@ function optionalIsoString(value: Date | string | null) {
 
 function nullableIsoString(value: Date | string | null) {
   return value === null ? null : isoString(value);
+}
+
+function cloneStoreData(data: StoreData): StoreData {
+  return JSON.parse(JSON.stringify(data)) as StoreData;
+}
+
+function sameStoreValue(left: unknown, right: unknown) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
 function isFileExistsError(error: unknown) {

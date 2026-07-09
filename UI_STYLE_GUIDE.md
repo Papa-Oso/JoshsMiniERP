@@ -28,6 +28,7 @@ Visual direction:
 - Use a neutral dark or light-neutral base with restrained accent colors. Avoid the current neon/cyberpunk feel as the default product language.
 - Remove decorative perspective grids, glow shadows, and ornamental gradients from the operational UI.
 - Reserve color for meaning: primary action, success, warning, danger, selected, focus, and unread.
+- Current local ERP palette: graphite base surfaces, teal for primary UI/action accents, green only for healthy/success states, amber for warnings, and red for danger/error states.
 - Use typography scale conservatively. Page titles should identify the page, not dominate the work area.
 - Prefer crisp separators, controlled spacing, and clear alignment over heavy card effects.
 - Keep border radius at 8px or less.

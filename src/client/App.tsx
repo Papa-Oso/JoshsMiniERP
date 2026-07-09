@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
+  Bell,
   Box,
   Clock3,
   FileSpreadsheet,
@@ -22,7 +24,8 @@ import { api } from "./api";
 import { EbayReviewsPage } from "./EbayReviewsPage";
 import { ItemManagementPage } from "./ItemManagementPage";
 import { PrintingPage } from "./PrintingPage";
-import type { DashboardPayload, InventoryItem, Platform, PlatformMapping } from "../shared/types";
+import { Metric, MiniStat, Panel } from "./ui";
+import type { DashboardPayload, InventoryItem, Platform, PlatformMapping, PrinterInfo, PrintingPayload } from "../shared/types";
 import { defaultMaxInventory, platformLabels, platforms } from "../shared/types";
 
 const emptyDashboard: DashboardPayload = {
@@ -43,6 +46,16 @@ type AdjustMode = "add" | "subtract";
 type AppPage = "inventory" | "items" | "ebayReviews" | "printing";
 type SortField = "sku" | "name" | "quantity" | "lowAlert" | "status";
 type SortDirection = "asc" | "desc";
+type NotificationTone = "danger" | "warn" | "info";
+
+interface AppNotification {
+  id: string;
+  tone: NotificationTone;
+  source: string;
+  title: string;
+  message: string;
+  dismissible?: boolean;
+}
 
 const tools: Array<{
   id: AppPage;
@@ -56,6 +69,9 @@ const tools: Array<{
   { id: "ebayReviews", label: "eBay Reviews", group: "Marketplaces", icon: FileSpreadsheet }
 ];
 
+const notificationReadStorageKey = "joshs-mini-erp-read-notifications";
+const notificationDismissedStorageKey = "joshs-mini-erp-dismissed-notifications";
+
 export function App() {
   const [page, setPage] = useState<AppPage>("inventory");
   const [toolSwitcherOpen, setToolSwitcherOpen] = useState(false);
@@ -68,6 +84,15 @@ export function App() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [storeSettingsOpen, setStoreSettingsOpen] = useState(false);
   const [printSettingsOpen, setPrintSettingsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [printingAlerts, setPrintingAlerts] = useState<PrintingPayload | null>(null);
+  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
+  const [printingAlertError, setPrintingAlertError] = useState("");
+  const [printerAlertError, setPrinterAlertError] = useState("");
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => readStoredNotificationIds());
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<Set<string>>(() =>
+    readStoredNotificationIds(notificationDismissedStorageKey)
+  );
   const [schedule, setSchedule] = useState({ enabled: false, intervalMinutes: 60 });
   const [mappingDraft, setMappingDraft] = useState<Partial<Record<Platform, PlatformMapping>>>({});
   const [busy, setBusy] = useState(false);
@@ -102,6 +127,20 @@ export function App() {
   }, [toolSwitcherOpen]);
 
   useEffect(() => {
+    if (!storeSettingsOpen && !printSettingsOpen && !notificationsOpen) return;
+
+    function closeModalOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setStoreSettingsOpen(false);
+      setPrintSettingsOpen(false);
+      setNotificationsOpen(false);
+    }
+
+    window.addEventListener("keydown", closeModalOnEscape);
+    return () => window.removeEventListener("keydown", closeModalOnEscape);
+  }, [notificationsOpen, printSettingsOpen, storeSettingsOpen]);
+
+  useEffect(() => {
     setSchedule({
       enabled: dashboard.schedule.enabled,
       intervalMinutes: dashboard.schedule.intervalMinutes
@@ -124,6 +163,23 @@ export function App() {
   async function load() {
     const data = await api.dashboard();
     setDashboard(data);
+    void loadAlertSources();
+  }
+
+  async function loadAlertSources() {
+    try {
+      setPrintingAlerts(await api.printing());
+      setPrintingAlertError("");
+    } catch (error) {
+      setPrintingAlertError(error instanceof Error ? error.message : String(error));
+    }
+
+    try {
+      setPrinters(await api.printers());
+      setPrinterAlertError("");
+    } catch (error) {
+      setPrinterAlertError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function runAction(action: () => Promise<unknown>, success: string) {
@@ -199,6 +255,29 @@ export function App() {
     setSortDirection("asc");
   }
 
+  function openNotifications() {
+    setNotificationsOpen(true);
+    const nextRead = new Set(readNotificationIds);
+    visibleNotifications.forEach((notification) => nextRead.add(notification.id));
+    setReadNotificationIds(nextRead);
+    storeNotificationIds(notificationReadStorageKey, nextRead);
+  }
+
+  function dismissNotification(id: string) {
+    const notification = notifications.find((candidate) => candidate.id === id);
+    if (notification?.dismissible === false) return;
+
+    const nextDismissed = new Set(dismissedNotificationIds);
+    nextDismissed.add(id);
+    setDismissedNotificationIds(nextDismissed);
+    storeNotificationIds(notificationDismissedStorageKey, nextDismissed);
+
+    const nextRead = new Set(readNotificationIds);
+    nextRead.add(id);
+    setReadNotificationIds(nextRead);
+    storeNotificationIds(notificationReadStorageKey, nextRead);
+  }
+
   function updateMapping(platform: Platform, patch: Partial<PlatformMapping>) {
     setMappingDraft((current) => ({
       ...current,
@@ -228,6 +307,22 @@ export function App() {
         .slice(0, 12),
     [dashboard.events]
   );
+  const notifications = useMemo(
+    () =>
+      buildNotifications({
+        dashboard: activeDashboard,
+        printing: printingAlerts,
+        printers,
+        printingAlertError,
+        printerAlertError
+      }),
+    [activeDashboard, printerAlertError, printers, printingAlertError, printingAlerts]
+  );
+  const visibleNotifications = notifications.filter(
+    (notification) => notification.dismissible === false || !dismissedNotificationIds.has(notification.id)
+  );
+  const unreadNotifications = visibleNotifications.filter((notification) => !readNotificationIds.has(notification.id));
+  const unreadNotificationCount = unreadNotifications.length;
   const pageTitle =
     page === "inventory"
       ? "Inventory Sync"
@@ -301,6 +396,16 @@ export function App() {
               <strong>Local scan history</strong>
             </div>
           )}
+          <button
+            className={`icon-button notification-button ${unreadNotificationCount ? "has-unread" : ""}`}
+            type="button"
+            aria-label={`${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? "" : "s"}`}
+            title="Notifications"
+            onClick={openNotifications}
+          >
+            <Bell size={18} />
+            {unreadNotificationCount ? <span className="notification-badge">{unreadNotificationCount}</span> : null}
+          </button>
         </div>
       </section>
 
@@ -318,7 +423,7 @@ export function App() {
                 <p className="eyebrow">Josh's Mini ERP</p>
                 <h2 id="tool-drawer-title">Tools</h2>
               </div>
-              <button className="icon-button" type="button" onClick={() => setToolSwitcherOpen(false)}>
+              <button className="icon-button" type="button" aria-label="Close tools" onClick={() => setToolSwitcherOpen(false)}>
                 <X size={18} />
               </button>
             </header>
@@ -357,6 +462,58 @@ export function App() {
               {visibleTools.length === 0 ? <div className="tool-empty">No tools</div> : null}
             </nav>
           </aside>
+        </div>
+      ) : null}
+
+      {notificationsOpen ? (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setNotificationsOpen(false)}>
+          <section
+            className="settings-modal notifications-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notifications-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="settings-modal-header">
+              <div>
+                <h2 id="notifications-title">Notifications</h2>
+                <p>
+                  {visibleNotifications.length
+                    ? `${visibleNotifications.length} visible alert${visibleNotifications.length === 1 ? "" : "s"}`
+                    : "All clear"}
+                </p>
+              </div>
+              <button className="icon-button" type="button" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)}>
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="notification-list">
+              {visibleNotifications.map((notification) => (
+                <article className={`notification-row ${notification.tone}`} key={notification.id}>
+                  <span className="notification-icon">
+                    <AlertTriangle size={18} />
+                  </span>
+                  <div>
+                    <p>{notification.source}</p>
+                    <strong>{notification.title}</strong>
+                    <span>{notification.message}</span>
+                  </div>
+                  {notification.dismissible === false ? null : (
+                    <button
+                      className="icon-button notification-dismiss"
+                      type="button"
+                      aria-label={`Dismiss ${notification.title}`}
+                      onClick={() => dismissNotification(notification.id)}
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                </article>
+              ))}
+              {visibleNotifications.length === 0 ? <div className="empty">No visible alerts</div> : null}
+            </div>
+          </section>
         </div>
       ) : null}
 
@@ -584,7 +741,7 @@ export function App() {
                   {readyStores}/{dashboard.platformStatuses.length} ready - {linkedStores}/{platforms.length} linked
                 </p>
               </div>
-              <button className="icon-button" type="button" onClick={() => setStoreSettingsOpen(false)}>
+              <button className="icon-button" type="button" aria-label="Close store settings" onClick={() => setStoreSettingsOpen(false)}>
                 <X size={18} />
               </button>
             </header>
@@ -657,46 +814,6 @@ export function App() {
         <EbayReviewsPage />
       )}
     </main>
-  );
-}
-
-function Panel({
-  title,
-  icon,
-  children,
-  className
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`panel ${className ?? ""}`}>
-      <header className="panel-header">
-        <span>{icon}</span>
-        <h2>{title}</h2>
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
-  return (
-    <div className={`metric ${tone ?? ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="mini-stat">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -918,4 +1035,221 @@ function stockToneRank(item: InventoryItem) {
   if (tone === "low") return 1;
   if (tone === "watch") return 2;
   return 3;
+}
+
+function buildNotifications({
+  dashboard,
+  printing,
+  printers,
+  printingAlertError,
+  printerAlertError
+}: {
+  dashboard: DashboardPayload;
+  printing: PrintingPayload | null;
+  printers: PrinterInfo[];
+  printingAlertError: string;
+  printerAlertError: string;
+}) {
+  const notifications: AppNotification[] = [];
+
+  dashboard.items
+    .filter((item) => item.active !== false && isLowStock(item))
+    .forEach((item) => {
+      notifications.push({
+        id: `inventory-low:${item.id}:${item.quantity}:${item.safetyStock}`,
+        tone: "warn",
+        source: "Inventory",
+        title: `${item.sku} is low`,
+        message: `${item.quantity} on hand, low alert ${item.safetyStock}.`,
+        dismissible: false
+      });
+    });
+
+  dashboard.items
+    .filter((item) => item.active !== false && isOverMax(item))
+    .forEach((item) => {
+      notifications.push({
+        id: `inventory-over:${item.id}:${item.quantity}:${itemMaxInventory(item)}`,
+        tone: "warn",
+        source: "Inventory",
+        title: `${item.sku} is over max`,
+        message: `${item.quantity} on hand, max ${itemMaxInventory(item)}.`,
+        dismissible: false
+      });
+    });
+
+  if (printing) {
+    printing.instructions
+      .filter((instruction) => instruction.onHand <= instruction.lowAlert)
+      .forEach((instruction) => {
+        notifications.push({
+          id: `instruction-low:${instruction.id}:${instruction.onHand}:${instruction.lowAlert}`,
+          tone: "warn",
+          source: "Printing",
+          title: `${instruction.label} instructions are low`,
+          message: `${instruction.onHand} on hand, low alert ${instruction.lowAlert}.`,
+          dismissible: false
+        });
+      });
+
+    printing.instructions
+      .filter((instruction) => instruction.onHand > instructionMaxInventory(instruction))
+      .forEach((instruction) => {
+        notifications.push({
+          id: `instruction-over:${instruction.id}:${instruction.onHand}:${instructionMaxInventory(instruction)}`,
+          tone: "warn",
+          source: "Printing",
+          title: `${instruction.label} instructions are over max`,
+          message: `${instruction.onHand} on hand, max ${instructionMaxInventory(instruction)}.`,
+          dismissible: false
+        });
+      });
+  }
+
+  const latestRun = dashboard.syncRuns[0];
+  if (latestRun && (latestRun.status === "failed" || latestRun.summary.errors > 0 || latestRun.summary.warnings > 0)) {
+    const issueCount = latestRun.summary.errors + latestRun.summary.warnings;
+    notifications.push({
+      id: `sync:${latestRun.id}:${latestRun.status}:${latestRun.summary.errors}:${latestRun.summary.warnings}`,
+      tone: latestRun.status === "failed" || latestRun.summary.errors > 0 ? "danger" : "warn",
+      source: "Sync",
+      title: latestRun.status === "failed" ? "Latest sync failed" : `Latest sync has ${issueCount} issue${issueCount === 1 ? "" : "s"}`,
+      message: latestRun.messages[0] ?? `${latestRun.summary.errors} errors, ${latestRun.summary.warnings} warnings.`
+    });
+  }
+
+  if (printingAlertError) {
+    notifications.push({
+      id: `printing-alert-source:${printingAlertError}`,
+      tone: "danger",
+      source: "Printing",
+      title: "Printing alerts could not be checked",
+      message: printingAlertError
+    });
+  }
+
+  if (printerAlertError) {
+    notifications.push({
+      id: `printer-alert-source:${printerAlertError}`,
+      tone: "danger",
+      source: "Printer",
+      title: "Printer status could not be checked",
+      message: printerAlertError
+    });
+  } else {
+    notifications.push(...buildPrinterNotifications(printing, printers));
+  }
+
+  return notifications.sort((left, right) => notificationToneRank(left.tone) - notificationToneRank(right.tone));
+}
+
+function buildPrinterNotifications(printing: PrintingPayload | null, printers: PrinterInfo[]) {
+  const notifications: AppNotification[] = [];
+  if (!printing) return notifications;
+
+  if (printers.length === 0) {
+    notifications.push({
+      id: "printer:none-found",
+      tone: "warn",
+      source: "Printer",
+      title: "No Windows printers found",
+      message: "Printing may fail until Windows can see a label or instruction printer."
+    });
+    return notifications;
+  }
+
+  const defaultPrinter = printers.find((printer) => printer.isDefault);
+  const selectedPrinters = [
+    { role: "Label printer", name: printing.defaults.labelPrinterName },
+    { role: "Instruction printer", name: printing.defaults.instructionPrinterName }
+  ];
+
+  selectedPrinters.forEach(({ role, name }) => {
+    if (!name) return;
+    const printer = printers.find((candidate) => candidate.name === name);
+    if (!printer) {
+      notifications.push({
+        id: `printer-missing:${role}:${name}`,
+        tone: "danger",
+        source: "Printer",
+        title: `${role} is missing`,
+        message: `${name} is saved, but Windows did not report that printer.`
+      });
+    }
+  });
+
+  if (!selectedPrinters.some((entry) => entry.name) && !defaultPrinter) {
+    notifications.push({
+      id: "printer:no-default",
+      tone: "warn",
+      source: "Printer",
+      title: "No default printer detected",
+      message: "Choose label and instruction printers in Print Settings."
+    });
+  }
+
+  const watched = new Map<string, { printer: PrinterInfo; roles: string[] }>();
+  selectedPrinters.forEach(({ role, name }) => {
+    const printer = name ? printers.find((candidate) => candidate.name === name) : defaultPrinter;
+    if (!printer) return;
+    const existing = watched.get(printer.name);
+    if (existing) {
+      existing.roles.push(role);
+      return;
+    }
+    watched.set(printer.name, { printer, roles: [name ? role : `${role} using Windows default`] });
+  });
+
+  watched.forEach(({ printer, roles }) => {
+    const problem = printerProblem(printer);
+    if (!problem) return;
+    notifications.push({
+      id: `printer-status:${printer.name}:${printer.status ?? "unknown"}:${printer.workOffline ? "offline" : "online"}`,
+      tone: problem.tone,
+      source: "Printer",
+      title: `${printer.name} needs attention`,
+      message: `${roles.join(" and ")}: ${problem.message}`
+    });
+  });
+
+  return notifications;
+}
+
+function printerProblem(printer: PrinterInfo): { tone: NotificationTone; message: string } | null {
+  if (printer.workOffline) return { tone: "danger", message: "Windows reports this printer is offline." };
+  if (printer.status === 7) return { tone: "danger", message: "Windows reports this printer is offline." };
+  if (printer.status === 6) return { tone: "danger", message: "Windows reports this printer stopped printing." };
+  if (printer.status === 1) return { tone: "warn", message: "Windows reports an unspecified printer issue." };
+  if (printer.status === 2) return { tone: "warn", message: "Windows could not determine the printer status." };
+  return null;
+}
+
+function instructionMaxInventory(instruction: PrintingPayload["instructions"][number]) {
+  return Number.isInteger(instruction.maxInventory) && instruction.maxInventory >= 1
+    ? instruction.maxInventory
+    : defaultMaxInventory;
+}
+
+function notificationToneRank(tone: NotificationTone) {
+  if (tone === "danger") return 0;
+  if (tone === "warn") return 1;
+  return 2;
+}
+
+function readStoredNotificationIds(storageKey = notificationReadStorageKey) {
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function storeNotificationIds(storageKey: string, ids: Set<string>) {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify([...ids].slice(-250)));
+  } catch {
+    // Local notification read state is optional; active alerts still render without storage.
+  }
 }

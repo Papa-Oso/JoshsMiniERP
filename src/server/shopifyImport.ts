@@ -57,7 +57,7 @@ export async function importShopifySkus(options: ShopifyImportOptions = {}): Pro
     return planShopifyImport(data, grouped, variants.length, options, false);
   }
 
-  return store.mutate((data) => planShopifyImport(data, grouped, variants.length, options, true));
+  return mutateStore((data) => planShopifyImport(data, grouped, variants.length, options, true));
 }
 
 function planShopifyImport(
@@ -292,4 +292,9 @@ function htmlToText(value?: string | null) {
     .replace(/\n\s+/g, "\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+function mutateStore<T>(mutator: (data: StoreData) => T | Promise<T>) {
+  const mutate = store.mutateChanges?.bind(store) ?? store.mutate.bind(store);
+  return mutate(mutator);
 }

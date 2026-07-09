@@ -12,6 +12,7 @@ import { reconcileInventory } from "./reconcile";
 import { auditSkuPairings } from "./skuAudit";
 import { refreshShopifyDetails } from "./shopifyDetails";
 import { importShopifySkus } from "./shopifyImport";
+import { migrateJsonToSQLite } from "./sqliteMigration";
 import { closeStore } from "./store";
 import { runInventorySync } from "./syncEngine";
 import { createWindowsStartupScript, createWindowsSyncTask } from "./windowsScheduler";
@@ -73,6 +74,9 @@ try {
       break;
     case "migrate-postgres":
       await migratePostgresFromCli(args.slice(1));
+      break;
+    case "migrate-sqlite":
+      await migrateSQLiteFromCli(args.slice(1));
       break;
     case "sku-audit":
       await skuAuditFromCli(args.slice(1));
@@ -402,6 +406,29 @@ async function migratePostgresFromCli(input: string[]) {
   console.table([
     {
       database: result.databaseUrl,
+      items: result.items,
+      mappings: result.mappings,
+      events: result.events,
+      syncRuns: result.syncRuns,
+      syncMessages: result.syncMessages,
+      scheduleRows: result.scheduleRows,
+      force: result.force,
+      backup: result.backupPath ?? "-"
+    }
+  ]);
+}
+
+async function migrateSQLiteFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const result = await migrateJsonToSQLite({
+    dryRun: Boolean(flags["dry-run"]),
+    force: Boolean(flags.force)
+  });
+
+  console.log(`${result.dryRun ? "Dry run" : "Migrated"} JSON inventory to SQLite.`);
+  console.table([
+    {
+      database: result.databaseFile,
       items: result.items,
       mappings: result.mappings,
       events: result.events,
@@ -752,6 +779,7 @@ Commands:
   npm run inv -- csv-import <file.csv> [--dry-run]
   npm run inv -- export [output.json]
   npm run inv -- backup [backup-directory]
+  npm run inv -- migrate-sqlite [--dry-run] [--force]
   npm run inv -- migrate-postgres [--dry-run] [--force]
   npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output data/sku-audit.csv]
   npm run inv -- shopify-test

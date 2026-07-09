@@ -46,7 +46,7 @@ export async function importCsv(filePath: string, options: CsvImportOptions = {}
     return applyCsvRecords(data, records, true);
   }
 
-  return store.mutate((data) => applyCsvRecords(data, records, false));
+  return mutateStore((data) => applyCsvRecords(data, records, false));
 }
 
 function applyCsvRecords(data: StoreData, records: CsvRecord[], dryRun: boolean): CsvImportResult {
@@ -409,4 +409,9 @@ function optionalPositiveInteger(record: CsvRecord, keys: string[], label: strin
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function mutateStore<T>(mutator: (data: StoreData) => T | Promise<T>) {
+  const mutate = store.mutateChanges?.bind(store) ?? store.mutate.bind(store);
+  return mutate(mutator);
 }

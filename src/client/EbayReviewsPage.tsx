@@ -8,6 +8,7 @@ import {
   Loader2,
   RotateCcw
 } from "lucide-react";
+import { PanelFrame } from "./ui";
 
 const columns = [
   "title",
@@ -285,11 +286,11 @@ export function EbayReviewsPage() {
           <div className="review-action-row">
             <button className="icon-button primary" type="button" disabled={!canExport} onClick={() => void scrapeAndDownload("incremental")}>
               {loadingMode === "incremental" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {loadingMode === "incremental" ? "Exporting" : "Incremental CSV"}
+              {loadingMode === "incremental" ? "Exporting" : "Scan + Latest CSV"}
             </button>
             <button className="icon-button" type="button" disabled={!canExport} onClick={() => void scrapeAndDownload("full")}>
               {loadingMode === "full" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {loadingMode === "full" ? "Exporting" : "Full CSV"}
+              {loadingMode === "full" ? "Exporting" : "Scan + Full CSV"}
             </button>
             <button
               type="button"
@@ -391,10 +392,6 @@ export function EbayReviewsPage() {
       </PanelFrame>
     </section>
   );
-}
-
-function PanelFrame({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={`panel ${className ?? ""}`}>{children}</section>;
 }
 
 function ReviewMetric({ label, value }: { label: string; value: number }) {

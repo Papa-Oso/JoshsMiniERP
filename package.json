@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/**/*.test.ts",
     "test:postgres": "tsx --test tests/postgresStore.test.ts",
+    "smoke:ui": "node scripts/ui-smoke.mjs",
     "check": "npm run build && npm test && npm run shopify:typecheck",
     "start": "tsx src/server/index.ts",
     "inv": "tsx src/server/cli.ts",

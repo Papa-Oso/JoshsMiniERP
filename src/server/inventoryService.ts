@@ -69,11 +69,8 @@ export async function createItem(input: CreateItemInput) {
   if (!sku) throw new Error("SKU is required.");
   if (!name) throw new Error("Name is required.");
 
-  return store.mutate((data) => {
-    if (data.items.some((item) => item.sku.toUpperCase() === sku)) {
-      throw new Error(`SKU ${sku} already exists.`);
-    }
-
+  const createInData = (data: StoreData) => {
+    assertSkuAvailable(data, sku);
     const timestamp = now();
     const item: InventoryItem = {
       id: randomUUID(),
@@ -88,25 +85,33 @@ export async function createItem(input: CreateItemInput) {
       createdAt: timestamp,
       updatedAt: timestamp
     };
+    const event = makeEvent(item, "create", quantity, quantity, "local", input.quantity ? "Initial count" : undefined);
 
     data.items.unshift(item);
-    data.events.unshift(
-      makeEvent(item, "create", quantity, quantity, "local", input.quantity ? "Initial count" : undefined)
-    );
+    data.events.unshift(event);
     trimHistory(data);
-    return item;
-  });
+    return { item, event };
+  };
+
+  const saveItemWithEvent = store.saveItemWithEvent?.bind(store);
+  if (saveItemWithEvent) {
+    return store.withLock(async () => {
+      const { item, event } = createInData(await store.read());
+      await saveItemWithEvent(item, event);
+      return item;
+    });
+  }
+
+  return store.mutate((data) => createInData(data).item);
 }
 
 export async function updateItem(id: string, input: UpdateItemInput) {
-  return store.mutate((data) => {
+  const updateInData = (data: StoreData) => {
     const item = findItem(data, id);
     const nextSku = clean(input.sku)?.toUpperCase();
 
     if (nextSku && nextSku !== item.sku) {
-      if (data.items.some((candidate) => candidate.id !== id && candidate.sku.toUpperCase() === nextSku)) {
-        throw new Error(`SKU ${nextSku} already exists.`);
-      }
+      assertSkuAvailable(data, nextSku, id);
       item.sku = nextSku;
     }
 
@@ -140,16 +145,38 @@ export async function updateItem(id: string, input: UpdateItemInput) {
 
     item.updatedAt = now();
     return item;
-  });
+  };
+
+  const saveItem = store.saveItem?.bind(store);
+  if (saveItem) {
+    return store.withLock(async () => {
+      const item = updateInData(await store.read());
+      await saveItem(item);
+      return item;
+    });
+  }
+
+  return store.mutate(updateInData);
 }
 
 export async function deleteItem(id: string) {
-  return store.mutate((data) => {
+  const deleteInData = (data: StoreData) => {
     const item = findItem(data, id);
     item.active = false;
     item.updatedAt = now();
     return item;
-  });
+  };
+
+  const saveItem = store.saveItem?.bind(store);
+  if (saveItem) {
+    return store.withLock(async () => {
+      const item = deleteInData(await store.read());
+      await saveItem(item);
+      return item;
+    });
+  }
+
+  return store.mutate(deleteInData);
 }
 
 export async function adjustInventory(id: string, input: AdjustInventoryInput) {
@@ -163,7 +190,7 @@ export async function adjustInventory(id: string, input: AdjustInventoryInput) {
     throw new Error("Manual subtract must reduce inventory.");
   }
 
-  return store.mutate((data) => {
+  const adjustInData = (data: StoreData) => {
     const item = findItem(data, id);
     const nextQuantity = item.quantity + delta;
     if (nextQuantity < 0) {
@@ -172,14 +199,26 @@ export async function adjustInventory(id: string, input: AdjustInventoryInput) {
 
     item.quantity = nextQuantity;
     item.updatedAt = now();
-    data.events.unshift(makeEvent(item, eventType, delta, nextQuantity, "local", clean(input.note)));
+    const event = makeEvent(item, eventType, delta, nextQuantity, "local", clean(input.note));
+    data.events.unshift(event);
     trimHistory(data);
-    return item;
-  });
+    return { item, event };
+  };
+
+  const saveItemWithEvent = store.saveItemWithEvent?.bind(store);
+  if (saveItemWithEvent) {
+    return store.withLock(async () => {
+      const { item, event } = adjustInData(await store.read());
+      await saveItemWithEvent(item, event);
+      return item;
+    });
+  }
+
+  return store.mutate((data) => adjustInData(data).item);
 }
 
 export async function updateSchedule(input: UpdateScheduleInput) {
-  return store.mutate((data) => {
+  const updateScheduleInData = (data: StoreData) => {
     if (input.enabled !== undefined) {
       data.schedule.enabled = Boolean(input.enabled);
     }
@@ -194,7 +233,18 @@ export async function updateSchedule(input: UpdateScheduleInput) {
 
     data.schedule.updatedAt = now();
     return data.schedule;
-  });
+  };
+
+  const saveSchedule = store.saveSchedule?.bind(store);
+  if (saveSchedule) {
+    return store.withLock(async () => {
+      const schedule = updateScheduleInData(await store.read());
+      await saveSchedule(schedule);
+      return schedule;
+    });
+  }
+
+  return store.mutate(updateScheduleInData);
 }
 
 export function makeEvent(
@@ -226,6 +276,12 @@ function findItem(data: StoreData, id: string) {
   if (item.active === undefined) item.active = true;
   item.maxInventory = storedMaxInventory(item.maxInventory);
   return item;
+}
+
+function assertSkuAvailable(data: StoreData, sku: string, currentItemId?: string) {
+  if (data.items.some((item) => item.id !== currentItemId && item.sku.toUpperCase() === sku)) {
+    throw new Error(`SKU ${sku} already exists.`);
+  }
 }
 
 function normalizeItem(item: InventoryItem): InventoryItem {

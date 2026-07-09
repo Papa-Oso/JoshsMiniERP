@@ -14,6 +14,22 @@ npm run dev
 
 Open `http://127.0.0.1:5175`. The API runs on `http://127.0.0.1:5174`.
 
+No Docker, local database server, or cloud service is required for normal personal-store use. The intended local database is SQLite at `data/inventory.sqlite`: real SQL in one local file, with no background service or bill. JSON remains available for backup/export and migration.
+
+If you already have inventory in `data/inventory.json`, migrate it once:
+
+```powershell
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
+```
+
+The default driver is now SQLite. Keep or set this in `.env`:
+
+```text
+STORE_DRIVER=sqlite
+DATABASE_FILE=data/inventory.sqlite
+```
+
 For embedded Shopify app development, set `DATABASE_URL` to an existing Postgres database, then run:
 
 ```powershell
@@ -38,6 +54,8 @@ npm run audit:all
 
 `check` runs the root TypeScript/Vite build, the Node test suite, and the embedded Shopify app typecheck. `audit:all` checks both npm dependency trees. The Postgres store test is optional and requires `TEST_POSTGRES_DATABASE_URL`.
 
+Do not install or start Docker just to run optional Postgres tests. SQLite tests run in the normal test suite and require no service. Use `npm run test:postgres` only when an existing test database URL is already available or Josh explicitly asks to set one up.
+
 ## UI Style Guide
 
 Use [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) before changing app screens, buttons, panels, settings, or user-facing workflow copy.
@@ -47,10 +65,11 @@ Use [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) before changing app screens, buttons,
 Use [PLAN.md](PLAN.md) as the authoritative execution roadmap. The current direction is:
 
 - Keep the working inventory, printing, sync, and review workflows stable.
+- Keep the app cheap and local by default; SQLite is the real personal-use database.
 - Rework the local UI into a calmer professional operations workbench.
-- Use PostgreSQL as the growth database path; JSON remains the local fallback/export format.
+- Keep JSON as backup/export format and use PostgreSQL only as an optional later deployment path.
 - Keep the embedded Shopify app on Shopify Admin UI components while sharing product language and API contracts.
-- Consolidate related operational data, including instruction inventory and feedback history, after the Postgres path is hardened.
+- Consolidate related operational data, including instruction inventory and feedback history, after the SQLite path is fully trusted.
 
 ## Notifications
 
@@ -83,6 +102,8 @@ npm run inv -- csv-import inventory-batch.csv
 npm run inv -- backup
 npm run inv -- export data/export.json
 npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
 npm run inv -- migrate-postgres --dry-run
 npm run inv -- migrate-postgres
 npm run inv -- shopify-lookup NEON-MUG
@@ -178,7 +199,16 @@ npm run inv -- sku-audit --platform ebay
 
 `sku-audit` compares local SKUs with Shopify variant SKUs and eBay Sell Inventory SKUs. It reports whether each SKU pairs cleanly, is missing locally, is missing on a marketplace, has duplicate remote records, or has quantity differences that should be reviewed with `reconcile`.
 
-Postgres storage:
+SQLite storage:
+
+```powershell
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
+```
+
+SQLite is the default local driver. Keep `STORE_DRIVER=sqlite` and `DATABASE_FILE=data/inventory.sqlite` to run the local ERP on SQLite. This is the preferred personal-store database path because it is real SQL without Docker, a database server, or cloud cost. `migrate-sqlite` copies the current JSON inventory into SQLite and writes a JSON backup first. It refuses to overwrite a non-empty SQLite database unless you pass `--force`.
+
+Postgres storage, optional later:
 
 ```powershell
 $env:DATABASE_URL="postgresql://erp_user:<password>@127.0.0.1:5432/erp"
@@ -186,7 +216,7 @@ npm run inv -- migrate-postgres --dry-run
 npm run inv -- migrate-postgres
 ```
 
-The app still uses `STORE_DRIVER=json` by default for local testing. Set `STORE_DRIVER=postgres` and `DATABASE_URL` to use native Postgres tables. `migrate-postgres` copies the current JSON inventory into Postgres and writes a JSON backup first. It refuses to overwrite a non-empty Postgres database unless you pass `--force`.
+Set `STORE_DRIVER=postgres` and `DATABASE_URL` only when you intentionally want to use an existing Postgres database. `migrate-postgres` copies the current JSON inventory into Postgres and writes a JSON backup first. It refuses to overwrite a non-empty Postgres database unless you pass `--force`.
 
 To run the Postgres store contract test against a disposable/local database:
 
@@ -516,10 +546,12 @@ Relevant docs:
 
 ## Data
 
-Inventory data is stored in `data/inventory.json` by default. Change it with `DATA_FILE` in `.env`.
+Inventory data should live in `data/inventory.sqlite` for normal personal use. SQLite is the default driver; change the file with `DATABASE_FILE` in `.env`.
+
+`data/inventory.json` remains the portable backup/export and migration format. Change its location with `DATA_FILE` in `.env`.
 
 Instruction inventory and print settings are currently stored in `data/printing.json`, and uploaded print assets live under `data/printing/`.
 
 The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
 
-The growth roadmap in [PLAN.md](PLAN.md) moves the app toward PostgreSQL-backed operational data while keeping JSON export available for portability and backups.
+The growth roadmap in [PLAN.md](PLAN.md) moves the app toward SQLite-backed local operational data while keeping JSON export available for portability and backups. PostgreSQL remains optional for a future hosted deployment.

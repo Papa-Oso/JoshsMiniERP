@@ -13,6 +13,7 @@ const originalFetch = globalThis.fetch;
 
 process.env.DATA_FILE = dataFile;
 process.env.PRINTING_DATA_FILE = printingFile;
+process.env.STORE_DRIVER = "json";
 process.env.SHOPIFY_SHOP_DOMAIN = "test-shop.myshopify.com";
 process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "test-token";
 process.env.SHOPIFY_API_VERSION = "2026-07";

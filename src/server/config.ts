@@ -11,8 +11,9 @@ export interface AppConfig {
   host: string;
   apiToken?: string;
   dataFile: string;
+  databaseFile: string;
   databaseUrl?: string;
-  storeDriver: "json" | "postgres";
+  storeDriver: "json" | "sqlite" | "postgres";
   shopify: {
     shopDomain?: string;
     accessToken?: string;
@@ -78,8 +79,14 @@ export const config: AppConfig = {
   host: readConfigured("HOST") ?? "127.0.0.1",
   apiToken: readConfigured("ERP_API_TOKEN"),
   dataFile: path.resolve(readConfigured("DATA_FILE") ?? "data/inventory.json"),
+  databaseFile: path.resolve(readConfigured("DATABASE_FILE") ?? "data/inventory.sqlite"),
   databaseUrl: readConfigured("DATABASE_URL"),
-  storeDriver: readConfigured("STORE_DRIVER") === "postgres" ? "postgres" : "json",
+  storeDriver:
+    readConfigured("STORE_DRIVER") === "postgres"
+      ? "postgres"
+      : readConfigured("STORE_DRIVER") === "json"
+        ? "json"
+        : "sqlite",
   shopify: {
     shopDomain: readConfigured("SHOPIFY_SHOP_DOMAIN"),
     accessToken: readConfigured("SHOPIFY_ADMIN_ACCESS_TOKEN") ?? readConfigured("SHOPIFY_ACCESS_TOKEN"),

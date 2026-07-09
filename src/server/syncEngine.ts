@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { InventoryItem, Platform, SyncMode, SyncRun, SyncSummary } from "../shared/types";
+import type { InventoryItem, Platform, StoreData, SyncMode, SyncRun, SyncSummary } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
 import { adapterByPlatform, adapters } from "./adapters";
 import type { RemoteQuantity } from "./adapters/types";
@@ -66,7 +66,7 @@ async function runInventorySyncLocked(mode: SyncMode): Promise<SyncRun> {
     return run;
   } catch (error) {
     const run = failedRun(mode, startedAt, messages, summary, error);
-    await store.mutate((data) => {
+    await mutateStore((data) => {
       data.syncRuns.unshift(run);
       data.syncRuns = data.syncRuns.slice(0, 100);
       data.schedule.lastRunAt = run.finishedAt;
@@ -128,7 +128,7 @@ async function applySalesAndPlanPushes(
   const salesByItem = new Map<string, { units: number; notes: string[] }>();
   const pushableMappings = new Set<string>();
 
-  const result = await store.mutate((data) => {
+  const result = await mutateStore((data) => {
     const instructionUses: InstructionSaleUse[] = [];
 
     for (const reading of readings) {
@@ -293,7 +293,7 @@ async function finalizeRun(
     messages: messages.length ? messages : ["Sync completed."]
   };
 
-  await store.mutate((data) => {
+  await mutateStore((data) => {
     for (const success of pushSuccesses) {
       const item = data.items.find((candidate) => candidate.id === success.itemId);
       const mapping = item?.mappings[success.platform];
@@ -352,4 +352,9 @@ export function computeNextRun(enabled: boolean, intervalMinutes: number) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function mutateStore<T>(mutator: (data: StoreData) => T | Promise<T>) {
+  const mutate = store.mutateChanges?.bind(store) ?? store.mutate.bind(store);
+  return mutate(mutator);
 }
