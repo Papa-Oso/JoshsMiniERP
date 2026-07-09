@@ -14,6 +14,7 @@ import { ebayReviewsRouter } from "./ebayReviewRoutes";
 import { refreshScheduler } from "./scheduler";
 import { runInventorySync } from "./syncEngine";
 import { printingRouter } from "./printingRoutes";
+import { getOperationsReport } from "./reportingService";
 
 export const router = express.Router();
 router.use("/ebay-reviews", ebayReviewsRouter);
@@ -110,6 +111,10 @@ router.patch("/schedule", asyncHandler(async (req, res) => {
 router.post("/sync", asyncHandler(async (_req, res) => {
   const run = await runInventorySync("manual");
   res.json(run);
+}));
+
+router.get("/reports/operations", asyncHandler(async (_req, res) => {
+  res.json(await getOperationsReport());
 }));
 
 function asyncHandler(

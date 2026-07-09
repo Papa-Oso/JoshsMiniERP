@@ -24,10 +24,12 @@ process.env.SHOPIFY_API_VERSION = "2026-07";
 
 const { adjustInventory, createItem, listData, updateItem } = await import("../src/server/inventoryService.ts");
 const { backupInventoryData, exportInventoryData } = await import("../src/server/dataTools.ts");
+const { applyFeedbackHistory } = await import("../src/server/ebayReviews/feedbackStore.ts");
 const { importCsv } = await import("../src/server/csvImport.ts");
 const { listImportBatches } = await import("../src/server/importHistory.ts");
 const { listPrintingAssets } = await import("../src/server/printingAssets.ts");
 const { adjustInstruction, getPrintingData, updatePrintSettings, updateSkuInstructionMatch } = await import("../src/server/printingService.ts");
+const { getOperationsReport } = await import("../src/server/reportingService.ts");
 const { importShopifySkus } = await import("../src/server/shopifyImport.ts");
 const { reconcileInventory } = await import("../src/server/reconcile.ts");
 const { runInventorySync } = await import("../src/server/syncEngine.ts");
@@ -132,7 +134,6 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   assert.equal(shopifyBatch?.rows[0]?.sku, "SHOPIFY-NEW");
 
   await writeFile(printingFile, `${JSON.stringify({ settings: { labelPrinter: "Test Label Printer" } }, null, 2)}\n`, "utf8");
-  await writeFile(feedbackFile, "test feedback sqlite placeholder", "utf8");
   await mkdir(path.join(printingAssetDir, "instructions"), { recursive: true });
   await mkdir(path.join(printingAssetDir, "labels"), { recursive: true });
   await writeFile(path.join(printingAssetDir, "instructions", "JW-HJC-INSTRUCTIONS.pdf"), "instruction asset", "utf8");
@@ -142,6 +143,37 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   assert.equal(assets.length, 2);
   assert.equal(assetMetadata.some((asset) => asset.kind === "instruction" && asset.instructionId === "hjc"), true);
   assert.equal(assetMetadata.some((asset) => asset.kind === "label" && asset.sku === "LOCAL-SKU"), true);
+
+  await applyFeedbackHistory(
+    [
+      {
+        feedback_id: "feedback-1",
+        seller_username: "seller",
+        source_item_id: "item-1",
+        source_item_title: "Item 1",
+        matched_item_id: "item-1",
+        matched_item_title: "Item 1",
+        rating: "positive",
+        buyer_username: "buyer-1",
+        feedback_date: "Jan 1, 2026",
+        feedback_text: "Great item",
+        source_listing_url: "https://www.ebay.com/itm/1",
+        matched_item_url: "https://www.ebay.com/itm/1",
+        feedback_profile_url: "https://feedback.ebay.com/fdbk/feedback_profile/seller",
+        match_type: "exact"
+      }
+    ],
+    { scanMode: "full" }
+  );
+
+  const report = await getOperationsReport();
+  assert.equal(report.importBatches.length, 2);
+  assert.equal(report.reconcileRuns.length, 1);
+  assert.equal(report.syncRuns.length >= 1, true);
+  assert.equal(report.inventoryEvents.length >= 1, true);
+  assert.equal(report.printEvents.length >= 1, true);
+  assert.equal(report.feedbackScanRuns.length, 1);
+  assert.equal(report.mappingHealth.some((row) => row.sku === "LOCAL-SKU" && row.platform === "shopify"), true);
 
   const backup = await backupInventoryData(path.join(tempDir, "backups"));
   const exportPath = path.join(tempDir, "export.json");

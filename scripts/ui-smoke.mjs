@@ -8,6 +8,7 @@ const outputDir = path.resolve(process.env.UI_SMOKE_OUTPUT_DIR || "data/ui-smoke
 const toolPages = [
   { label: "Inventory", h1: "Inventory Sync" },
   { label: "Item Management", h1: "Item Management", button: /Item Management/ },
+  { label: "Review", h1: "Review", button: /^Review/ },
   { label: "Printing", h1: "Printing", button: /^Printing/ },
   { label: "eBay Reviews", h1: "eBay Reviews", button: /eBay Reviews/ }
 ];

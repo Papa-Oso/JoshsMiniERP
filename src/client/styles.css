@@ -745,6 +745,112 @@ h2 {
   color: var(--cyan);
 }
 
+.review-center-page {
+  display: grid;
+  gap: var(--panel-gap);
+}
+
+.review-center-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(92px, 1fr)) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.review-refresh {
+  align-self: stretch;
+  min-width: 118px;
+}
+
+.review-center-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--panel-gap);
+  align-items: start;
+}
+
+.review-center-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.review-center-panel .panel-header {
+  height: auto;
+  min-height: 38px;
+  margin-bottom: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(166, 174, 168, 0.14);
+}
+
+.report-table-wrap {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid rgba(166, 174, 168, 0.14);
+  border-radius: 8px;
+}
+
+.report-table {
+  min-width: 620px;
+  table-layout: auto;
+}
+
+.report-table tbody tr {
+  cursor: default;
+}
+
+.report-table td {
+  white-space: normal;
+  vertical-align: top;
+}
+
+.report-table td:first-child {
+  min-width: 150px;
+}
+
+.report-table td strong,
+.report-table td span {
+  display: block;
+}
+
+.report-table td span {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.report-status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 23px;
+  border-radius: 999px;
+  padding: 0 8px;
+  background: rgba(166, 174, 168, 0.14);
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.report-status-pill.ok {
+  background: rgba(81, 200, 120, 0.14);
+  color: var(--color-success);
+}
+
+.report-status-pill.warning,
+.report-status-pill.missing_mapping {
+  background: rgba(230, 180, 80, 0.12);
+  color: var(--color-warning);
+}
+
+.report-status-pill.missing_config {
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--color-danger);
+}
+
 .printing-page {
   display: grid;
   gap: var(--panel-gap);
@@ -2323,6 +2429,11 @@ tbody tr.selected,
   .review-summary-band {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
+
+  .review-center-summary,
+  .review-center-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2443,6 +2554,10 @@ tbody tr.selected,
   }
 
   .review-summary-band {
+    grid-template-columns: 1fr;
+  }
+
+  .review-center-summary {
     grid-template-columns: 1fr;
   }
 

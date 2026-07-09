@@ -248,7 +248,7 @@ Progress:
 | Phase 2: Professional UI Rework | Complete | Design tokens, shared UI helpers, calmer page visuals, graphite/teal color pass, accessibility basics, and persistent UI smoke screenshots are in place. `npm run build`, `npm test`, and `npm run smoke:ui` pass. |
 | Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
 | Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
-| Phase 5: Reporting And Review Workflows | Pending | Start after operational data is consolidated. |
+| Phase 5: Reporting And Review Workflows | In progress | Review Center now surfaces import, reconcile, sync, movement, instruction, mapping, and feedback history. |
 | Phase 6: Production Readiness | Pending | Start after data and workflow foundations are stable. |
 
 Phase 2 progress:
@@ -291,6 +291,19 @@ Phase 4 progress:
 | Feedback scan history consolidation | Complete | eBay review history remains in a cheap local SQLite file, now honors `FEEDBACK_DATA_FILE`, records scan-run summaries, and is covered by operational backup. |
 | Import batch history | Complete | CSV and Shopify applied imports now write `import_batches` and `import_batch_rows` records in SQLite, including row actions and summaries. |
 | Reconcile snapshot history | Complete | Reconcile/dry-run results now write saved run and row snapshots in SQLite for later review/reporting. |
+
+Phase 5 progress:
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| Review Center foundation | Complete | Added `/api/reports/operations` and a local Review tool that surfaces import history, reconcile snapshots, sync runs, inventory movement, instruction movement, mapping health, and feedback scan runs. |
+| Import history view | Complete | The Review tool shows recent CSV and Shopify import batches with row outcome totals. |
+| Reconcile history view | Complete | The Review tool shows saved reconcile snapshots with sales, pushes, warnings, errors, and first row message. |
+| Sync history view | Complete | The Review tool shows recent sync runs with mode, status, sales, pushes, and issue counts. |
+| Inventory movement by SKU | Complete | The Review tool shows recent inventory events by SKU, delta, source, and note. |
+| Instruction usage trend | In progress | The Review tool shows recent instruction movement. Trend summaries are still pending. |
+| Marketplace mapping health view | Complete | The Review tool lists enabled marketplace mappings, missing config, missing mapping fields, and mapping warnings. |
+| eBay review export history | Complete | The Review tool shows feedback scan-run history from the local feedback SQLite database. |
 
 ### Phase 1: Documentation Alignment
 

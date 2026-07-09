@@ -75,6 +75,10 @@ Use [PLAN.md](PLAN.md) as the authoritative execution roadmap. The current direc
 
 The topbar bell shows active alerts and tracks unread alerts locally in the browser. Current alert sources include low item inventory, low instruction inventory, sync errors or warnings, and printer status problems when Windows reports a saved printer as missing, offline, stopped, or unknown. Low and over-max inventory alerts are not dismissible; they clear only when the inventory state or threshold is fixed. Operational alerts such as printer and sync problems can be dismissed locally until they change.
 
+## Review Center
+
+The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.
+
 ## Inventory Rules
 
 - Add inventory only in this tool.

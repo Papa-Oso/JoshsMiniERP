@@ -121,6 +121,16 @@ export interface ReconcileRunRecord extends ReconcileResult {
   createdAt: string;
 }
 
+export interface FeedbackScanRunRecord {
+  id: string;
+  scanMode: "full" | "incremental";
+  rowsSeen: number;
+  rowsExported: number;
+  newRows: number;
+  skippedExistingRows: number;
+  createdAt: string;
+}
+
 export type ImportBatchSource = "csv" | "shopify";
 export type ImportBatchStatus = "applied" | "dry_run" | "failed";
 
@@ -161,6 +171,36 @@ export interface PlatformStatus {
   label: string;
   configured: boolean;
   missing: string[];
+}
+
+export type MappingHealthStatus = "ok" | "disabled" | "missing_config" | "missing_mapping" | "warning";
+
+export interface MappingHealthRow {
+  sku: string;
+  name: string;
+  platform: Platform;
+  status: MappingHealthStatus;
+  message: string;
+}
+
+export interface OperationsReportPayload {
+  generatedAt: string;
+  importBatches: ImportBatchRecord[];
+  reconcileRuns: ReconcileRunRecord[];
+  syncRuns: SyncRun[];
+  inventoryEvents: InventoryEvent[];
+  printEvents: PrintEvent[];
+  feedbackScanRuns: FeedbackScanRunRecord[];
+  mappingHealth: MappingHealthRow[];
+  totals: {
+    imports: number;
+    reconcileRuns: number;
+    syncRuns: number;
+    inventoryEvents: number;
+    printEvents: number;
+    feedbackScanRuns: number;
+    mappingIssues: number;
+  };
 }
 
 export interface StoreData {

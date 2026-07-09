@@ -5,6 +5,7 @@ import type {
   DashboardPayload,
   AdjustInstructionInput,
   InventoryItem,
+  OperationsReportPayload,
   PrinterInfo,
   PrintingPayload,
   UpdatePrintSettingsInput,
@@ -45,6 +46,7 @@ export const api = {
   updateSchedule: (input: UpdateScheduleInput) =>
     request("/api/schedule", { method: "PATCH", body: JSON.stringify(input) }),
   runSync: () => request("/api/sync", { method: "POST" }),
+  operationsReport: () => request<OperationsReportPayload>("/api/reports/operations"),
   printing: () => request<PrintingPayload>("/api/printing"),
   printers: () => request<PrinterInfo[]>("/api/printing/printers"),
   updatePrintSettings: (input: UpdatePrintSettingsInput) =>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   Bell,
   Box,
   Clock3,
@@ -24,6 +25,7 @@ import { api } from "./api";
 import { EbayReviewsPage } from "./EbayReviewsPage";
 import { ItemManagementPage } from "./ItemManagementPage";
 import { PrintingPage } from "./PrintingPage";
+import { ReviewPage } from "./ReviewPage";
 import { Metric, MiniStat, Panel } from "./ui";
 import type { DashboardPayload, InventoryItem, Platform, PlatformMapping, PrinterInfo, PrintingPayload } from "../shared/types";
 import { defaultMaxInventory, platformLabels, platforms } from "../shared/types";
@@ -43,7 +45,7 @@ const emptyDashboard: DashboardPayload = {
 };
 
 type AdjustMode = "add" | "subtract";
-type AppPage = "inventory" | "items" | "ebayReviews" | "printing";
+type AppPage = "inventory" | "items" | "ebayReviews" | "printing" | "review";
 type SortField = "sku" | "name" | "quantity" | "lowAlert" | "status";
 type SortDirection = "asc" | "desc";
 type NotificationTone = "danger" | "warn" | "info";
@@ -65,6 +67,7 @@ const tools: Array<{
 }> = [
   { id: "inventory", label: "Inventory", group: "Core", icon: Box },
   { id: "items", label: "Item Management", group: "Core", icon: PackagePlus },
+  { id: "review", label: "Review", group: "Operations", icon: BarChart3 },
   { id: "printing", label: "Printing", group: "Fulfillment", icon: Printer },
   { id: "ebayReviews", label: "eBay Reviews", group: "Marketplaces", icon: FileSpreadsheet }
 ];
@@ -330,7 +333,9 @@ export function App() {
         ? "Item Management"
         : page === "printing"
           ? "Printing"
-          : "eBay Reviews";
+          : page === "review"
+            ? "Review"
+            : "eBay Reviews";
   const visibleTools = useMemo(() => {
     const query = toolSearch.trim().toLowerCase();
     if (!query) return tools;
@@ -390,6 +395,11 @@ export function App() {
                 <Settings size={18} />
               </button>
             </>
+          ) : page === "review" ? (
+            <div className="tool-summary">
+              <span>History + checks</span>
+              <strong>Operations review</strong>
+            </div>
           ) : (
             <div className="tool-summary">
               <span>Judge.me CSV</span>
@@ -810,6 +820,8 @@ export function App() {
           onPrintSettingsClose={() => setPrintSettingsOpen(false)}
           onDashboardChange={load}
         />
+      ) : page === "review" ? (
+        <ReviewPage />
       ) : (
         <EbayReviewsPage />
       )}
