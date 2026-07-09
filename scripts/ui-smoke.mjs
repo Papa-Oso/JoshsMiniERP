@@ -6,7 +6,7 @@ const baseUrl = process.env.UI_SMOKE_URL || "http://127.0.0.1:5175";
 const outputDir = path.resolve(process.env.UI_SMOKE_OUTPUT_DIR || "data/ui-smoke");
 
 const toolPages = [
-  { label: "Inventory", h1: "Inventory Sync" },
+  { label: "Inventory", h1: "Inventory Sync", button: /^Inventory/ },
   { label: "Item Management", h1: "Item Management", button: /Item Management/ },
   { label: "Review", h1: "Review", button: /^Review/ },
   { label: "Printing", h1: "Printing", button: /^Printing/ },
@@ -20,6 +20,9 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await expectHeading(page, "Review");
+  await expectPanels(page);
+  await page.screenshot({ path: path.join(outputDir, "review-landing-desktop.png"), fullPage: true });
 
   for (const tool of toolPages) {
     if (tool.button) {
@@ -35,9 +38,9 @@ try {
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 900 }, isMobile: true });
   await mobile.goto(baseUrl, { waitUntil: "networkidle" });
-  await expectHeading(mobile, "Inventory Sync");
+  await expectHeading(mobile, "Review");
   await expectPanels(mobile);
-  await mobile.screenshot({ path: path.join(outputDir, "inventory-mobile.png"), fullPage: true });
+  await mobile.screenshot({ path: path.join(outputDir, "review-landing-mobile.png"), fullPage: true });
 
   console.log(`UI smoke screenshots written to ${outputDir}`);
 } finally {

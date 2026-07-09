@@ -76,7 +76,7 @@ const notificationReadStorageKey = "joshs-mini-erp-read-notifications";
 const notificationDismissedStorageKey = "joshs-mini-erp-dismissed-notifications";
 
 export function App() {
-  const [page, setPage] = useState<AppPage>("inventory");
+  const [page, setPage] = useState<AppPage>("review");
   const [toolSwitcherOpen, setToolSwitcherOpen] = useState(false);
   const [toolSearch, setToolSearch] = useState("");
   const [dashboard, setDashboard] = useState<DashboardPayload>(emptyDashboard);
