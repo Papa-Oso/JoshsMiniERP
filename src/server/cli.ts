@@ -8,7 +8,8 @@ import {
   exportInventoryCsv,
   exportInventoryData,
   exportInventoryEventsCsv,
-  exportOperationsReportCsv
+  exportOperationsReportCsv,
+  inspectOperationalBackup
 } from "./dataTools";
 import { runDoctor } from "./diagnostics";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
@@ -90,6 +91,9 @@ try {
       break;
     case "backup":
       await backupFromCli(args.slice(1));
+      break;
+    case "restore-dry-run":
+      await restoreDryRunFromCli(args.slice(1));
       break;
     case "migrate-postgres":
       await migratePostgresFromCli(args.slice(1));
@@ -459,6 +463,26 @@ async function backupFromCli(input: string[]) {
   if (result.files?.length) {
     console.log(`Captured ${result.files.length} file${result.files.length === 1 ? "" : "s"}.`);
   }
+}
+
+async function restoreDryRunFromCli(input: string[]) {
+  const [manifestPath] = positionalArgs(input);
+  const result = await inspectOperationalBackup(manifestPath);
+  console.log(`Restore dry run: ${result.restorable ? "RESTORABLE" : "NOT RESTORABLE"}`);
+  console.log(`Manifest: ${result.path}`);
+  console.log(`Created: ${result.createdAt ?? "-"}`);
+  console.log(`Items: ${result.itemCount ?? "-"}`);
+  if (result.missingSources.length) {
+    console.log(`Original sources missing when backup was created: ${result.missingSources.join(", ")}`);
+  }
+  console.table(
+    result.files.map((file) => ({
+      exists: file.exists,
+      sizeBytes: file.sizeBytes ?? "-",
+      path: file.path
+    }))
+  );
+  if (!result.restorable) process.exitCode = 1;
 }
 
 async function migratePostgresFromCli(input: string[]) {
@@ -849,6 +873,7 @@ Commands:
   npm run inv -- export-events-csv [output.csv]
   npm run inv -- export-review-csv [output-directory]
   npm run inv -- backup [backup-directory]
+  npm run inv -- restore-dry-run [backup-manifest.json]
   npm run inv -- migrate-sqlite [--dry-run] [--force]
   npm run inv -- migrate-postgres [--dry-run] [--force]
   npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output data/sku-audit.csv]

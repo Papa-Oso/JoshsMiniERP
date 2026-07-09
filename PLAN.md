@@ -252,7 +252,7 @@ Progress:
 | Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
 | Phase 6: Production Readiness | Complete | Production startup, Secret Manager-backed deploys, Cloud SQL docs, restore rehearsal, helper script, and smoke checklist are aligned. |
 | Phase 7: Data Portability And Analysis | Complete | Spreadsheet-friendly exports now cover inventory, movement history, and Review Center report tables. |
-| Phase 8: Operational Maintenance | In progress | Starting with a local `doctor` command for store, config, backup, inventory, and marketplace health checks. |
+| Phase 8: Operational Maintenance | Complete | Local maintenance now includes `doctor`, backup rotation guidance, and non-destructive restore dry-runs. |
 
 Phase 2 progress:
 
@@ -333,7 +333,7 @@ Phase 8 progress:
 | --- | --- | --- |
 | Local doctor command | Complete | `doctor` reports storage mode, production-token safety, inventory readability, duplicate SKUs, stock threshold warnings, backup recency, and marketplace credential status. |
 | Backup rotation guidance | Complete | README now recommends pre-change backups, keeping at least 10 local operational backups, one monthly off-repo copy, and manifest checks before deletion. |
-| Recovery dry-run command | Pending | Consider a local restore rehearsal helper after backup rotation rules are settled. |
+| Recovery dry-run command | Complete | `restore-dry-run` inspects an operational backup manifest and verifies captured files exist without copying or overwriting anything. |
 
 ### Phase 1: Documentation Alignment
 

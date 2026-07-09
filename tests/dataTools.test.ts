@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
@@ -20,7 +20,9 @@ process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "";
 process.env.SHOPIFY_CLIENT_ID = "";
 process.env.SHOPIFY_CLIENT_SECRET = "";
 
-const { exportInventoryCsv, exportInventoryEventsCsv, exportOperationsReportCsv } = await import("../src/server/dataTools.ts");
+const { exportInventoryCsv, exportInventoryEventsCsv, exportOperationsReportCsv, inspectOperationalBackup } = await import(
+  "../src/server/dataTools.ts"
+);
 
 after(async () => {
   await rm(tempDir, { recursive: true, force: true });
@@ -74,6 +76,41 @@ test("operations report CSV export writes review tables", async () => {
   assert.match(mappingHealth, /MUG-1,"Mug, Blue",shopify,missing_config/);
   assert.match(inventoryEvents, /2026-01-01T00:00:00.000Z,event-1,MUG-1,item-1,batch_add,4,12,local/);
   assert.match(instructionTrends, /^instruction_id,label,on_hand,low_alert,max_inventory,recent_delta,event_count,status/m);
+});
+
+test("backup inspection checks manifest files without restoring", async () => {
+  const backupDirectory = path.join(tempDir, "backups");
+  await mkdir(backupDirectory, { recursive: true });
+  const inventoryBackup = path.join(backupDirectory, "inventory.json");
+  const sqliteBackup = path.join(backupDirectory, "inventory.sqlite");
+  await writeFile(inventoryBackup, "{}\n", "utf8");
+  await writeFile(sqliteBackup, "sqlite", "utf8");
+  const manifestPath = path.join(backupDirectory, "operational-backup-20260101T000000Z.json");
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        createdAt: timestamp,
+        itemCount: 1,
+        files: [inventoryBackup, sqliteBackup],
+        missingSources: []
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  const restorable = await inspectOperationalBackup();
+  assert.equal(restorable.path, manifestPath);
+  assert.equal(restorable.restorable, true);
+  assert.equal(restorable.files.length, 2);
+  assert.equal(restorable.files.every((file) => file.exists), true);
+
+  await unlink(sqliteBackup);
+  const missingFile = await inspectOperationalBackup(manifestPath);
+  assert.equal(missingFile.restorable, false);
+  assert.equal(missingFile.files.some((file) => !file.exists && file.path === sqliteBackup), true);
 });
 
 function seedStore(): StoreData {

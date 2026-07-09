@@ -11,6 +11,21 @@ export interface DataFileResult {
   files?: string[];
 }
 
+export interface BackupInspectionFile {
+  path: string;
+  exists: boolean;
+  sizeBytes?: number;
+}
+
+export interface BackupInspectionResult {
+  path: string;
+  createdAt?: string;
+  itemCount?: number;
+  files: BackupInspectionFile[];
+  missingSources: string[];
+  restorable: boolean;
+}
+
 export async function exportInventoryData(outputPath?: string): Promise<DataFileResult & { json?: string }> {
   const data = await store.withLock(() => store.read());
   const json = `${JSON.stringify(data, null, 2)}\n`;
@@ -346,6 +361,64 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
     itemCount: data.items.length,
     files: copiedFiles
   };
+}
+
+export async function inspectOperationalBackup(manifestPath?: string): Promise<BackupInspectionResult> {
+  const resolved = manifestPath ? path.resolve(manifestPath) : await latestBackupManifest();
+  const raw = JSON.parse(await fs.readFile(resolved, "utf8")) as {
+    createdAt?: string;
+    itemCount?: number;
+    files?: unknown[];
+    missingSources?: unknown[];
+  };
+  const manifestDirectory = path.dirname(resolved);
+  const filePaths = Array.isArray(raw.files) ? raw.files.map((file) => String(file)) : [];
+  const files = await Promise.all(
+    filePaths.map(async (file) => {
+      const candidate = path.isAbsolute(file) ? file : path.resolve(manifestDirectory, file);
+      try {
+        const stats = await fs.stat(candidate);
+        return {
+          path: candidate,
+          exists: true,
+          sizeBytes: stats.size
+        } satisfies BackupInspectionFile;
+      } catch (cause) {
+        if (isMissingFileError(cause)) {
+          return {
+            path: candidate,
+            exists: false
+          } satisfies BackupInspectionFile;
+        }
+        throw cause;
+      }
+    })
+  );
+
+  return {
+    path: resolved,
+    createdAt: raw.createdAt,
+    itemCount: typeof raw.itemCount === "number" ? raw.itemCount : undefined,
+    files,
+    missingSources: Array.isArray(raw.missingSources) ? raw.missingSources.map((source) => String(source)) : [],
+    restorable: files.length > 0 && files.every((file) => file.exists)
+  };
+}
+
+async function latestBackupManifest() {
+  const backupDirectory = path.resolve(path.join(path.dirname(config.dataFile), "backups"));
+  const files = await fs.readdir(backupDirectory);
+  const manifests = await Promise.all(
+    files
+      .filter((file) => file.startsWith("operational-backup-") && file.endsWith(".json"))
+      .map(async (file) => ({
+        path: path.join(backupDirectory, file),
+        stats: await fs.stat(path.join(backupDirectory, file))
+      }))
+  );
+  const newest = manifests.sort((left, right) => right.stats.mtimeMs - left.stats.mtimeMs)[0];
+  if (!newest) throw new Error(`No operational backup manifest found in ${backupDirectory}.`);
+  return newest.path;
 }
 
 function toCsv(headers: string[], rows: Array<Record<string, unknown>>) {

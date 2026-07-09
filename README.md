@@ -97,6 +97,14 @@ For this personal-store setup, keep backups simple and boring:
 - Do not delete backup files until a newer backup has been opened and its manifest exists.
 - Keep print assets and feedback history with the backup manifest; they are part of the operational record, not throwaway cache.
 
+To inspect a backup before relying on it:
+
+```powershell
+npm run inv -- restore-dry-run data/backups/operational-backup-YYYYMMDDTHHMMSSZ.json
+```
+
+If you omit the manifest path, the command checks the newest manifest under `data/backups`. This is a dry run only: it verifies captured files and prints what would be available, but does not restore or overwrite files.
+
 ## Review Center
 
 The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, instruction stock trends, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.
@@ -131,6 +139,7 @@ npm run inv -- export data/export.json
 npm run inv -- export-csv data/items.csv
 npm run inv -- export-events-csv data/events.csv
 npm run inv -- export-review-csv data/review-export
+npm run inv -- restore-dry-run
 npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
 npm run inv -- migrate-sqlite --dry-run
 npm run inv -- migrate-sqlite
