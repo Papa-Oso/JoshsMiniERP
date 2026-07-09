@@ -41,6 +41,11 @@ export interface AppConfig {
   };
 }
 
+export interface ProductionConfigInput {
+  nodeEnv?: string;
+  apiToken?: string;
+}
+
 const read = (key: string) => process.env[key]?.trim() || undefined;
 const placeholderValues = new Set(
   [
@@ -113,6 +118,15 @@ export const config: AppConfig = {
     tokenFile: path.resolve(readConfigured("ETSY_TOKEN_FILE") ?? "data/etsy-auth.json")
   }
 };
+
+export function requireProductionApiToken({
+  nodeEnv = process.env.NODE_ENV,
+  apiToken = config.apiToken
+}: ProductionConfigInput = {}) {
+  if (nodeEnv?.trim() === "production" && !apiToken?.trim()) {
+    throw new Error("ERP_API_TOKEN is required when NODE_ENV=production.");
+  }
+}
 
 export function getPlatformStatuses(): PlatformStatus[] {
   return [

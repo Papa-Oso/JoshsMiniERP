@@ -16,6 +16,8 @@ Open `http://127.0.0.1:5175`. The API runs on `http://127.0.0.1:5174`.
 
 No Docker, local database server, or cloud service is required for normal personal-store use. The intended local database is SQLite at `data/inventory.sqlite`: real SQL in one local file, with no background service or bill. JSON remains available for backup/export and migration.
 
+Leave `NODE_ENV` unset for normal local use. When `NODE_ENV=production`, the API refuses to start unless `ERP_API_TOKEN` is set.
+
 If you already have inventory in `data/inventory.json`, migrate it once:
 
 ```powershell

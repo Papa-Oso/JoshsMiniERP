@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import express from "express";
-import { config } from "./config";
+import { config, requireProductionApiToken } from "./config";
 import { router } from "./routes";
 import { startScheduler } from "./scheduler";
+
+requireProductionApiToken();
 
 const app = express();
 
