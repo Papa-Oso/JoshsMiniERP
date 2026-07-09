@@ -1,7 +1,9 @@
 import type {
+  FeedbackConcernRow,
   FeedbackScanRunRecord,
   InstructionTrendRow,
   InventoryItem,
+  LowInventoryRow,
   MappingHealthRow,
   OperationsReportPayload,
   Platform,
@@ -9,23 +11,26 @@ import type {
 } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
 import { adapterByPlatform } from "./adapters";
-import { loadFeedbackScanRuns } from "./ebayReviews/feedbackStore";
+import { loadFeedbackHistory, loadFeedbackScanRuns } from "./ebayReviews/feedbackStore";
 import { listData } from "./inventoryService";
 import { getPrintingData } from "./printingService";
 import { store } from "./store";
 
 export async function getOperationsReport(): Promise<OperationsReportPayload> {
-  const [data, printing, importBatches, reconcileRuns, feedbackScanRuns] = await Promise.all([
+  const [data, printing, importBatches, reconcileRuns, feedbackScanRuns, feedbackHistory] = await Promise.all([
     listData(),
     getPrintingData(),
     store.listImportBatches?.(12) ?? Promise.resolve([]),
     store.listReconcileRuns?.(12) ?? Promise.resolve([]),
-    loadFeedbackScanRuns(12).then(normalizeFeedbackScanRuns)
+    loadFeedbackScanRuns(12).then(normalizeFeedbackScanRuns),
+    loadFeedbackHistory()
   ]);
 
+  const lowInventory = buildLowInventory(data.items);
   const inventoryEvents = data.events.slice(0, 40);
   const printEvents = printing.events.slice(0, 40);
   const instructionTrends = buildInstructionTrends(printing);
+  const feedbackConcerns = buildFeedbackConcerns(feedbackHistory);
   const syncRuns = data.syncRuns.slice(0, 12);
   const mappingHealth = buildMappingHealth(data.items).slice(0, 80);
 
@@ -34,22 +39,44 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
     importBatches,
     reconcileRuns,
     syncRuns,
+    lowInventory,
     inventoryEvents,
     printEvents,
     instructionTrends,
+    feedbackConcerns: feedbackConcerns.slice(0, 20),
     feedbackScanRuns,
     mappingHealth,
     totals: {
       imports: importBatches.length,
       reconcileRuns: reconcileRuns.length,
       syncRuns: syncRuns.length,
+      inventoryLow: lowInventory.length,
       inventoryEvents: inventoryEvents.length,
       printEvents: printEvents.length,
       instructionLow: instructionTrends.filter((row) => row.status === "low").length,
+      negativeFeedback: feedbackConcerns.length,
       feedbackScanRuns: feedbackScanRuns.length,
       mappingIssues: mappingHealth.filter((row) => row.status !== "ok" && row.status !== "disabled").length
     }
   };
+}
+
+function buildLowInventory(items: InventoryItem[]): LowInventoryRow[] {
+  return items
+    .filter((item) => item.active !== false && item.quantity <= item.safetyStock)
+    .map((item) => ({
+      itemId: item.id,
+      sku: item.sku,
+      name: item.name,
+      quantity: item.quantity,
+      safetyStock: item.safetyStock,
+      maxInventory: item.maxInventory
+    }))
+    .sort((left, right) => {
+      const leftGap = left.quantity - left.safetyStock;
+      const rightGap = right.quantity - right.safetyStock;
+      return leftGap - rightGap || left.sku.localeCompare(right.sku);
+    });
 }
 
 function buildInstructionTrends(printing: Awaited<ReturnType<typeof getPrintingData>>): InstructionTrendRow[] {
@@ -136,6 +163,20 @@ function mappingHealthRow(item: InventoryItem, platform: Platform, mapping: Plat
     status: "ok",
     message: `${platformLabels[platform]} link is ready.`
   };
+}
+
+function buildFeedbackConcerns(rows: Array<Record<string, unknown>>): FeedbackConcernRow[] {
+  return rows
+    .filter((row) => String(row.rating ?? "").toLowerCase() === "negative")
+    .map((row) => ({
+      platform: "ebay",
+      rating: "negative",
+      buyerUsername: String(row.buyer_username ?? ""),
+      itemTitle: String(row.matched_item_title || row.source_item_title || row.source_item_id || "Unknown item"),
+      feedbackText: String(row.feedback_text ?? ""),
+      feedbackDate: String(row.feedback_date ?? ""),
+      lastSeenAt: String(row.last_seen_at ?? "")
+    }));
 }
 
 function normalizeFeedbackScanRuns(rows: Array<Record<string, unknown>>): FeedbackScanRunRecord[] {

@@ -131,6 +131,25 @@ export interface FeedbackScanRunRecord {
   createdAt: string;
 }
 
+export interface LowInventoryRow {
+  itemId: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  safetyStock: number;
+  maxInventory: number;
+}
+
+export interface FeedbackConcernRow {
+  platform: Platform;
+  rating: "negative";
+  buyerUsername: string;
+  itemTitle: string;
+  feedbackText: string;
+  feedbackDate: string;
+  lastSeenAt: string;
+}
+
 export type ImportBatchSource = "csv" | "shopify";
 export type ImportBatchStatus = "applied" | "dry_run" | "failed";
 
@@ -201,18 +220,22 @@ export interface OperationsReportPayload {
   importBatches: ImportBatchRecord[];
   reconcileRuns: ReconcileRunRecord[];
   syncRuns: SyncRun[];
+  lowInventory: LowInventoryRow[];
   inventoryEvents: InventoryEvent[];
   printEvents: PrintEvent[];
   instructionTrends: InstructionTrendRow[];
+  feedbackConcerns: FeedbackConcernRow[];
   feedbackScanRuns: FeedbackScanRunRecord[];
   mappingHealth: MappingHealthRow[];
   totals: {
     imports: number;
     reconcileRuns: number;
     syncRuns: number;
+    inventoryLow: number;
     inventoryEvents: number;
     printEvents: number;
     instructionLow: number;
+    negativeFeedback: number;
     feedbackScanRuns: number;
     mappingIssues: number;
   };

@@ -107,7 +107,7 @@ If you omit the manifest path, the command checks the newest manifest under `dat
 
 ## Review Center
 
-The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, instruction stock trends, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.
+The local UI includes a Review tool for operational history and daily exception checks. Its first screen prioritizes low product inventory, low instruction inventory, and negative eBay feedback, then keeps recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, mapping health, and eBay feedback scan runs below. Etsy review pulls are not connected yet, so Review marks that lane as pending instead of treating it as monitored.
 
 ## Inventory Rules
 

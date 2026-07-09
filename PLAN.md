@@ -299,7 +299,7 @@ Phase 5 progress:
 
 | Step | Status | Notes |
 | --- | --- | --- |
-| Review Center foundation | Complete | Added `/api/reports/operations` and a local Review tool that surfaces import history, reconcile snapshots, sync runs, inventory movement, instruction movement, mapping health, and feedback scan runs. |
+| Review Center foundation | Complete | Added `/api/reports/operations` and a local Review tool that prioritizes low inventory, low instruction stock, and negative eBay feedback before operational history. Etsy reviews are marked pending until an Etsy feedback pull exists. |
 | Import history view | Complete | The Review tool shows recent CSV and Shopify import batches with row outcome totals. |
 | Reconcile history view | Complete | The Review tool shows saved reconcile snapshots with sales, pushes, warnings, errors, and first row message. |
 | Sync history view | Complete | The Review tool shows recent sync runs with mode, status, sales, pushes, and issue counts. |

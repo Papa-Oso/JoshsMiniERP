@@ -253,6 +253,17 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
       }))
     },
     {
+      fileName: "low-inventory.csv",
+      headers: ["sku", "name", "quantity", "safety_stock", "max_inventory"],
+      rows: report.lowInventory.map((row) => ({
+        sku: row.sku,
+        name: row.name,
+        quantity: row.quantity,
+        safety_stock: row.safetyStock,
+        max_inventory: row.maxInventory
+      }))
+    },
+    {
       fileName: "instruction-trends.csv",
       headers: ["instruction_id", "label", "on_hand", "low_alert", "max_inventory", "recent_delta", "event_count", "status"],
       rows: report.instructionTrends.map((row) => ({
@@ -277,6 +288,19 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
         delta: event.delta,
         quantity_after: event.quantityAfter,
         note: event.note
+      }))
+    },
+    {
+      fileName: "negative-feedback.csv",
+      headers: ["platform", "rating", "buyer_username", "item_title", "feedback_date", "last_seen_at", "feedback_text"],
+      rows: report.feedbackConcerns.map((row) => ({
+        platform: row.platform,
+        rating: row.rating,
+        buyer_username: row.buyerUsername,
+        item_title: row.itemTitle,
+        feedback_date: row.feedbackDate,
+        last_seen_at: row.lastSeenAt,
+        feedback_text: row.feedbackText
       }))
     },
     {

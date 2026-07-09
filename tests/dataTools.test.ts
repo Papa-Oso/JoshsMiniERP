@@ -65,17 +65,21 @@ test("operations report CSV export writes review tables", async () => {
   const outputDirectory = path.join(tempDir, "reports", "review");
   const result = await exportOperationsReportCsv(outputDirectory);
   assert.equal(result.path, outputDirectory);
-  assert.equal(result.files?.length, 8);
+  assert.equal(result.files?.length, 10);
   assert.equal(result.itemCount >= 2, true);
 
   const mappingHealth = await readFile(path.join(outputDirectory, "mapping-health.csv"), "utf8");
   const inventoryEvents = await readFile(path.join(outputDirectory, "recent-inventory-events.csv"), "utf8");
+  const lowInventory = await readFile(path.join(outputDirectory, "low-inventory.csv"), "utf8");
   const instructionTrends = await readFile(path.join(outputDirectory, "instruction-trends.csv"), "utf8");
+  const negativeFeedback = await readFile(path.join(outputDirectory, "negative-feedback.csv"), "utf8");
 
   assert.match(mappingHealth, /^sku,name,platform,status,message/m);
   assert.match(mappingHealth, /MUG-1,"Mug, Blue",shopify,missing_config/);
   assert.match(inventoryEvents, /2026-01-01T00:00:00.000Z,event-1,MUG-1,item-1,batch_add,4,12,local/);
+  assert.match(lowInventory, /^sku,name,quantity,safety_stock,max_inventory/m);
   assert.match(instructionTrends, /^instruction_id,label,on_hand,low_alert,max_inventory,recent_delta,event_count,status/m);
+  assert.match(negativeFeedback, /^platform,rating,buyer_username,item_title,feedback_date,last_seen_at,feedback_text/m);
 });
 
 test("backup inspection checks manifest files without restoring", async () => {

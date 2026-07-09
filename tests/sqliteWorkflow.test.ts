@@ -69,7 +69,7 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   });
 
   const csvPath = path.join(tempDir, "batch.csv");
-  await writeFile(csvPath, "sku,name,quantity,add,safety_stock,note\nCSV-SKU,CSV SKU,4,,1,initial\nLOCAL-SKU,,,2,,csv add\n", "utf8");
+  await writeFile(csvPath, "sku,name,quantity,add,safety_stock,note\nCSV-SKU,CSV SKU,4,,5,initial\nLOCAL-SKU,,,2,,csv add\n", "utf8");
   const csvResult = await importCsv(csvPath);
   assert.equal(csvResult.summary.created, 1);
   assert.equal(csvResult.summary.adjusted, 1);
@@ -161,6 +161,22 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
         matched_item_url: "https://www.ebay.com/itm/1",
         feedback_profile_url: "https://feedback.ebay.com/fdbk/feedback_profile/seller",
         match_type: "exact"
+      },
+      {
+        feedback_id: "feedback-2",
+        seller_username: "seller",
+        source_item_id: "item-2",
+        source_item_title: "Item 2",
+        matched_item_id: "item-2",
+        matched_item_title: "Item 2",
+        rating: "negative",
+        buyer_username: "buyer-2",
+        feedback_date: "Jan 2, 2026",
+        feedback_text: "Arrived damaged",
+        source_listing_url: "https://www.ebay.com/itm/2",
+        matched_item_url: "https://www.ebay.com/itm/2",
+        feedback_profile_url: "https://feedback.ebay.com/fdbk/feedback_profile/seller",
+        match_type: "exact"
       }
     ],
     { scanMode: "full" }
@@ -177,6 +193,10 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
     true
   );
   assert.equal(report.totals.instructionLow >= 0, true);
+  assert.equal(report.lowInventory.some((row) => row.sku === "CSV-SKU"), true);
+  assert.equal(report.totals.inventoryLow >= 1, true);
+  assert.equal(report.feedbackConcerns.some((row) => row.platform === "ebay" && row.feedbackText === "Arrived damaged"), true);
+  assert.equal(report.totals.negativeFeedback, 1);
   assert.equal(report.feedbackScanRuns.length, 1);
   assert.equal(report.mappingHealth.some((row) => row.sku === "LOCAL-SKU" && row.platform === "shopify"), true);
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Tone = "ok" | "warn";
+type Tone = "ok" | "warn" | "danger";
 
 export function PanelFrame({ children, className }: { children: ReactNode; className?: string }) {
   return <section className={`panel ${className ?? ""}`}>{children}</section>;

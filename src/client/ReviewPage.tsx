@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, ClipboardList, FileSpreadsheet, GitCompare, History, PackageCheck, RefreshCw, SearchCheck } from "lucide-react";
+import { Activity, AlertTriangle, ClipboardList, FileSpreadsheet, GitCompare, History, PackageCheck, RefreshCw, SearchCheck } from "lucide-react";
 import { api } from "./api";
 import { Metric, Panel } from "./ui";
 import type {
+  FeedbackConcernRow,
   ImportBatchRecord,
   InstructionTrendRow,
   InventoryEvent,
+  LowInventoryRow,
   MappingHealthRow,
   OperationsReportPayload,
   PrintEvent,
@@ -40,6 +42,10 @@ export function ReviewPage() {
     () => report?.mappingHealth.filter((row) => row.status !== "ok" && row.status !== "disabled") ?? [],
     [report]
   );
+  const lowInstructions = useMemo(
+    () => report?.instructionTrends.filter((row) => row.status === "low") ?? [],
+    [report]
+  );
 
   if (loading && !report) {
     return <div className="empty">Loading review history</div>;
@@ -58,12 +64,11 @@ export function ReviewPage() {
   return (
     <section className="review-center-page">
       <div className="review-center-summary">
-        <Metric label="Imports" value={report.totals.imports} />
-        <Metric label="Reconcile" value={report.totals.reconcileRuns} />
+        <Metric label="Low SKUs" value={report.totals.inventoryLow} tone={report.totals.inventoryLow ? "warn" : "ok"} />
+        <Metric label="Low Instr" value={report.totals.instructionLow} tone={report.totals.instructionLow ? "warn" : "ok"} />
+        <Metric label="Negative" value={report.totals.negativeFeedback} tone={report.totals.negativeFeedback ? "danger" : "ok"} />
         <Metric label="Sync Runs" value={report.totals.syncRuns} />
-        <Metric label="Moves" value={report.totals.inventoryEvents} />
-        <Metric label="Instr Low" value={report.totals.instructionLow} tone={report.totals.instructionLow ? "warn" : "ok"} />
-        <Metric label="Feedback" value={report.totals.feedbackScanRuns} />
+        <Metric label="eBay Scans" value={report.totals.feedbackScanRuns} />
         <Metric label="Map Issues" value={report.totals.mappingIssues} tone={report.totals.mappingIssues ? "warn" : "ok"} />
         <button className="icon-button primary review-refresh" type="button" onClick={load} disabled={loading}>
           <RefreshCw className={loading ? "spin" : ""} size={18} />
@@ -72,6 +77,12 @@ export function ReviewPage() {
       </div>
 
       {error ? <p className="notice">{error}</p> : null}
+
+      <div className="review-priority-grid">
+        <LowInventoryPanel rows={report.lowInventory} />
+        <LowInstructionPanel rows={lowInstructions} />
+        <NegativeFeedbackPanel rows={report.feedbackConcerns} />
+      </div>
 
       <div className="review-center-grid">
         <ImportHistoryPanel batches={report.importBatches} />
@@ -84,6 +95,76 @@ export function ReviewPage() {
         <FeedbackScanPanel runs={report.feedbackScanRuns} />
       </div>
     </section>
+  );
+}
+
+function LowInventoryPanel({ rows }: { rows: LowInventoryRow[] }) {
+  return (
+    <Panel title="Low Inventory" icon={<AlertTriangle size={18} />} className="review-priority-panel">
+      <AttentionList empty="No active SKUs are low">
+        {rows.slice(0, 8).map((row) => (
+          <article className="attention-row warn" key={row.itemId}>
+            <div>
+              <strong>{row.sku}</strong>
+              <span>{row.name}</span>
+            </div>
+            <span className="attention-count">
+              {row.quantity}
+              <small>Low {row.safetyStock}</small>
+            </span>
+          </article>
+        ))}
+      </AttentionList>
+    </Panel>
+  );
+}
+
+function LowInstructionPanel({ rows }: { rows: InstructionTrendRow[] }) {
+  return (
+    <Panel title="Low Instructions" icon={<PackageCheck size={18} />} className="review-priority-panel">
+      <AttentionList empty="Instruction stock is clear">
+        {rows.slice(0, 8).map((row) => (
+          <article className="attention-row warn" key={row.instructionId}>
+            <div>
+              <strong>{row.label}</strong>
+              <span>{row.instructionId}</span>
+            </div>
+            <span className="attention-count">
+              {row.onHand}
+              <small>Low {row.lowAlert}</small>
+            </span>
+          </article>
+        ))}
+      </AttentionList>
+    </Panel>
+  );
+}
+
+function NegativeFeedbackPanel({ rows }: { rows: FeedbackConcernRow[] }) {
+  return (
+    <Panel title="Negative Feedback" icon={<ClipboardList size={18} />} className="review-priority-panel">
+      <AttentionList empty="No negative eBay feedback in history">
+        {rows.slice(0, 6).map((row) => (
+          <article className="attention-row danger-row" key={`${row.platform}:${row.buyerUsername}:${row.feedbackDate}:${row.feedbackText}`}>
+            <div>
+              <strong>{row.itemTitle}</strong>
+              <span>
+                {row.buyerUsername || "Unknown buyer"} - {row.feedbackDate || formatDate(row.lastSeenAt)}
+              </span>
+              {row.feedbackText ? <p className="attention-note">{row.feedbackText}</p> : null}
+            </div>
+            <span className="attention-count">
+              eBay
+              <small>{row.rating}</small>
+            </span>
+          </article>
+        ))}
+      </AttentionList>
+      <div className="review-source-note">
+        <strong>Etsy</strong>
+        <span>Reviews not connected yet</span>
+      </div>
+    </Panel>
   );
 }
 
@@ -267,6 +348,13 @@ function FeedbackScanPanel({ runs }: { runs: OperationsReportPayload["feedbackSc
       </ReportTable>
     </Panel>
   );
+}
+
+function AttentionList({ children, empty }: { children: ReactNode; empty: string }) {
+  const rows = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
+  if (rows.length === 0) return <div className="attention-empty">{empty}</div>;
+
+  return <div className="attention-list">{children}</div>;
 }
 
 function ReportTable({ children, empty }: { children: ReactNode; empty: string }) {
