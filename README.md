@@ -87,6 +87,16 @@ npm run inv -- doctor
 
 The doctor reports storage mode, production token safety, inventory readability, duplicate active SKUs, low/over-max stock counts, backup manifest recency, and marketplace credential status.
 
+## Backup Rotation
+
+For this personal-store setup, keep backups simple and boring:
+
+- Run `npm run inv -- backup` before bulk imports, migrations, credential changes, or deployment work.
+- Keep at least the latest 10 operational backup folders/files under `data/backups`.
+- Keep one monthly backup outside the repo, such as an external drive or private cloud folder.
+- Do not delete backup files until a newer backup has been opened and its manifest exists.
+- Keep print assets and feedback history with the backup manifest; they are part of the operational record, not throwaway cache.
+
 ## Review Center
 
 The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, instruction stock trends, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.

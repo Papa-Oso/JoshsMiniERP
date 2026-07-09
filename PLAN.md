@@ -332,7 +332,7 @@ Phase 8 progress:
 | Step | Status | Notes |
 | --- | --- | --- |
 | Local doctor command | Complete | `doctor` reports storage mode, production-token safety, inventory readability, duplicate SKUs, stock threshold warnings, backup recency, and marketplace credential status. |
-| Backup rotation guidance | Pending | Add retention guidance once backup volume grows enough to matter. |
+| Backup rotation guidance | Complete | README now recommends pre-change backups, keeping at least 10 local operational backups, one monthly off-repo copy, and manifest checks before deletion. |
 | Recovery dry-run command | Pending | Consider a local restore rehearsal helper after backup rotation rules are settled. |
 
 ### Phase 1: Documentation Alignment
