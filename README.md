@@ -42,6 +42,20 @@ npm run audit:all
 
 Use [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) before changing app screens, buttons, panels, settings, or user-facing workflow copy.
 
+## Roadmap
+
+Use [PLAN.md](PLAN.md) as the authoritative execution roadmap. The current direction is:
+
+- Keep the working inventory, printing, sync, and review workflows stable.
+- Rework the local UI into a calmer professional operations workbench.
+- Use PostgreSQL as the growth database path; JSON remains the local fallback/export format.
+- Keep the embedded Shopify app on Shopify Admin UI components while sharing product language and API contracts.
+- Consolidate related operational data, including instruction inventory and feedback history, after the Postgres path is hardened.
+
+## Notifications
+
+The topbar bell shows active alerts and tracks unread alerts locally in the browser. Current alert sources include low item inventory, low instruction inventory, sync errors or warnings, and printer status problems when Windows reports a saved printer as missing, offline, stopped, or unknown. Low and over-max inventory alerts are not dismissible; they clear only when the inventory state or threshold is fixed. Operational alerts such as printer and sync problems can be dismissed locally until they change.
+
 ## Inventory Rules
 
 - Add inventory only in this tool.
@@ -504,4 +518,8 @@ Relevant docs:
 
 Inventory data is stored in `data/inventory.json` by default. Change it with `DATA_FILE` in `.env`.
 
+Instruction inventory and print settings are currently stored in `data/printing.json`, and uploaded print assets live under `data/printing/`.
+
 The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
+
+The growth roadmap in [PLAN.md](PLAN.md) moves the app toward PostgreSQL-backed operational data while keeping JSON export available for portability and backups.

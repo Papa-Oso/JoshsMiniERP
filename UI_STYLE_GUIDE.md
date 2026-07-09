@@ -11,6 +11,82 @@ This app is a workbench for inventory, marketplace reviews, printing, and packag
 - Prevent invalid work early. If an action cannot produce a useful result, show the issue before creating files, printing, or mutating inventory.
 - Use concise labels. Do not add instructional copy inside the app unless it prevents a real mistake.
 
+## Professional Redesign Direction
+
+The next full UI pass should feel like a professional operations workbench designed by a product designer, not a themed dashboard.
+
+Target qualities:
+
+- Calm: quiet surfaces, low visual noise, no glow-heavy hero treatment.
+- Dense: useful information visible without feeling cramped.
+- Durable: readable during repeated daily work, not just impressive in a screenshot.
+- Trustworthy: destructive, disabled, warning, and success states must be unmistakable.
+- Consistent: the same action should look and behave the same across Inventory, Item Management, Printing, and eBay Reviews.
+
+Visual direction:
+
+- Use a neutral dark or light-neutral base with restrained accent colors. Avoid the current neon/cyberpunk feel as the default product language.
+- Remove decorative perspective grids, glow shadows, and ornamental gradients from the operational UI.
+- Reserve color for meaning: primary action, success, warning, danger, selected, focus, and unread.
+- Use typography scale conservatively. Page titles should identify the page, not dominate the work area.
+- Prefer crisp separators, controlled spacing, and clear alignment over heavy card effects.
+- Keep border radius at 8px or less.
+
+Design tokens should be created before broad CSS changes:
+
+- `--color-bg`
+- `--color-surface`
+- `--color-surface-raised`
+- `--color-border`
+- `--color-text`
+- `--color-text-muted`
+- `--color-primary`
+- `--color-success`
+- `--color-warning`
+- `--color-danger`
+- `--shadow-raised`
+- `--space-*`
+- `--radius-*`
+- `--font-size-*`
+
+Do not begin a page-by-page redesign until the token layer exists. Without tokens, consistency will drift again.
+
+## Shared Components
+
+Before or during the redesign, extract shared UI patterns instead of restyling each page independently.
+
+Target shared pieces:
+
+- `Panel`
+- `PanelHeader`
+- `Metric`
+- `MiniStat`
+- `StockMeter`
+- `Notice`
+- `Modal`
+- `EmptyState`
+- `ToolbarButton`
+- `IconButton`
+- `DataTable`
+- `StatusBadge`
+- `FileAssetRow`
+
+Shared pieces should support the states the app already needs: loading, disabled, selected, empty, warning, danger, success, and read-only.
+
+## Redesign Work Order
+
+1. Create design tokens and replace hard-coded theme colors where practical.
+2. Rework the app shell, topbar, tool drawer, settings button, and notification button.
+3. Rework panels, buttons, form fields, tables, metrics, and notices globally.
+4. Rework Inventory.
+5. Rework Printing.
+6. Rework Item Management.
+7. Rework eBay Reviews.
+8. Add accessibility and responsive verification.
+9. Add Playwright visual smoke checks for the main pages.
+
+Do not change inventory, printing, sync, or review business behavior as part of a pure visual redesign unless a UI bug requires it.
+
 ## Page Identity
 
 Each main page should have a distinct lucide icon or small visual mark that matches the page purpose.
@@ -47,6 +123,16 @@ The icon should sit near the page title or primary page header. Do not rely on n
 - Avoid permanent settings panels in the main workflow unless the setting is used constantly.
 - Save buttons inside settings should clearly name what is saved, such as `Save Printers`.
 - A settings error or success notice should stay inside the settings area.
+
+## Notifications
+
+- Use the topbar bell for cross-page alerts instead of adding alert panels to individual workflows.
+- The bell should show an unread count for active alerts that have not been opened.
+- Notifications should open in the same centered modal/backdrop pattern as settings.
+- Current alert sources are low item inventory, low instruction inventory, sync issues, and printer status problems when Windows exposes them.
+- Low and over-max inventory alerts are not dismissible; they clear only when the inventory state or threshold is fixed.
+- Operational alerts, such as printer and sync problems, may be dismissible locally until the alert changes.
+- Printer notifications should warn when a saved printer is missing, offline, stopped, or cannot be checked.
 
 ## Forms
 
@@ -86,9 +172,13 @@ The icon should sit near the page title or primary page header. Do not rely on n
 ## CSS Conventions
 
 - Prefer existing classes before adding new ones: `icon-button`, `primary`, `settings-button`, `panel-header`, `notice`, `empty`.
+- After the professional redesign starts, prefer shared tokens and shared components over page-specific one-off classes.
 - Keep border radius at 8px or less unless an existing component already uses a different radius.
 - Avoid one-note color themes. Accent color is useful, but the page should not become only one hue.
 - Do not use decorative gradient blobs or ornamental backgrounds.
+- Do not use glow, neon, or heavy gradient styling as the default UI language.
+- Disabled primary buttons must look disabled, not merely muted active buttons.
+- Tables and repeated rows should have visible column meaning. If a row has six columns, the user should not have to infer what each column is.
 - Check desktop and mobile after layout changes.
 
 ## Verification Checklist
@@ -100,3 +190,6 @@ Before considering UI work done:
 - Open the affected page in the browser.
 - Check desktop and mobile widths.
 - Confirm buttons align, text fits, empty states are sane, and async actions show feedback in the right place.
+- Confirm keyboard focus is visible and dialogs can be closed without a mouse.
+- Confirm color alone is not the only signal for dangerous, warning, selected, or disabled states.
+- Capture screenshots for Inventory, Item Management, Printing, and eBay Reviews after broad visual changes.
