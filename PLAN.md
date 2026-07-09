@@ -67,7 +67,7 @@ Status legend:
 | SQLite storage | Done | SQLite is the default local driver. `DATABASE_FILE`, `migrate-sqlite`, and SQLite store contract tests are in place. This is the preferred real local database path. |
 | Postgres storage | Optional | `STORE_DRIVER=postgres`, `migrate-postgres`, and optional Postgres tests exist for future hosted/deployment use only. |
 | SKU pairing audit | Done | `sku-audit` compares local SKUs with Shopify and eBay SKU catalogs. |
-| Shopify names/descriptions | In progress | App data model and refresh command are in place. Requires Shopify `read_products` scope approval and a fresh token before product details can populate. |
+| Shopify names/descriptions | Done | App data model, refresh command, docs, and tests are in place. Live population still requires Shopify `read_products` scope approval and a fresh token. |
 | Inventory max visualization | Done | Item inventory and instruction inventory use configurable max values, progress bars, status labels, and over-max warnings. |
 | Printing workflow cleanup | Done | Product labels, instruction documents, instruction inventory, print activity, upload/print actions, and printer settings are separated into clearer panes. |
 | Instruction consumption on sales | Done | Marketplace sales consume mapped instruction inventory through item-to-instruction mappings. |
