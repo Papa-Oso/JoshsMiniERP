@@ -323,7 +323,7 @@ Phase 7 progress:
 | Step | Status | Notes |
 | --- | --- | --- |
 | Inventory CSV export | Complete | `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. |
-| Event CSV export | Pending | Add exportable inventory movement/event rows for deeper analysis. |
+| Event CSV export | Complete | `export-events-csv` writes inventory movement rows with deltas, resulting quantity, source, platform, notes, and timestamps. |
 | Review report export | Pending | Add CSV export for Review Center report tables after item/event exports are stable. |
 
 ### Phase 1: Documentation Alignment

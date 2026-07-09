@@ -104,6 +104,40 @@ export async function exportInventoryCsv(outputPath?: string): Promise<DataFileR
   };
 }
 
+export async function exportInventoryEventsCsv(outputPath?: string): Promise<DataFileResult & { csv?: string }> {
+  const data = await store.withLock(() => store.read());
+  const headers = ["id", "created_at", "sku", "item_id", "type", "delta", "quantity_after", "source", "platform", "note"];
+  const rows = data.events.map((event) => ({
+    id: event.id,
+    created_at: event.createdAt,
+    sku: event.sku,
+    item_id: event.itemId,
+    type: event.type,
+    delta: event.delta,
+    quantity_after: event.quantityAfter,
+    source: event.source,
+    platform: event.platform,
+    note: event.note
+  }));
+  const csv = toCsv(headers, rows);
+
+  if (!outputPath) {
+    return {
+      path: config.dataFile,
+      itemCount: data.events.length,
+      csv
+    };
+  }
+
+  const resolved = path.resolve(outputPath);
+  await fs.mkdir(path.dirname(resolved), { recursive: true });
+  await fs.writeFile(resolved, csv, "utf8");
+  return {
+    path: resolved,
+    itemCount: data.events.length
+  };
+}
+
 export async function backupInventoryData(outputDirectory?: string): Promise<DataFileResult> {
   const data = await store.withLock(() => store.read());
   const backupDirectory = path.resolve(outputDirectory ?? path.join(path.dirname(config.dataFile), "backups"));

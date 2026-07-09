@@ -108,6 +108,7 @@ npm run inv -- csv-import inventory-batch.csv
 npm run inv -- backup
 npm run inv -- export data/export.json
 npm run inv -- export-csv data/items.csv
+npm run inv -- export-events-csv data/events.csv
 npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
 npm run inv -- migrate-sqlite --dry-run
 npm run inv -- migrate-sqlite
@@ -190,11 +191,12 @@ Data export and backup commands:
 npm run inv -- export
 npm run inv -- export data/export.json
 npm run inv -- export-csv data/items.csv
+npm run inv -- export-events-csv data/events.csv
 npm run inv -- backup
 npm run inv -- backup D:\InventoryBackups
 ```
 
-`export` prints portable inventory JSON when no output path is supplied. `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. `backup` writes one operational manifest under `data/backups` unless you pass a directory. The backup captures an inventory JSON export, the SQLite database file, printing data/assets, and feedback scan history when those files exist.
+`export` prints portable inventory JSON when no output path is supplied. `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. `export-events-csv` writes inventory movement history with deltas, resulting quantity, source, platform, notes, and timestamps. `backup` writes one operational manifest under `data/backups` unless you pass a directory. The backup captures an inventory JSON export, the SQLite database file, printing data/assets, and feedback scan history when those files exist.
 
 SKU pairing audit:
 

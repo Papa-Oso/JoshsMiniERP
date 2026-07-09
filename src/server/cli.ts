@@ -3,7 +3,7 @@ import { platformLabels, platforms } from "../shared/types";
 import { EbayAdapter } from "./adapters/ebay";
 import { ShopifyAdapter } from "./adapters/shopify";
 import { importCsv } from "./csvImport";
-import { backupInventoryData, exportInventoryCsv, exportInventoryData } from "./dataTools";
+import { backupInventoryData, exportInventoryCsv, exportInventoryData, exportInventoryEventsCsv } from "./dataTools";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
@@ -71,6 +71,9 @@ try {
       break;
     case "export-csv":
       await exportCsvFromCli(args.slice(1));
+      break;
+    case "export-events-csv":
+      await exportEventsCsvFromCli(args.slice(1));
       break;
     case "backup":
       await backupFromCli(args.slice(1));
@@ -401,6 +404,17 @@ async function exportCsvFromCli(input: string[]) {
   }
 
   console.log(`Exported ${result.itemCount} items to ${result.path}.`);
+}
+
+async function exportEventsCsvFromCli(input: string[]) {
+  const [outputPath] = positionalArgs(input);
+  const result = await exportInventoryEventsCsv(outputPath);
+  if (result.csv) {
+    console.log(result.csv.trimEnd());
+    return;
+  }
+
+  console.log(`Exported ${result.itemCount} events to ${result.path}.`);
 }
 
 async function backupFromCli(input: string[]) {
@@ -796,6 +810,7 @@ Commands:
   npm run inv -- csv-import <file.csv> [--dry-run]
   npm run inv -- export [output.json]
   npm run inv -- export-csv [output.csv]
+  npm run inv -- export-events-csv [output.csv]
   npm run inv -- backup [backup-directory]
   npm run inv -- migrate-sqlite [--dry-run] [--force]
   npm run inv -- migrate-postgres [--dry-run] [--force]

@@ -12,14 +12,45 @@ const dataFile = path.join(tempDir, "inventory.json");
 process.env.DATA_FILE = dataFile;
 process.env.STORE_DRIVER = "json";
 
-const { exportInventoryCsv } = await import("../src/server/dataTools.ts");
+const { exportInventoryCsv, exportInventoryEventsCsv } = await import("../src/server/dataTools.ts");
 
 after(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
 test("inventory CSV export writes spreadsheet-friendly item and mapping columns", async () => {
-  await writeStore({
+  await writeStore(seedStore());
+
+  const inline = await exportInventoryCsv();
+  assert.equal(inline.itemCount, 1);
+  assert.match(inline.csv ?? "", /^sku,name,description,quantity,safety_stock,max_inventory,active/m);
+  assert.match(inline.csv ?? "", /MUG-1,"Mug, Blue","Bright ""blue"" mug",12,2,40,true/);
+  assert.match(inline.csv ?? "", /true,SHOP-MUG-1,,gid:\/\/shopify\/InventoryItem\/1,gid:\/\/shopify\/Location\/1/);
+
+  const outputPath = path.join(tempDir, "exports", "items.csv");
+  const written = await exportInventoryCsv(outputPath);
+  assert.equal(written.path, outputPath);
+  assert.equal(written.itemCount, 1);
+  assert.equal(await readFile(outputPath, "utf8"), inline.csv);
+});
+
+test("inventory event CSV export writes movement history rows", async () => {
+  await writeStore(seedStore());
+
+  const inline = await exportInventoryEventsCsv();
+  assert.equal(inline.itemCount, 1);
+  assert.match(inline.csv ?? "", /^id,created_at,sku,item_id,type,delta,quantity_after,source,platform,note/m);
+  assert.match(inline.csv ?? "", /event-1,2026-01-01T00:00:00.000Z,MUG-1,item-1,batch_add,4,12,local,,"Restock, blue shelf"/);
+
+  const outputPath = path.join(tempDir, "exports", "events.csv");
+  const written = await exportInventoryEventsCsv(outputPath);
+  assert.equal(written.path, outputPath);
+  assert.equal(written.itemCount, 1);
+  assert.equal(await readFile(outputPath, "utf8"), inline.csv);
+});
+
+function seedStore(): StoreData {
+  return {
     items: [
       {
         id: "item-1",
@@ -46,7 +77,19 @@ test("inventory CSV export writes spreadsheet-friendly item and mapping columns"
         updatedAt: timestamp
       }
     ],
-    events: [],
+    events: [
+      {
+        id: "event-1",
+        itemId: "item-1",
+        sku: "MUG-1",
+        type: "batch_add",
+        delta: 4,
+        quantityAfter: 12,
+        source: "local",
+        note: "Restock, blue shelf",
+        createdAt: timestamp
+      }
+    ],
     schedule: {
       enabled: false,
       intervalMinutes: 60,
@@ -55,20 +98,8 @@ test("inventory CSV export writes spreadsheet-friendly item and mapping columns"
       updatedAt: timestamp
     },
     syncRuns: []
-  });
-
-  const inline = await exportInventoryCsv();
-  assert.equal(inline.itemCount, 1);
-  assert.match(inline.csv ?? "", /^sku,name,description,quantity,safety_stock,max_inventory,active/m);
-  assert.match(inline.csv ?? "", /MUG-1,"Mug, Blue","Bright ""blue"" mug",12,2,40,true/);
-  assert.match(inline.csv ?? "", /true,SHOP-MUG-1,,gid:\/\/shopify\/InventoryItem\/1,gid:\/\/shopify\/Location\/1/);
-
-  const outputPath = path.join(tempDir, "exports", "items.csv");
-  const written = await exportInventoryCsv(outputPath);
-  assert.equal(written.path, outputPath);
-  assert.equal(written.itemCount, 1);
-  assert.equal(await readFile(outputPath, "utf8"), inline.csv);
-});
+  };
+}
 
 async function writeStore(data: StoreData) {
   await writeFile(dataFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
