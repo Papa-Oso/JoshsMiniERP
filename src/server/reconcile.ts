@@ -1,37 +1,21 @@
-import type { InventoryItem, Platform, PlatformMapping, SyncSummary } from "../shared/types";
+import { randomUUID } from "node:crypto";
+import type {
+  InventoryItem,
+  Platform,
+  PlatformMapping,
+  ReconcileResult,
+  ReconcileRow,
+  ReconcileStatus,
+  SyncSummary
+} from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
 import { adapterByPlatform } from "./adapters";
 import { store } from "./store";
 
-export type ReconcileStatus =
-  | "ok"
-  | "baseline"
-  | "different"
-  | "sale"
-  | "remote_increase"
-  | "missing_config"
-  | "missing_mapping"
-  | "error";
+export type { ReconcileResult, ReconcileRow, ReconcileStatus } from "../shared/types";
 
 export interface ReconcileOptions {
   platform?: Platform;
-}
-
-export interface ReconcileRow {
-  sku: string;
-  platform: Platform;
-  status: ReconcileStatus;
-  localQuantity: number;
-  remoteQuantity?: number;
-  lastSyncedQuantity?: number | null;
-  projectedLocalQuantity?: number;
-  wouldPushQuantity?: number;
-  message: string;
-}
-
-export interface ReconcileResult {
-  rows: ReconcileRow[];
-  summary: SyncSummary;
 }
 
 interface PullReading {
@@ -163,7 +147,14 @@ export async function reconcileInventory(options: ReconcileOptions = {}): Promis
     reading.row.message = `Remote already matches local; sync would confirm ${projectedLocal}.`;
   }
 
-  return { rows, summary };
+  const result = { rows, summary };
+  await store.recordReconcileRun?.({
+    id: randomUUID(),
+    platform: options.platform,
+    createdAt: new Date().toISOString(),
+    ...result
+  });
+  return result;
 }
 
 function errorMessage(error: unknown) {

@@ -15,6 +15,8 @@ import type {
   PrintAsset,
   PrintEvent,
   PrintingPayload,
+  ReconcileRunRecord,
+  ReconcileRow,
   SkuInstructionMatch,
   ScheduleSettings,
   StoreData,
@@ -177,6 +179,22 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     return this.withLock(async () => {
       const context = this.requireContext();
       return this.readPrintAssetMetadata(context.db, limit);
+    });
+  }
+
+  async recordReconcileRun(run: ReconcileRunRecord) {
+    await this.withLock(async () => {
+      const context = this.requireContext();
+      this.upsertReconcileRun(context.db, run);
+      this.pruneReconcileRuns(context.db, 100);
+      context.dirty = true;
+    });
+  }
+
+  async listReconcileRuns(limit = 50): Promise<ReconcileRunRecord[]> {
+    return this.withLock(async () => {
+      const context = this.requireContext();
+      return this.readReconcileRuns(context.db, limit);
     });
   }
 
@@ -834,6 +852,99 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     ).map(rowToPrintAsset);
   }
 
+  private upsertReconcileRun(db: Database, run: ReconcileRunRecord) {
+    db.run(
+      `
+        INSERT INTO reconcile_runs (
+          id, platform, items_checked, sales_detected, pushes, warnings, errors, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          platform = excluded.platform,
+          items_checked = excluded.items_checked,
+          sales_detected = excluded.sales_detected,
+          pushes = excluded.pushes,
+          warnings = excluded.warnings,
+          errors = excluded.errors,
+          created_at = excluded.created_at
+      `,
+      [
+        run.id,
+        run.platform ?? null,
+        run.summary.itemsChecked,
+        run.summary.salesDetected,
+        run.summary.pushes,
+        run.summary.warnings,
+        run.summary.errors,
+        run.createdAt
+      ]
+    );
+
+    db.run("DELETE FROM reconcile_rows WHERE run_id = ?", [run.id]);
+    for (const [position, row] of run.rows.entries()) {
+      db.run(
+        `
+          INSERT INTO reconcile_rows (
+            id, run_id, position, sku, platform, status, local_quantity, remote_quantity,
+            last_synced_quantity, projected_local_quantity, would_push_quantity, message
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          `${run.id}:${position}`,
+          run.id,
+          position,
+          row.sku,
+          row.platform,
+          row.status,
+          row.localQuantity,
+          row.remoteQuantity ?? null,
+          row.lastSyncedQuantity ?? null,
+          row.projectedLocalQuantity ?? null,
+          row.wouldPushQuantity ?? null,
+          row.message
+        ]
+      );
+    }
+  }
+
+  private readReconcileRuns(db: Database, limit: number): ReconcileRunRecord[] {
+    const runRows = queryRows(
+      db,
+      `
+        SELECT id, platform, items_checked, sales_detected, pushes, warnings, errors, created_at
+        FROM reconcile_runs
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `,
+      [Math.max(1, Math.floor(limit))]
+    );
+
+    const runIds = runRows.map((row) => stringValue(row.id));
+    const rowRows =
+      runIds.length === 0
+        ? []
+        : queryRows(
+            db,
+            `
+              SELECT run_id, sku, platform, status, local_quantity, remote_quantity,
+                last_synced_quantity, projected_local_quantity, would_push_quantity, message
+              FROM reconcile_rows
+              WHERE run_id IN (${runIds.map(() => "?").join(", ")})
+              ORDER BY run_id ASC, position ASC
+            `,
+            runIds
+          );
+
+    const rowsByRunId = new Map<string, ReconcileRow[]>();
+    for (const row of rowRows) {
+      const runId = stringValue(row.run_id);
+      const rows = rowsByRunId.get(runId) ?? [];
+      rows.push(rowToReconcileRow(row));
+      rowsByRunId.set(runId, rows);
+    }
+
+    return runRows.map((row) => rowToReconcileRun(row, rowsByRunId.get(stringValue(row.id)) ?? []));
+  }
+
   private pruneInventoryEvents(db: Database, limit: number) {
     db.run(
       `
@@ -856,6 +967,21 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
         WHERE id IN (
           SELECT id
           FROM import_batches
+          ORDER BY created_at DESC, id DESC
+          LIMIT -1 OFFSET ?
+        )
+      `,
+      [limit]
+    );
+  }
+
+  private pruneReconcileRuns(db: Database, limit: number) {
+    db.run(
+      `
+        DELETE FROM reconcile_runs
+        WHERE id IN (
+          SELECT id
+          FROM reconcile_runs
           ORDER BY created_at DESC, id DESC
           LIMIT -1 OFFSET ?
         )
@@ -1030,6 +1156,36 @@ function rowToPrintAsset(row: Record<string, SqlValue>): PrintAsset {
     sku: optionalString(row.sku),
     instructionId: optionalString(row.instruction_id),
     exists: booleanValue(row.exists_on_disk)
+  };
+}
+
+function rowToReconcileRow(row: Record<string, SqlValue>): ReconcileRow {
+  return {
+    sku: stringValue(row.sku),
+    platform: stringValue(row.platform) as ReconcileRow["platform"],
+    status: stringValue(row.status) as ReconcileRow["status"],
+    localQuantity: integer(row.local_quantity),
+    remoteQuantity: nullableInteger(row.remote_quantity) ?? undefined,
+    lastSyncedQuantity: nullableInteger(row.last_synced_quantity),
+    projectedLocalQuantity: nullableInteger(row.projected_local_quantity) ?? undefined,
+    wouldPushQuantity: nullableInteger(row.would_push_quantity) ?? undefined,
+    message: stringValue(row.message)
+  };
+}
+
+function rowToReconcileRun(row: Record<string, SqlValue>, rows: ReconcileRow[]): ReconcileRunRecord {
+  return {
+    id: stringValue(row.id),
+    platform: optionalString(row.platform) as ReconcileRunRecord["platform"],
+    createdAt: isoString(row.created_at),
+    summary: {
+      itemsChecked: integer(row.items_checked),
+      salesDetected: integer(row.sales_detected),
+      pushes: integer(row.pushes),
+      warnings: integer(row.warnings),
+      errors: integer(row.errors)
+    },
+    rows
   };
 }
 
@@ -1277,6 +1433,43 @@ CREATE TABLE IF NOT EXISTS print_assets (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS reconcile_runs (
+  id TEXT PRIMARY KEY,
+  platform TEXT CHECK (platform IN ('etsy', 'ebay', 'shopify')),
+  items_checked INTEGER NOT NULL DEFAULT 0,
+  sales_detected INTEGER NOT NULL DEFAULT 0,
+  pushes INTEGER NOT NULL DEFAULT 0,
+  warnings INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reconcile_rows (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES reconcile_runs(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  sku TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform IN ('etsy', 'ebay', 'shopify')),
+  status TEXT NOT NULL CHECK (
+    status IN (
+      'ok',
+      'baseline',
+      'different',
+      'sale',
+      'remote_increase',
+      'missing_config',
+      'missing_mapping',
+      'error'
+    )
+  ),
+  local_quantity INTEGER NOT NULL,
+  remote_quantity INTEGER,
+  last_synced_quantity INTEGER,
+  projected_local_quantity INTEGER,
+  would_push_quantity INTEGER,
+  message TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_inventory_events_item_created
   ON inventory_events(item_id, created_at DESC);
 
@@ -1300,5 +1493,11 @@ CREATE INDEX IF NOT EXISTS idx_sku_instruction_matches_instruction
 
 CREATE INDEX IF NOT EXISTS idx_print_assets_kind_display
   ON print_assets(kind, display_name);
+
+CREATE INDEX IF NOT EXISTS idx_reconcile_runs_created
+  ON reconcile_runs(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_reconcile_rows_run
+  ON reconcile_rows(run_id, position);
 
 `;

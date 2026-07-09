@@ -550,6 +550,8 @@ Inventory data should live in `data/inventory.sqlite` for normal personal use. S
 
 Applied CSV and Shopify imports also write batch summaries and row outcomes into the SQLite database for future reporting/review screens.
 
+Reconcile/dry-run results are saved as SQLite snapshots for later review and reporting.
+
 Instruction inventory, print settings, print events, and SKU-to-instruction matches also live in SQLite when `STORE_DRIVER=sqlite`. If `data/printing.json` already exists, SQLite seeds from it the first time printing data is opened.
 
 `data/inventory.json` remains the portable backup/export and migration format. Change its location with `DATA_FILE` in `.env`.

@@ -88,6 +88,39 @@ export interface SyncRun {
   messages: string[];
 }
 
+export type ReconcileStatus =
+  | "ok"
+  | "baseline"
+  | "different"
+  | "sale"
+  | "remote_increase"
+  | "missing_config"
+  | "missing_mapping"
+  | "error";
+
+export interface ReconcileRow {
+  sku: string;
+  platform: Platform;
+  status: ReconcileStatus;
+  localQuantity: number;
+  remoteQuantity?: number;
+  lastSyncedQuantity?: number | null;
+  projectedLocalQuantity?: number;
+  wouldPushQuantity?: number;
+  message: string;
+}
+
+export interface ReconcileResult {
+  rows: ReconcileRow[];
+  summary: SyncSummary;
+}
+
+export interface ReconcileRunRecord extends ReconcileResult {
+  id: string;
+  platform?: Platform;
+  createdAt: string;
+}
+
 export type ImportBatchSource = "csv" | "shopify";
 export type ImportBatchStatus = "applied" | "dry_run" | "failed";
 

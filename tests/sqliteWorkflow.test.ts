@@ -76,6 +76,10 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   const reconcile = await reconcileInventory({ platform: "shopify" });
   assert.equal(reconcile.summary.salesDetected, 0);
   assert.equal(reconcile.rows.find((row) => row.sku === "LOCAL-SKU")?.status, "baseline");
+  const reconcileRuns = (await store.listReconcileRuns?.()) ?? [];
+  assert.equal(reconcileRuns.length, 1);
+  assert.equal(reconcileRuns[0].platform, "shopify");
+  assert.equal(reconcileRuns[0].rows.find((row) => row.sku === "LOCAL-SKU")?.status, "baseline");
 
   const baselineRun = await runInventorySync("cli");
   assert.equal(baselineRun.summary.salesDetected, 0);

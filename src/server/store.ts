@@ -13,6 +13,7 @@ import type {
   PlatformMapping,
   PrintAsset,
   PrintingPayload,
+  ReconcileRunRecord,
   ScheduleSettings,
   StoreData,
   SyncRun
@@ -56,6 +57,8 @@ export interface InventoryStoreDriver {
   mutatePrintingData?<T>(mutator: (data: PrintingPayload) => T | Promise<T>): Promise<T>;
   recordPrintAssets?(assets: PrintAsset[], options?: { replace?: boolean }): Promise<void>;
   listPrintAssetMetadata?(limit?: number): Promise<PrintAsset[]>;
+  recordReconcileRun?(run: ReconcileRunRecord): Promise<void>;
+  listReconcileRuns?(limit?: number): Promise<ReconcileRunRecord[]>;
   close?(): Promise<void>;
 }
 

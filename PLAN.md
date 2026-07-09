@@ -38,6 +38,7 @@ The SQLite inventory database stores:
 - `print_instructions`, `print_instruction_events`, `sku_instruction_matches`, and `print_settings`: instruction inventory, print activity, SKU instruction rules, and printer choices.
 - `print_assets`: metadata for label and instruction document files that still live on disk.
 - `import_batches` and `import_batch_rows`: applied CSV and Shopify import history.
+- `reconcile_runs` and `reconcile_rows`: saved dry-run/reconcile snapshots for later review.
 
 SQLite is the default real local database driver. Use `DATABASE_FILE=data/inventory.sqlite` for the database file. `migrate-sqlite` copies existing JSON inventory into SQLite and writes a JSON backup first. PostgreSQL remains available only as an optional deployment/growth path.
 
@@ -246,7 +247,7 @@ Progress:
 | Phase 1: Documentation Alignment | Complete | Roadmap, README, and UI guide now agree that SQLite is the real local database path and Postgres is optional later. |
 | Phase 2: Professional UI Rework | Complete | Design tokens, shared UI helpers, calmer page visuals, graphite/teal color pass, accessibility basics, and persistent UI smoke screenshots are in place. `npm run build`, `npm test`, and `npm run smoke:ui` pass. |
 | Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
-| Phase 4: Operational Data Consolidation | In progress | Operational backups, import batch history, printing workflows, and feedback scan history are now SQL-backed; reconcile history remains next. |
+| Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
 | Phase 5: Reporting And Review Workflows | Pending | Start after operational data is consolidated. |
 | Phase 6: Production Readiness | Pending | Start after data and workflow foundations are stable. |
 
@@ -289,7 +290,7 @@ Phase 4 progress:
 | Print asset metadata consolidation | Complete | Asset scans and uploads now upsert label/instruction document metadata into SQLite while keeping the actual files under `data/printing/`. |
 | Feedback scan history consolidation | Complete | eBay review history remains in a cheap local SQLite file, now honors `FEEDBACK_DATA_FILE`, records scan-run summaries, and is covered by operational backup. |
 | Import batch history | Complete | CSV and Shopify applied imports now write `import_batches` and `import_batch_rows` records in SQLite, including row actions and summaries. |
-| Reconcile snapshot history | Pending | Save local-vs-marketplace review snapshots before live pushes. |
+| Reconcile snapshot history | Complete | Reconcile/dry-run results now write saved run and row snapshots in SQLite for later review/reporting. |
 
 ### Phase 1: Documentation Alignment
 
