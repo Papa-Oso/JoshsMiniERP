@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { platforms } from "../shared/types";
 import { config } from "./config";
+import { getOperationsReport } from "./reportingService";
 import { store } from "./store";
 
 export interface DataFileResult {
@@ -135,6 +136,174 @@ export async function exportInventoryEventsCsv(outputPath?: string): Promise<Dat
   return {
     path: resolved,
     itemCount: data.events.length
+  };
+}
+
+export async function exportOperationsReportCsv(outputDirectory?: string): Promise<DataFileResult> {
+  const report = await getOperationsReport();
+  const reportDirectory = path.resolve(
+    outputDirectory ?? path.join(path.dirname(config.dataFile), "reports", `operations-${backupTimestamp()}`)
+  );
+  const tables = [
+    {
+      fileName: "import-batches.csv",
+      headers: [
+        "created_at",
+        "id",
+        "source",
+        "status",
+        "rows_total",
+        "created",
+        "updated",
+        "adjusted",
+        "mapped",
+        "skipped",
+        "failed",
+        "variants_scanned",
+        "file_name"
+      ],
+      rows: report.importBatches.map((batch) => ({
+        created_at: batch.createdAt,
+        id: batch.id,
+        source: batch.source,
+        status: batch.status,
+        rows_total: batch.summary.rowsTotal,
+        created: batch.summary.created,
+        updated: batch.summary.updated,
+        adjusted: batch.summary.adjusted,
+        mapped: batch.summary.mapped,
+        skipped: batch.summary.skipped,
+        failed: batch.summary.failed,
+        variants_scanned: batch.summary.variantsScanned,
+        file_name: batch.fileName
+      }))
+    },
+    {
+      fileName: "reconcile-runs.csv",
+      headers: ["created_at", "id", "platform", "sales_detected", "pushes", "warnings", "errors", "first_message"],
+      rows: report.reconcileRuns.map((run) => ({
+        created_at: run.createdAt,
+        id: run.id,
+        platform: run.platform,
+        sales_detected: run.summary.salesDetected,
+        pushes: run.summary.pushes,
+        warnings: run.summary.warnings,
+        errors: run.summary.errors,
+        first_message: run.rows[0]?.message
+      }))
+    },
+    {
+      fileName: "sync-runs.csv",
+      headers: [
+        "started_at",
+        "finished_at",
+        "id",
+        "mode",
+        "status",
+        "items_checked",
+        "sales_detected",
+        "pushes",
+        "warnings",
+        "errors",
+        "first_message"
+      ],
+      rows: report.syncRuns.map((run) => ({
+        started_at: run.startedAt,
+        finished_at: run.finishedAt,
+        id: run.id,
+        mode: run.mode,
+        status: run.status,
+        items_checked: run.summary.itemsChecked,
+        sales_detected: run.summary.salesDetected,
+        pushes: run.summary.pushes,
+        warnings: run.summary.warnings,
+        errors: run.summary.errors,
+        first_message: run.messages[0]
+      }))
+    },
+    {
+      fileName: "recent-inventory-events.csv",
+      headers: ["created_at", "id", "sku", "item_id", "type", "delta", "quantity_after", "source", "platform", "note"],
+      rows: report.inventoryEvents.map((event) => ({
+        created_at: event.createdAt,
+        id: event.id,
+        sku: event.sku,
+        item_id: event.itemId,
+        type: event.type,
+        delta: event.delta,
+        quantity_after: event.quantityAfter,
+        source: event.source,
+        platform: event.platform,
+        note: event.note
+      }))
+    },
+    {
+      fileName: "instruction-trends.csv",
+      headers: ["instruction_id", "label", "on_hand", "low_alert", "max_inventory", "recent_delta", "event_count", "status"],
+      rows: report.instructionTrends.map((row) => ({
+        instruction_id: row.instructionId,
+        label: row.label,
+        on_hand: row.onHand,
+        low_alert: row.lowAlert,
+        max_inventory: row.maxInventory,
+        recent_delta: row.recentDelta,
+        event_count: row.eventCount,
+        status: row.status
+      }))
+    },
+    {
+      fileName: "print-events.csv",
+      headers: ["created_at", "id", "instruction_id", "type", "delta", "quantity_after", "note"],
+      rows: report.printEvents.map((event) => ({
+        created_at: event.createdAt,
+        id: event.id,
+        instruction_id: event.instructionId,
+        type: event.type,
+        delta: event.delta,
+        quantity_after: event.quantityAfter,
+        note: event.note
+      }))
+    },
+    {
+      fileName: "mapping-health.csv",
+      headers: ["sku", "name", "platform", "status", "message"],
+      rows: report.mappingHealth.map((row) => ({
+        sku: row.sku,
+        name: row.name,
+        platform: row.platform,
+        status: row.status,
+        message: row.message
+      }))
+    },
+    {
+      fileName: "feedback-scans.csv",
+      headers: ["created_at", "id", "scan_mode", "rows_seen", "rows_exported", "new_rows", "skipped_existing_rows"],
+      rows: report.feedbackScanRuns.map((run) => ({
+        created_at: run.createdAt,
+        id: run.id,
+        scan_mode: run.scanMode,
+        rows_seen: run.rowsSeen,
+        rows_exported: run.rowsExported,
+        new_rows: run.newRows,
+        skipped_existing_rows: run.skippedExistingRows
+      }))
+    }
+  ];
+
+  await fs.mkdir(reportDirectory, { recursive: true });
+  const files: string[] = [];
+  let rowCount = 0;
+  for (const table of tables) {
+    const outputPath = path.join(reportDirectory, table.fileName);
+    await fs.writeFile(outputPath, toCsv(table.headers, table.rows), "utf8");
+    files.push(outputPath);
+    rowCount += table.rows.length;
+  }
+
+  return {
+    path: reportDirectory,
+    itemCount: rowCount,
+    files
   };
 }
 

@@ -8,11 +8,19 @@ import type { StoreData } from "../src/shared/types";
 const timestamp = "2026-01-01T00:00:00.000Z";
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-data-tools-"));
 const dataFile = path.join(tempDir, "inventory.json");
+const printingFile = path.join(tempDir, "printing.json");
+const feedbackFile = path.join(tempDir, "feedback.sqlite");
 
 process.env.DATA_FILE = dataFile;
+process.env.PRINTING_DATA_FILE = printingFile;
+process.env.FEEDBACK_DATA_FILE = feedbackFile;
 process.env.STORE_DRIVER = "json";
+process.env.SHOPIFY_SHOP_DOMAIN = "";
+process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "";
+process.env.SHOPIFY_CLIENT_ID = "";
+process.env.SHOPIFY_CLIENT_SECRET = "";
 
-const { exportInventoryCsv, exportInventoryEventsCsv } = await import("../src/server/dataTools.ts");
+const { exportInventoryCsv, exportInventoryEventsCsv, exportOperationsReportCsv } = await import("../src/server/dataTools.ts");
 
 after(async () => {
   await rm(tempDir, { recursive: true, force: true });
@@ -47,6 +55,25 @@ test("inventory event CSV export writes movement history rows", async () => {
   assert.equal(written.path, outputPath);
   assert.equal(written.itemCount, 1);
   assert.equal(await readFile(outputPath, "utf8"), inline.csv);
+});
+
+test("operations report CSV export writes review tables", async () => {
+  await writeStore(seedStore());
+
+  const outputDirectory = path.join(tempDir, "reports", "review");
+  const result = await exportOperationsReportCsv(outputDirectory);
+  assert.equal(result.path, outputDirectory);
+  assert.equal(result.files?.length, 8);
+  assert.equal(result.itemCount >= 2, true);
+
+  const mappingHealth = await readFile(path.join(outputDirectory, "mapping-health.csv"), "utf8");
+  const inventoryEvents = await readFile(path.join(outputDirectory, "recent-inventory-events.csv"), "utf8");
+  const instructionTrends = await readFile(path.join(outputDirectory, "instruction-trends.csv"), "utf8");
+
+  assert.match(mappingHealth, /^sku,name,platform,status,message/m);
+  assert.match(mappingHealth, /MUG-1,"Mug, Blue",shopify,missing_config/);
+  assert.match(inventoryEvents, /2026-01-01T00:00:00.000Z,event-1,MUG-1,item-1,batch_add,4,12,local/);
+  assert.match(instructionTrends, /^instruction_id,label,on_hand,low_alert,max_inventory,recent_delta,event_count,status/m);
 });
 
 function seedStore(): StoreData {

@@ -3,7 +3,13 @@ import { platformLabels, platforms } from "../shared/types";
 import { EbayAdapter } from "./adapters/ebay";
 import { ShopifyAdapter } from "./adapters/shopify";
 import { importCsv } from "./csvImport";
-import { backupInventoryData, exportInventoryCsv, exportInventoryData, exportInventoryEventsCsv } from "./dataTools";
+import {
+  backupInventoryData,
+  exportInventoryCsv,
+  exportInventoryData,
+  exportInventoryEventsCsv,
+  exportOperationsReportCsv
+} from "./dataTools";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
@@ -74,6 +80,9 @@ try {
       break;
     case "export-events-csv":
       await exportEventsCsvFromCli(args.slice(1));
+      break;
+    case "export-review-csv":
+      await exportReviewCsvFromCli(args.slice(1));
       break;
     case "backup":
       await backupFromCli(args.slice(1));
@@ -415,6 +424,12 @@ async function exportEventsCsvFromCli(input: string[]) {
   }
 
   console.log(`Exported ${result.itemCount} events to ${result.path}.`);
+}
+
+async function exportReviewCsvFromCli(input: string[]) {
+  const [outputDirectory] = positionalArgs(input);
+  const result = await exportOperationsReportCsv(outputDirectory);
+  console.log(`Exported ${result.itemCount} review rows across ${result.files?.length ?? 0} CSV files to ${result.path}.`);
 }
 
 async function backupFromCli(input: string[]) {
@@ -811,6 +826,7 @@ Commands:
   npm run inv -- export [output.json]
   npm run inv -- export-csv [output.csv]
   npm run inv -- export-events-csv [output.csv]
+  npm run inv -- export-review-csv [output-directory]
   npm run inv -- backup [backup-directory]
   npm run inv -- migrate-sqlite [--dry-run] [--force]
   npm run inv -- migrate-postgres [--dry-run] [--force]

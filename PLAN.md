@@ -251,7 +251,7 @@ Progress:
 | Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
 | Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
 | Phase 6: Production Readiness | Complete | Production startup, Secret Manager-backed deploys, Cloud SQL docs, restore rehearsal, helper script, and smoke checklist are aligned. |
-| Phase 7: Data Portability And Analysis | In progress | Starting with spreadsheet-friendly CSV export for inventory and marketplace mappings. |
+| Phase 7: Data Portability And Analysis | Complete | Spreadsheet-friendly exports now cover inventory, movement history, and Review Center report tables. |
 
 Phase 2 progress:
 
@@ -324,7 +324,7 @@ Phase 7 progress:
 | --- | --- | --- |
 | Inventory CSV export | Complete | `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. |
 | Event CSV export | Complete | `export-events-csv` writes inventory movement rows with deltas, resulting quantity, source, platform, notes, and timestamps. |
-| Review report export | Pending | Add CSV export for Review Center report tables after item/event exports are stable. |
+| Review report export | Complete | `export-review-csv` writes Review Center tables into a folder of CSV files for analysis and archive snapshots. |
 
 ### Phase 1: Documentation Alignment
 
