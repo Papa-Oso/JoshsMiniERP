@@ -149,6 +149,7 @@ Backup/export:
 ```powershell
 npm run inv -- export
 npm run inv -- export data/export.json
+npm run inv -- export-csv data/items.csv
 npm run inv -- backup
 npm run inv -- backup D:\InventoryBackups
 ```
@@ -250,6 +251,7 @@ Progress:
 | Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
 | Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
 | Phase 6: Production Readiness | Complete | Production startup, Secret Manager-backed deploys, Cloud SQL docs, restore rehearsal, helper script, and smoke checklist are aligned. |
+| Phase 7: Data Portability And Analysis | In progress | Starting with spreadsheet-friendly CSV export for inventory and marketplace mappings. |
 
 Phase 2 progress:
 
@@ -315,6 +317,14 @@ Phase 6 progress:
 | Backup/restore documentation | Complete | README now includes a restore rehearsal path for ERP data, print assets, feedback history, and reconcile-before-sync review. |
 | Deploy helper verification | Complete | Helper script and README now both set `NODE_ENV=production` for the ERP API and share the same service/database assumptions. |
 | Post-deploy smoke checklist | Complete | README now includes authenticated health, unauthenticated rejection, Shopify app load, dashboard sanity, and reconcile-before-sync checks. |
+
+Phase 7 progress:
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| Inventory CSV export | Complete | `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. |
+| Event CSV export | Pending | Add exportable inventory movement/event rows for deeper analysis. |
+| Review report export | Pending | Add CSV export for Review Center report tables after item/event exports are stable. |
 
 ### Phase 1: Documentation Alignment
 
@@ -738,7 +748,7 @@ After SQLite:
 
 - `backup` copies `data/inventory.sqlite`, a portable JSON inventory export, printing data/assets, and feedback scan history into one manifest-backed operational backup.
 - `export` still produces JSON for portability.
-- Add optional CSV exports later.
+- `export-csv` writes spreadsheet-friendly item and marketplace mapping rows for analysis.
 
 Commands:
 

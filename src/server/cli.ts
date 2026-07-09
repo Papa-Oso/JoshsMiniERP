@@ -3,7 +3,7 @@ import { platformLabels, platforms } from "../shared/types";
 import { EbayAdapter } from "./adapters/ebay";
 import { ShopifyAdapter } from "./adapters/shopify";
 import { importCsv } from "./csvImport";
-import { backupInventoryData, exportInventoryData } from "./dataTools";
+import { backupInventoryData, exportInventoryCsv, exportInventoryData } from "./dataTools";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
@@ -68,6 +68,9 @@ try {
       break;
     case "export":
       await exportFromCli(args.slice(1));
+      break;
+    case "export-csv":
+      await exportCsvFromCli(args.slice(1));
       break;
     case "backup":
       await backupFromCli(args.slice(1));
@@ -383,6 +386,17 @@ async function exportFromCli(input: string[]) {
   const result = await exportInventoryData(outputPath);
   if (result.json) {
     console.log(result.json.trimEnd());
+    return;
+  }
+
+  console.log(`Exported ${result.itemCount} items to ${result.path}.`);
+}
+
+async function exportCsvFromCli(input: string[]) {
+  const [outputPath] = positionalArgs(input);
+  const result = await exportInventoryCsv(outputPath);
+  if (result.csv) {
+    console.log(result.csv.trimEnd());
     return;
   }
 
@@ -781,6 +795,7 @@ Commands:
   npm run inv -- reconcile [etsy|ebay|shopify]
   npm run inv -- csv-import <file.csv> [--dry-run]
   npm run inv -- export [output.json]
+  npm run inv -- export-csv [output.csv]
   npm run inv -- backup [backup-directory]
   npm run inv -- migrate-sqlite [--dry-run] [--force]
   npm run inv -- migrate-postgres [--dry-run] [--force]

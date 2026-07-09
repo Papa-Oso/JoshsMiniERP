@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { platforms } from "../shared/types";
 import { config } from "./config";
 import { store } from "./store";
 
@@ -24,6 +25,79 @@ export async function exportInventoryData(outputPath?: string): Promise<DataFile
   const resolved = path.resolve(outputPath);
   await fs.mkdir(path.dirname(resolved), { recursive: true });
   await fs.writeFile(resolved, json, "utf8");
+  return {
+    path: resolved,
+    itemCount: data.items.length
+  };
+}
+
+export async function exportInventoryCsv(outputPath?: string): Promise<DataFileResult & { csv?: string }> {
+  const data = await store.withLock(() => store.read());
+  const headers = [
+    "sku",
+    "name",
+    "description",
+    "quantity",
+    "safety_stock",
+    "max_inventory",
+    "active",
+    "created_at",
+    "updated_at",
+    ...platforms.flatMap((platform) => [
+      `${platform}_enabled`,
+      `${platform}_remote_sku`,
+      `${platform}_listing_id`,
+      `${platform}_inventory_item_id`,
+      `${platform}_location_id`,
+      `${platform}_offer_id`,
+      `${platform}_last_synced_quantity`,
+      `${platform}_last_remote_quantity`,
+      `${platform}_last_synced_at`,
+      `${platform}_warning`
+    ])
+  ];
+  const rows = data.items.map((item) => {
+    const row: Record<string, unknown> = {
+      sku: item.sku,
+      name: item.name,
+      description: item.description,
+      quantity: item.quantity,
+      safety_stock: item.safetyStock,
+      max_inventory: item.maxInventory,
+      active: item.active,
+      created_at: item.createdAt,
+      updated_at: item.updatedAt
+    };
+
+    for (const platform of platforms) {
+      const mapping = item.mappings[platform];
+      row[`${platform}_enabled`] = Boolean(mapping?.enabled);
+      row[`${platform}_remote_sku`] = mapping?.remoteSku;
+      row[`${platform}_listing_id`] = mapping?.listingId;
+      row[`${platform}_inventory_item_id`] = mapping?.inventoryItemId;
+      row[`${platform}_location_id`] = mapping?.locationId;
+      row[`${platform}_offer_id`] = mapping?.offerId;
+      row[`${platform}_last_synced_quantity`] = mapping?.lastSyncedQuantity;
+      row[`${platform}_last_remote_quantity`] = mapping?.lastRemoteQuantity;
+      row[`${platform}_last_synced_at`] = mapping?.lastSyncedAt;
+      row[`${platform}_warning`] = mapping?.warning;
+    }
+
+    return row;
+  });
+  const csv = toCsv(headers, rows);
+
+  if (!outputPath) {
+    return {
+      path: config.dataFile,
+      itemCount: data.items.length,
+      csv
+    };
+  }
+
+  const resolved = path.resolve(outputPath);
+  await fs.mkdir(path.dirname(resolved), { recursive: true });
+  await fs.writeFile(resolved, csv, "utf8");
   return {
     path: resolved,
     itemCount: data.items.length
@@ -69,6 +143,17 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
     itemCount: data.items.length,
     files: copiedFiles
   };
+}
+
+function toCsv(headers: string[], rows: Array<Record<string, unknown>>) {
+  return `${headers.join(",")}\n${rows.map((row) => headers.map((header) => csvCell(row[header])).join(",")).join("\n")}\n`;
+}
+
+function csvCell(value: unknown) {
+  if (value === undefined || value === null) return "";
+  const text = String(value);
+  if (!/[",\r\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function backupTimestamp() {
