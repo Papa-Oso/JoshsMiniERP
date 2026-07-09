@@ -224,6 +224,7 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
   }
 
   private createSchema(db: Database) {
+    ensureColumn(db, "import_batch_rows", "position", "INTEGER NOT NULL DEFAULT 0");
     db.run(sqliteSchema);
     ensureColumn(db, "inventory_items", "description", "TEXT");
     ensureColumn(db, "inventory_items", "max_inventory", "INTEGER NOT NULL DEFAULT 100");
@@ -232,6 +233,20 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     ensureColumn(db, "platform_mappings", "warning", "TEXT");
     ensureColumn(db, "sync_run_messages", "position", "INTEGER NOT NULL DEFAULT 0");
     ensureColumn(db, "sync_run_messages", "created_at", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(db, "import_batches", "file_name", "TEXT");
+    ensureColumn(db, "import_batches", "rows_total", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "rows_created", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "rows_updated", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "rows_adjusted", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "rows_mapped", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "rows_skipped", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "rows_failed", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batches", "variants_scanned", "INTEGER");
+    ensureColumn(db, "import_batch_rows", "position", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(db, "import_batch_rows", "line_number", "INTEGER");
+    ensureColumn(db, "import_batch_rows", "previous_quantity", "INTEGER");
+    ensureColumn(db, "import_batch_rows", "next_quantity", "INTEGER");
+    ensureColumn(db, "import_batch_rows", "raw_json", "TEXT");
     db.run(`
       CREATE INDEX IF NOT EXISTS idx_sync_run_messages_run_position
         ON sync_run_messages(sync_run_id, position)
@@ -1012,6 +1027,7 @@ function queryRows(db: Database, sql: string, params: SqlValue[] = []) {
 
 function ensureColumn(db: Database, tableName: string, columnName: string, definition: string) {
   const result = db.exec(`PRAGMA table_info(${tableName})`)[0];
+  if (!result) return;
   const hasColumn = result?.values.some((row) => row[1] === columnName);
   if (!hasColumn) {
     db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
