@@ -172,6 +172,11 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   assert.equal(report.syncRuns.length >= 1, true);
   assert.equal(report.inventoryEvents.length >= 1, true);
   assert.equal(report.printEvents.length >= 1, true);
+  assert.equal(
+    report.instructionTrends.some((row) => row.instructionId === "hjc" && row.onHand === 12 && row.recentDelta === 12),
+    true
+  );
+  assert.equal(report.totals.instructionLow >= 0, true);
   assert.equal(report.feedbackScanRuns.length, 1);
   assert.equal(report.mappingHealth.some((row) => row.sku === "LOCAL-SKU" && row.platform === "shopify"), true);
 

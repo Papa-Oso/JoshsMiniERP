@@ -752,7 +752,7 @@ h2 {
 
 .review-center-summary {
   display: grid;
-  grid-template-columns: repeat(6, minmax(92px, 1fr)) auto;
+  grid-template-columns: repeat(7, minmax(92px, 1fr)) auto;
   gap: 8px;
   align-items: stretch;
 }
@@ -841,12 +841,14 @@ h2 {
 }
 
 .report-status-pill.warning,
-.report-status-pill.missing_mapping {
+.report-status-pill.missing_mapping,
+.report-status-pill.low {
   background: rgba(230, 180, 80, 0.12);
   color: var(--color-warning);
 }
 
-.report-status-pill.missing_config {
+.report-status-pill.missing_config,
+.report-status-pill.over_max {
   background: rgba(255, 107, 107, 0.12);
   color: var(--color-danger);
 }

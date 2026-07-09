@@ -5,6 +5,7 @@ import { api } from "./api";
 import { Metric, Panel } from "./ui";
 import type {
   ImportBatchRecord,
+  InstructionTrendRow,
   InventoryEvent,
   MappingHealthRow,
   OperationsReportPayload,
@@ -61,6 +62,7 @@ export function ReviewPage() {
         <Metric label="Reconcile" value={report.totals.reconcileRuns} />
         <Metric label="Sync Runs" value={report.totals.syncRuns} />
         <Metric label="Moves" value={report.totals.inventoryEvents} />
+        <Metric label="Instr Low" value={report.totals.instructionLow} tone={report.totals.instructionLow ? "warn" : "ok"} />
         <Metric label="Feedback" value={report.totals.feedbackScanRuns} />
         <Metric label="Map Issues" value={report.totals.mappingIssues} tone={report.totals.mappingIssues ? "warn" : "ok"} />
         <button className="icon-button primary review-refresh" type="button" onClick={load} disabled={loading}>
@@ -76,6 +78,7 @@ export function ReviewPage() {
         <ReconcileHistoryPanel runs={report.reconcileRuns} />
         <SyncHistoryPanel runs={report.syncRuns} />
         <InventoryMovementPanel events={report.inventoryEvents} />
+        <InstructionTrendPanel rows={report.instructionTrends} />
         <InstructionEventPanel events={report.printEvents} />
         <MappingHealthPanel rows={mappingIssues.length ? mappingIssues : report.mappingHealth.slice(0, 12)} />
         <FeedbackScanPanel runs={report.feedbackScanRuns} />
@@ -167,6 +170,32 @@ function InventoryMovementPanel({ events }: { events: InventoryEvent[] }) {
             <td>{event.type.replaceAll("_", " ")}</td>
             <td>{event.platform ? platformLabels[event.platform] : event.source}</td>
             <td>{event.note ?? "-"}</td>
+          </tr>
+        ))}
+      </ReportTable>
+    </Panel>
+  );
+}
+
+function InstructionTrendPanel({ rows }: { rows: InstructionTrendRow[] }) {
+  return (
+    <Panel title="Instruction Trend" icon={<PackageCheck size={18} />} className="review-center-panel">
+      <ReportTable empty="No instruction stock">
+        {rows.map((row) => (
+          <tr key={row.instructionId}>
+            <td>
+              <strong>{row.label}</strong>
+              <span>{row.instructionId}</span>
+            </td>
+            <td>{row.onHand}</td>
+            <td>{row.lowAlert}</td>
+            <td>{row.maxInventory}</td>
+            <td className={row.recentDelta < 0 ? "danger" : row.recentDelta > 0 ? "ok" : ""}>
+              {row.recentDelta > 0 ? `+${row.recentDelta}` : row.recentDelta}
+            </td>
+            <td>
+              <span className={`report-status-pill ${row.status}`}>{row.status.replaceAll("_", " ")}</span>
+            </td>
           </tr>
         ))}
       </ReportTable>

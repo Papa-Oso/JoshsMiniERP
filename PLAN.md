@@ -248,7 +248,7 @@ Progress:
 | Phase 2: Professional UI Rework | Complete | Design tokens, shared UI helpers, calmer page visuals, graphite/teal color pass, accessibility basics, and persistent UI smoke screenshots are in place. `npm run build`, `npm test`, and `npm run smoke:ui` pass. |
 | Phase 3: Local SQL Store Hardening | Complete | SQLite is the default local SQL database; migration, contract tests, and end-to-end workflow coverage pass. Postgres remains optional for future deployment. |
 | Phase 4: Operational Data Consolidation | Complete | Operational backups, import batch history, printing workflows, feedback scan history, and reconcile snapshots are now SQL-backed. |
-| Phase 5: Reporting And Review Workflows | In progress | Review Center now surfaces import, reconcile, sync, movement, instruction, mapping, and feedback history. |
+| Phase 5: Reporting And Review Workflows | Complete | Review Center now surfaces import, reconcile, sync, movement, instruction trends, mapping, and feedback history. |
 | Phase 6: Production Readiness | Pending | Start after data and workflow foundations are stable. |
 
 Phase 2 progress:
@@ -301,7 +301,7 @@ Phase 5 progress:
 | Reconcile history view | Complete | The Review tool shows saved reconcile snapshots with sales, pushes, warnings, errors, and first row message. |
 | Sync history view | Complete | The Review tool shows recent sync runs with mode, status, sales, pushes, and issue counts. |
 | Inventory movement by SKU | Complete | The Review tool shows recent inventory events by SKU, delta, source, and note. |
-| Instruction usage trend | In progress | The Review tool shows recent instruction movement. Trend summaries are still pending. |
+| Instruction usage trend | Complete | The Review tool shows current instruction stock, low/max thresholds, recent movement delta, and low/over-max status. |
 | Marketplace mapping health view | Complete | The Review tool lists enabled marketplace mappings, missing config, missing mapping fields, and mapping warnings. |
 | eBay review export history | Complete | The Review tool shows feedback scan-run history from the local feedback SQLite database. |
 

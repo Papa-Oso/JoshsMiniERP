@@ -77,7 +77,7 @@ The topbar bell shows active alerts and tracks unread alerts locally in the brow
 
 ## Review Center
 
-The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.
+The local UI includes a Review tool for operational history. It shows recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, instruction stock trends, mapping health, and eBay feedback scan runs from the local SQLite-backed stores.
 
 ## Inventory Rules
 

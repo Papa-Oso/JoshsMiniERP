@@ -1,5 +1,6 @@
 import type {
   FeedbackScanRunRecord,
+  InstructionTrendRow,
   InventoryItem,
   MappingHealthRow,
   OperationsReportPayload,
@@ -24,6 +25,7 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
 
   const inventoryEvents = data.events.slice(0, 40);
   const printEvents = printing.events.slice(0, 40);
+  const instructionTrends = buildInstructionTrends(printing);
   const syncRuns = data.syncRuns.slice(0, 12);
   const mappingHealth = buildMappingHealth(data.items).slice(0, 80);
 
@@ -34,6 +36,7 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
     syncRuns,
     inventoryEvents,
     printEvents,
+    instructionTrends,
     feedbackScanRuns,
     mappingHealth,
     totals: {
@@ -42,10 +45,38 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
       syncRuns: syncRuns.length,
       inventoryEvents: inventoryEvents.length,
       printEvents: printEvents.length,
+      instructionLow: instructionTrends.filter((row) => row.status === "low").length,
       feedbackScanRuns: feedbackScanRuns.length,
       mappingIssues: mappingHealth.filter((row) => row.status !== "ok" && row.status !== "disabled").length
     }
   };
+}
+
+function buildInstructionTrends(printing: Awaited<ReturnType<typeof getPrintingData>>): InstructionTrendRow[] {
+  return printing.instructions
+    .map((instruction) => {
+      const events = printing.events.filter((event) => event.instructionId === instruction.id);
+      const recentDelta = events.reduce((sum, event) => sum + event.delta, 0);
+      return {
+        instructionId: instruction.id,
+        label: instruction.label,
+        onHand: instruction.onHand,
+        lowAlert: instruction.lowAlert,
+        maxInventory: instruction.maxInventory,
+        recentDelta,
+        eventCount: events.length,
+        status:
+          instruction.onHand > instruction.maxInventory
+            ? "over_max"
+            : instruction.onHand <= instruction.lowAlert
+              ? "low"
+              : "ok"
+      } satisfies InstructionTrendRow;
+    })
+    .sort((left, right) => {
+      const rank = instructionStatusRank(left.status) - instructionStatusRank(right.status);
+      return rank || left.label.localeCompare(right.label);
+    });
 }
 
 function buildMappingHealth(items: InventoryItem[]): MappingHealthRow[] {
@@ -125,4 +156,10 @@ function mappingStatusRank(status: MappingHealthRow["status"]) {
   if (status === "warning") return 2;
   if (status === "ok") return 3;
   return 4;
+}
+
+function instructionStatusRank(status: InstructionTrendRow["status"]) {
+  if (status === "low") return 0;
+  if (status === "over_max") return 1;
+  return 2;
 }

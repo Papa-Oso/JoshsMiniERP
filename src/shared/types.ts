@@ -183,6 +183,19 @@ export interface MappingHealthRow {
   message: string;
 }
 
+export type InstructionTrendStatus = "ok" | "low" | "over_max";
+
+export interface InstructionTrendRow {
+  instructionId: string;
+  label: string;
+  onHand: number;
+  lowAlert: number;
+  maxInventory: number;
+  recentDelta: number;
+  eventCount: number;
+  status: InstructionTrendStatus;
+}
+
 export interface OperationsReportPayload {
   generatedAt: string;
   importBatches: ImportBatchRecord[];
@@ -190,6 +203,7 @@ export interface OperationsReportPayload {
   syncRuns: SyncRun[];
   inventoryEvents: InventoryEvent[];
   printEvents: PrintEvent[];
+  instructionTrends: InstructionTrendRow[];
   feedbackScanRuns: FeedbackScanRunRecord[];
   mappingHealth: MappingHealthRow[];
   totals: {
@@ -198,6 +212,7 @@ export interface OperationsReportPayload {
     syncRuns: number;
     inventoryEvents: number;
     printEvents: number;
+    instructionLow: number;
     feedbackScanRuns: number;
     mappingIssues: number;
   };
