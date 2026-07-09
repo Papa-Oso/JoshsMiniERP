@@ -12,6 +12,7 @@ import type {
   InventoryItem,
   Platform,
   PlatformMapping,
+  PrintAsset,
   PrintEvent,
   PrintingPayload,
   SkuInstructionMatch,
@@ -161,6 +162,21 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
       this.replacePrintingData(context.db, data);
       context.dirty = true;
       return result;
+    });
+  }
+
+  async recordPrintAssets(assets: PrintAsset[], options: { replace?: boolean } = {}) {
+    await this.withLock(async () => {
+      const context = this.requireContext();
+      this.recordPrintAssetMetadata(context.db, assets, Boolean(options.replace));
+      context.dirty = true;
+    });
+  }
+
+  async listPrintAssetMetadata(limit = 100): Promise<PrintAsset[]> {
+    return this.withLock(async () => {
+      const context = this.requireContext();
+      return this.readPrintAssetMetadata(context.db, limit);
     });
   }
 
@@ -766,6 +782,58 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     );
   }
 
+  private recordPrintAssetMetadata(db: Database, assets: PrintAsset[], replace: boolean) {
+    const timestamp = now();
+    if (replace) {
+      db.run("UPDATE print_assets SET exists_on_disk = 0, updated_at = ?", [timestamp]);
+    }
+
+    for (const asset of assets) {
+      db.run(
+        `
+          INSERT INTO print_assets (
+            id, kind, filename, display_name, relative_path, sku, instruction_id,
+            exists_on_disk, discovered_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            kind = excluded.kind,
+            filename = excluded.filename,
+            display_name = excluded.display_name,
+            relative_path = excluded.relative_path,
+            sku = excluded.sku,
+            instruction_id = excluded.instruction_id,
+            exists_on_disk = excluded.exists_on_disk,
+            updated_at = excluded.updated_at
+        `,
+        [
+          asset.id,
+          asset.kind,
+          asset.filename,
+          asset.displayName,
+          asset.path,
+          asset.sku ?? null,
+          asset.instructionId ?? null,
+          asset.exists ? 1 : 0,
+          timestamp,
+          timestamp
+        ]
+      );
+    }
+  }
+
+  private readPrintAssetMetadata(db: Database, limit: number): PrintAsset[] {
+    return queryRows(
+      db,
+      `
+        SELECT id, kind, filename, display_name, relative_path, sku, instruction_id, exists_on_disk
+        FROM print_assets
+        ORDER BY kind ASC, display_name ASC, filename ASC
+        LIMIT ?
+      `,
+      [Math.max(1, Math.floor(limit))]
+    ).map(rowToPrintAsset);
+  }
+
   private pruneInventoryEvents(db: Database, limit: number) {
     db.run(
       `
@@ -949,6 +1017,19 @@ function rowToInstructionMatch(row: Record<string, SqlValue>): SkuInstructionMat
     mode: stringValue(row.mode) as SkuInstructionMatch["mode"],
     instructionId: optionalString(row.instruction_id),
     updatedAt: isoString(row.updated_at)
+  };
+}
+
+function rowToPrintAsset(row: Record<string, SqlValue>): PrintAsset {
+  return {
+    id: stringValue(row.id),
+    kind: stringValue(row.kind) as PrintAsset["kind"],
+    filename: stringValue(row.filename),
+    displayName: stringValue(row.display_name),
+    path: stringValue(row.relative_path),
+    sku: optionalString(row.sku),
+    instructionId: optionalString(row.instruction_id),
+    exists: booleanValue(row.exists_on_disk)
   };
 }
 
@@ -1183,6 +1264,19 @@ CREATE TABLE IF NOT EXISTS print_settings (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS print_assets (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('label', 'instruction')),
+  filename TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  sku TEXT,
+  instruction_id TEXT,
+  exists_on_disk INTEGER NOT NULL DEFAULT 1 CHECK (exists_on_disk IN (0, 1)),
+  discovered_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_inventory_events_item_created
   ON inventory_events(item_id, created_at DESC);
 
@@ -1203,5 +1297,8 @@ CREATE INDEX IF NOT EXISTS idx_print_instruction_events_created
 
 CREATE INDEX IF NOT EXISTS idx_sku_instruction_matches_instruction
   ON sku_instruction_matches(instruction_id);
+
+CREATE INDEX IF NOT EXISTS idx_print_assets_kind_display
+  ON print_assets(kind, display_name);
 
 `;

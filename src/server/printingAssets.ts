@@ -2,8 +2,9 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { PrintAsset, PrintAssetKind, PrinterInfo } from "../shared/types";
+import { store } from "./store";
 
-const printingRoot = path.resolve("data/printing");
+const printingRoot = path.resolve(process.env.PRINTING_ASSET_DIR ?? "data/printing");
 const assetDirectories: Record<PrintAssetKind, string> = {
   label: "labels",
   instruction: "instructions"
@@ -47,10 +48,13 @@ export async function listPrintingAssets(): Promise<PrintAsset[]> {
     })
   );
 
-  return assets.flat().sort((left, right) => {
+  const sorted = assets.flat().sort((left, right) => {
     const kindCompare = left.kind.localeCompare(right.kind);
     return kindCompare || left.displayName.localeCompare(right.displayName);
   });
+
+  await store.recordPrintAssets?.(sorted, { replace: true });
+  return sorted;
 }
 
 export async function openPrintingAsset(assetId: string): Promise<PrintAsset> {
@@ -120,6 +124,7 @@ export async function saveUploadedInstructionAsset(input: UploadInstructionAsset
 
   const asset = buildPrintingAsset("instruction", filename, true);
   if (!asset) throw new Error("Uploaded instruction could not be indexed.");
+  await store.recordPrintAssets?.([asset]);
   return asset;
 }
 
@@ -139,6 +144,7 @@ export async function saveUploadedLabelAsset(input: UploadLabelAssetInput): Prom
 
   const asset = buildPrintingAsset("label", filename, true);
   if (!asset) throw new Error("Uploaded label could not be indexed.");
+  await store.recordPrintAssets?.([asset]);
   return asset;
 }
 

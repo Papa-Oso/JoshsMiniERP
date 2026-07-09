@@ -11,6 +11,7 @@ import type {
   ImportBatchRecord,
   Platform,
   PlatformMapping,
+  PrintAsset,
   PrintingPayload,
   ScheduleSettings,
   StoreData,
@@ -53,6 +54,8 @@ export interface InventoryStoreDriver {
   listImportBatches?(limit?: number): Promise<ImportBatchRecord[]>;
   readPrintingData?(): Promise<PrintingPayload>;
   mutatePrintingData?<T>(mutator: (data: PrintingPayload) => T | Promise<T>): Promise<T>;
+  recordPrintAssets?(assets: PrintAsset[], options?: { replace?: boolean }): Promise<void>;
+  listPrintAssetMetadata?(limit?: number): Promise<PrintAsset[]>;
   close?(): Promise<void>;
 }
 

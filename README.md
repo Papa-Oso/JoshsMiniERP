@@ -554,7 +554,7 @@ Instruction inventory, print settings, print events, and SKU-to-instruction matc
 
 `data/inventory.json` remains the portable backup/export and migration format. Change its location with `DATA_FILE` in `.env`.
 
-Uploaded print assets live under `data/printing/`. The files stay on disk; the roadmap tracks adding SQLite asset metadata around those files.
+Uploaded print assets live under `data/printing/`. The files stay on disk, and SQLite tracks asset metadata when assets are scanned or uploaded.
 
 The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. That directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
 

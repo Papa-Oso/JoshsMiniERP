@@ -26,11 +26,12 @@ const { adjustInventory, createItem, listData, updateItem } = await import("../s
 const { backupInventoryData, exportInventoryData } = await import("../src/server/dataTools.ts");
 const { importCsv } = await import("../src/server/csvImport.ts");
 const { listImportBatches } = await import("../src/server/importHistory.ts");
+const { listPrintingAssets } = await import("../src/server/printingAssets.ts");
 const { adjustInstruction, getPrintingData, updatePrintSettings, updateSkuInstructionMatch } = await import("../src/server/printingService.ts");
 const { importShopifySkus } = await import("../src/server/shopifyImport.ts");
 const { reconcileInventory } = await import("../src/server/reconcile.ts");
 const { runInventorySync } = await import("../src/server/syncEngine.ts");
-const { closeStore } = await import("../src/server/store.ts");
+const { closeStore, store } = await import("../src/server/store.ts");
 
 after(async () => {
   globalThis.fetch = originalFetch;
@@ -128,8 +129,15 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
 
   await writeFile(printingFile, `${JSON.stringify({ settings: { labelPrinter: "Test Label Printer" } }, null, 2)}\n`, "utf8");
   await writeFile(feedbackFile, "test feedback sqlite placeholder", "utf8");
-  await mkdir(printingAssetDir, { recursive: true });
-  await writeFile(path.join(printingAssetDir, "instruction.txt"), "instruction asset", "utf8");
+  await mkdir(path.join(printingAssetDir, "instructions"), { recursive: true });
+  await mkdir(path.join(printingAssetDir, "labels"), { recursive: true });
+  await writeFile(path.join(printingAssetDir, "instructions", "JW-HJC-INSTRUCTIONS.pdf"), "instruction asset", "utf8");
+  await writeFile(path.join(printingAssetDir, "labels", "LOCAL-SKU-LABEL.pdf"), "label asset", "utf8");
+  const assets = await listPrintingAssets();
+  const assetMetadata = (await store.listPrintAssetMetadata?.()) ?? [];
+  assert.equal(assets.length, 2);
+  assert.equal(assetMetadata.some((asset) => asset.kind === "instruction" && asset.instructionId === "hjc"), true);
+  assert.equal(assetMetadata.some((asset) => asset.kind === "label" && asset.sku === "LOCAL-SKU"), true);
 
   const backup = await backupInventoryData(path.join(tempDir, "backups"));
   const exportPath = path.join(tempDir, "export.json");
