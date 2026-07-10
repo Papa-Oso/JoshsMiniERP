@@ -68,10 +68,11 @@ Use [PLAN.md](PLAN.md) as the authoritative execution roadmap. The current direc
 
 - Keep the working inventory, printing, sync, and review workflows stable.
 - Keep the app cheap and local by default; SQLite is the real personal-use database.
-- Rework the local UI into a calmer professional operations workbench.
-- Keep JSON as backup/export format and use PostgreSQL only as an optional later deployment path.
+- Maintain the calmer professional operations UI described in [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md).
+- Keep JSON as a backup/export format and use PostgreSQL only as an optional hosted deployment path.
 - Keep the embedded Shopify app on Shopify Admin UI components while sharing product language and API contracts.
-- Consolidate related operational data, including instruction inventory and feedback history, after the SQLite path is fully trusted.
+- Keep operational history in SQLite where practical so Review Center, exports, backup, and recovery stay aligned.
+- Treat legacy eBay listings as protected assets: scan and map them locally, but do not revise live listing quantities until the write path is deliberately reviewed.
 
 ## Notifications
 
@@ -123,7 +124,7 @@ The local UI includes a Review tool for operational history and daily exception 
 
 Existing eBay listings are treated as protected business assets. Do not end, relist, recreate, migrate, or bulk revise them just to connect the ERP. Many existing listings are traditional eBay listings, not Sell Inventory API-managed SKUs, so the app reads them through eBay's Trading API using the listing's Custom label/SKU and Item ID.
 
-Legacy eBay listing quantity writes are intentionally disabled until the write path is reviewed. The next safe eBay phase is read-only listing scan, mapping preview, local-only mapping apply, and baseline capture. See [PLAN.md](PLAN.md#ebay-legacy-listing-safety-plan).
+Legacy eBay listing quantity writes are intentionally disabled until the write path is reviewed. Use `ebay-legacy-scan` to export active listings and `ebay-legacy-map` to preview exact SKU mappings before saving them locally with `--apply`. The apply step changes only local ERP mapping data and leaves sync baselines empty so the next reconcile/sync captures a read-only baseline first. See [PLAN.md](PLAN.md#ebay-legacy-listing-safety-plan).
 
 That last-synced baseline lets simultaneous sales subtract correctly. If Etsy drops from 15 to 14 and eBay drops from 15 to 13 before the next sync, the tool subtracts 3 total units from the master inventory, then pushes the new count to every mapped store.
 
@@ -147,6 +148,9 @@ npm run inv -- export-events-csv data/events.csv
 npm run inv -- export-review-csv data/review-export
 npm run inv -- restore-dry-run
 npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
+npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
+npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
+npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
 npm run inv -- migrate-sqlite --dry-run
 npm run inv -- migrate-sqlite
 npm run inv -- migrate-postgres --dry-run
@@ -493,7 +497,7 @@ eBay:
 - `EBAY_ENVIRONMENT` as `production` or `sandbox`
 - `EBAY_MARKETPLACE_ID`
 - `EBAY_TOKEN_FILE`
-- Per SKU: eBay SKU, with offer ID recommended for live offers
+- Per SKU: eBay Custom label/SKU plus Item ID for legacy listings; offer ID is used only for Sell Inventory API-managed offers
 
 Etsy:
 
@@ -568,9 +572,14 @@ Useful eBay helpers:
 ```powershell
 npm run inv -- ebay-test
 npm run inv -- ebay-lookup NEON-MUG
+npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
+npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
+npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
 npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
 ```
+
+Run `ebay-legacy-map` without `--apply` first. The apply mode saves only exact eligible SKU matches to local ERP mapping data and does not end, relist, migrate, or revise live eBay listings.
 
 ### eBay Marketplace Account Deletion
 
@@ -619,7 +628,8 @@ Run without `--install` first to preview the startup script or `schtasks` comman
 ## Platform API Notes
 
 - Shopify adapter uses Admin GraphQL `inventoryItem` reads and `inventorySetQuantities` writes.
-- eBay adapter uses OAuth user tokens with Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity`, and checks the per-SKU response before treating a push as successful.
+- eBay adapter uses OAuth user tokens with Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity` for Inventory API-managed offers, and checks the per-SKU response before treating a push as successful.
+- Legacy eBay listings are read through Trading API `GetMyeBaySelling`/`GetItem` by Custom label/SKU and Item ID. Quantity pushes for those legacy listings are intentionally disabled.
 - Etsy adapter reads and writes `GET/PUT /v3/application/listings/{listing_id}/inventory`, preserving the listing inventory payload and changing the matched SKU quantity.
 
 Relevant docs:
@@ -633,13 +643,14 @@ Relevant docs:
 - https://developer.ebay.com/develop/guides-v2/authorization
 - https://developer.ebay.com/api-docs/static/oauth-token-types.html
 - https://developer.ebay.com/api-docs/sell/static/inventory/bulk-updates.html
+- https://developer.ebay.com/devzone/xml/docs/reference/ebay/getmyebayselling.html
 - https://developer.etsy.com/documentation/tutorials/listings
 
 ## Data
 
 Inventory data should live in `data/inventory.sqlite` for normal personal use. SQLite is the default driver; change the file with `DATABASE_FILE` in `.env`.
 
-Applied CSV and Shopify imports also write batch summaries and row outcomes into the SQLite database for future reporting/review screens.
+Applied CSV and Shopify imports also write batch summaries and row outcomes into the SQLite database for Review Center and CSV export workflows.
 
 Reconcile/dry-run results are saved as SQLite snapshots for later review and reporting.
 
@@ -651,4 +662,4 @@ Uploaded print assets live under `data/printing/`. The files stay on disk, and S
 
 The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. Feedback rows and scan-run summaries live in `data/feedback.sqlite`; change that path with `FEEDBACK_DATA_FILE`. The `data/` directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
 
-The `backup` command captures these local operational files into one manifest-backed backup when they exist. The growth roadmap in [PLAN.md](PLAN.md) continues moving the app toward SQLite-backed local operational data while keeping JSON export available for portability. PostgreSQL remains optional for a future hosted deployment.
+The `backup` command captures these local operational files into one manifest-backed backup when they exist. [PLAN.md](PLAN.md) tracks future work, but SQLite-backed local operational data is already the default direction. PostgreSQL remains optional for a future hosted deployment.

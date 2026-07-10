@@ -1,3 +1,7 @@
+/*
+ * UI styling contract: read UI_STYLE_GUIDE.md before changing colors,
+ * spacing, panels, buttons, tables, modals, or responsive layout.
+ */
 :root {
   color-scheme: dark;
   font-family:

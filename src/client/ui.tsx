@@ -1,3 +1,5 @@
+// Shared local ERP UI helpers. Read UI_STYLE_GUIDE.md before changing
+// panel, metric, status, modal, table, or toolbar patterns.
 import type { ReactNode } from "react";
 
 type Tone = "ok" | "warn" | "danger";

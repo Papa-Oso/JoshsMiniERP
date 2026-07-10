@@ -13,6 +13,12 @@ import {
 } from "./dataTools";
 import { runDoctor } from "./diagnostics";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
+import {
+  applyEbayLegacyMappings,
+  previewEbayLegacyMappings,
+  scanEbayLegacyListings,
+  type EbayLegacyOutputFormat
+} from "./ebayLegacyListings";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
 import { migrateJsonToPostgres } from "./postgresMigration";
@@ -118,6 +124,12 @@ try {
       break;
     case "ebay-lookup":
       await ebayLookupFromCli(args.slice(1));
+      break;
+    case "ebay-legacy-scan":
+      await ebayLegacyScanFromCli(args.slice(1));
+      break;
+    case "ebay-legacy-map":
+      await ebayLegacyMapFromCli(args.slice(1));
       break;
     case "ebay-map":
       await ebayMapFromCli(args.slice(1));
@@ -622,6 +634,66 @@ async function ebayLookupFromCli(input: string[]) {
   console.log(`  Quantity: ${typeof quantity === "number" ? quantity : "-"}`);
 }
 
+async function ebayLegacyScanFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const result = await scanEbayLegacyListings({
+    outputPath: stringFlag(flags.output),
+    format: outputFormat(stringFlag(flags.format))
+  });
+
+  console.log(
+    `Read-only eBay legacy scan: ${result.summary.listings} active listings, ${result.summary.withSku} with Custom label/SKU, ${result.summary.duplicateSkus} duplicate SKU groups.`
+  );
+  console.table(
+    result.listings.map((listing) => ({
+      sku: listing.sku || "-",
+      itemId: listing.itemId,
+      title: listing.title,
+      available: listing.quantityAvailable,
+      total: listing.quantity,
+      sold: listing.quantitySold,
+      watchers: listing.watchCount ?? "-",
+      url: listing.url ?? "-"
+    }))
+  );
+  if (result.outputPath) {
+    console.log(`Wrote eBay legacy scan to ${result.outputPath}.`);
+  }
+}
+
+async function ebayLegacyMapFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const apply = Boolean(flags.apply);
+  const options = {
+    outputPath: stringFlag(flags.output),
+    format: outputFormat(stringFlag(flags.format))
+  };
+  const result = apply ? await applyEbayLegacyMappings(options) : await previewEbayLegacyMappings(options);
+
+  console.log(
+    `${apply ? "Applied" : "Previewed"} eBay legacy mappings: ${result.summary.exactMatches} exact, ${result.summary.alreadyMapped} already mapped, ${result.summary.applied} applied, ${result.summary.missingLocal} missing local, ${result.summary.missingEbay} missing eBay, ${result.summary.duplicateEbaySkus} duplicate eBay SKU rows, ${result.summary.titleMismatches} title mismatches, ${result.summary.mappingConflicts} mapping conflicts.`
+  );
+  if (!apply) {
+    console.log("No local data changed. Rerun with --apply to save exact eligible matches only.");
+  }
+  console.table(
+    result.rows.map((row) => ({
+      sku: row.sku,
+      status: row.status,
+      local: row.localSku ?? "-",
+      ebayItem: row.ebayItemId ?? "-",
+      available: row.ebayQuantityAvailable ?? "-",
+      watchers: row.ebayWatchCount ?? "-",
+      eligible: row.applyEligible,
+      applied: row.applied,
+      message: row.message
+    }))
+  );
+  if (result.outputPath) {
+    console.log(`Wrote eBay legacy mapping ${apply ? "result" : "preview"} to ${result.outputPath}.`);
+  }
+}
+
 async function ebayMapFromCli(input: string[]) {
   const [localSku, maybeEbaySku, ...rest] = input;
   if (!localSku) {
@@ -789,11 +861,17 @@ function parseFlags(input: string[]) {
 }
 
 function isBooleanFlag(key: string) {
-  return ["disable", "dry-run", "enable", "install", "overwrite", "reconcile", "write"].includes(key);
+  return ["apply", "disable", "dry-run", "enable", "install", "overwrite", "reconcile", "write"].includes(key);
 }
 
 function stringFlag(value: string | boolean | undefined) {
   return typeof value === "string" ? value : undefined;
+}
+
+function outputFormat(value: string | undefined): EbayLegacyOutputFormat | undefined {
+  if (value === undefined) return undefined;
+  if (value === "csv" || value === "json") return value;
+  throw new Error("Output format must be csv or json.");
 }
 
 function chooseShopifyLocation(levels: ShopifyInventoryLevel[], filter?: string) {
@@ -889,7 +967,9 @@ Commands:
   npm run inv -- ebay-refresh
   npm run inv -- ebay-test
   npm run inv -- ebay-lookup <sku>
-  npm run inv -- ebay-map <local-sku> [ebay-sku] [--offer-id <id>]
+  npm run inv -- ebay-legacy-scan [--output data/ebay-legacy-listings.csv]
+  npm run inv -- ebay-legacy-map [--apply] [--output data/ebay-legacy-mapping.csv]
+  npm run inv -- ebay-map <local-sku> [ebay-sku] [--listing-id <id>] [--offer-id <id>]
   npm run inv -- etsy-auth-url
   npm run inv -- etsy-auth-callback "https://..."
   npm run inv -- etsy-refresh

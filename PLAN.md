@@ -13,6 +13,59 @@ This document captures the requested inventory work, what is already implemented
 - Rework the local Vite UI as a professional operations tool: calm, compact, durable, and designer-grade.
 - Keep the embedded Shopify app on Shopify's native Admin components. It should share product language and API contracts with the local ERP, not the local ERP's visual theme.
 
+## AI Coding Practices Improvement Plan
+
+Goal: make future AI-assisted coding sessions safer, more consistent, and easier to review.
+
+Current audit status:
+
+- Strong: `README.md`, `PLAN.md`, and `UI_STYLE_GUIDE.md` now describe the same product direction.
+- Strong: `.env` and `data/` are ignored by git, and `.env.example` uses placeholders instead of real secrets.
+- Strong: `package.json` exposes clear verification commands: `build`, `test`, `smoke:ui`, `check`, and dependency audit scripts.
+- Strong: root `AGENTS.md` now gives AI coding agents the first-stop repo instructions.
+- Strong: `src/client/styles.css` and `src/client/ui.tsx` point UI edits back to `UI_STYLE_GUIDE.md`.
+- Strong: `AGENTS.md` includes a short verification matrix and human review checklist.
+
+Implemented guardrails:
+
+1. Root AI instructions.
+   - `AGENTS.md` exists at the repo root.
+   - Tell AI coding agents to read `PLAN.md` before roadmap work and `UI_STYLE_GUIDE.md` before UI/CSS/workflow-copy changes.
+   - Include the core storage rule: SQLite is local default, JSON is backup/export, Postgres is optional hosted deployment.
+   - Include safety rules: do not expose `.env`, do not touch `data/` casually, do not enable eBay legacy quantity writes without explicit review.
+
+2. Lightweight code pointers.
+   - `src/client/styles.css` has a short header comment pointing to `UI_STYLE_GUIDE.md`.
+   - `src/client/ui.tsx` has a short header comment pointing to shared UI rules.
+   - Avoid repeating comments in every component; the goal is discoverability, not noise.
+
+3. AI verification matrix.
+   - `AGENTS.md` documents which checks to run for common change types.
+   - Docs-only: `git diff --check`.
+   - Server/data behavior: `npm test` plus focused tests when available.
+   - Frontend/UI: `npm run build`; run `npm run smoke:ui` after broad layout or visual changes.
+   - Full pre-commit confidence: `npm run check`.
+
+4. Human review checklist.
+   - `AGENTS.md` includes the short review checklist.
+   - Did the change follow `UI_STYLE_GUIDE.md` when UI was touched?
+   - Did the change preserve SQLite/local-first assumptions?
+   - Did the change avoid printing, committing, or copying secrets?
+   - Did the change avoid destructive marketplace behavior, especially for legacy eBay listings?
+   - Did the final response list verification actually run?
+
+5. Ongoing maintenance.
+   - Update `AGENTS.md`, `README.md`, `PLAN.md`, and `UI_STYLE_GUIDE.md` when workflows or safety rules change.
+   - Remove obsolete commands instead of leaving them as examples.
+   - Prefer one canonical instruction over duplicated long guidance in many files.
+
+Acceptance:
+
+- A new AI session can identify the style guide, roadmap, storage rules, safety rules, and verification commands within the first few files it reads.
+- UI agents are explicitly directed to `UI_STYLE_GUIDE.md` before changing CSS or shared UI helpers.
+- The repo has a concise verification matrix for docs, frontend, server/data, and full-check changes.
+- The guidance improves consistency without cluttering every source file with repeated policy comments.
+
 ## Current Storage
 
 The app now has a local SQLite inventory store and JSON fallback/export support.
@@ -54,7 +107,7 @@ Related local file data currently lives outside the main inventory store:
 Status legend:
 
 - Done: implemented in the current working tree.
-- Planned: documented here for the SQL/storage follow-up.
+- Planned: not implemented yet, or intentionally reserved for a later explicit phase.
 
 | Request | Status | Notes |
 | --- | --- | --- |
@@ -75,7 +128,7 @@ Status legend:
 | eBay reviews controls | Done | CSV buttons own the scrape/export actions, incremental is preferred, and early feedback prevents empty CSV creation. |
 | UI consistency guide | Done | `UI_STYLE_GUIDE.md` captures page identity, settings, buttons, panels, feedback, inventory visuals, and verification rules. |
 | Notification framework | Done | Topbar bell shows unread active alerts for inventory state, sync issues, and printer status problems. Stock state alerts are not dismissible; operational alerts can be dismissed locally. |
-| eBay legacy listing safety | In progress | eBay OAuth is connected and legacy active listings can be read through Trading API by Custom label/SKU and Item ID. Existing listings must not be ended, relisted, migrated, or quantity-pushed until the legacy write path is deliberately reviewed. |
+| eBay legacy listing safety | In progress | Read-only legacy scan and exact-match local mapping apply are in place. Existing listings must not be ended, relisted, migrated, or quantity-pushed until the legacy write path is deliberately reviewed. |
 
 ## eBay Legacy Listing Safety Plan
 
@@ -87,6 +140,8 @@ Current state:
 - eBay's seller-facing **Custom label (SKU)** maps to the app's local SKU.
 - `JW-HJC-BOLD-001` is locally mapped to existing eBay Item ID `327075240793`.
 - Legacy eBay listing reads are allowed; legacy eBay quantity writes are intentionally disabled until reviewed.
+- `ebay-legacy-scan` exports active legacy listings with Custom label/SKU, Item ID, title, quantity, sold count, watch count, and URL.
+- `ebay-legacy-map` previews exact SKU matches, missing local SKUs, missing eBay listings, duplicates, title mismatches, and mapping conflicts. With `--apply`, it saves only exact eligible matches locally and leaves sync baselines empty for the next reconcile/sync.
 
 Safety rules:
 
@@ -106,11 +161,13 @@ Implementation sequence:
    - Pull active listings with Trading API `GetMyeBaySelling`.
    - Capture Custom label/SKU, Item ID, title, available quantity, total quantity, sold count, watch count, and URL.
    - Save or export the scan for review without changing local inventory or eBay.
+   - Implemented as `npm run inv -- ebay-legacy-scan [--output data/ebay-legacy-listings.csv]`.
 
 3. Add a preview/apply mapping workflow.
    - Match local SKUs to eBay Custom label/SKU.
    - Preview exact matches, missing local SKUs, missing eBay listings, duplicate SKUs, and title mismatches.
    - Apply only exact trusted mappings: `enabled=true`, `remoteSku=<Custom label>`, `listingId=<Item ID>`.
+   - Implemented as `npm run inv -- ebay-legacy-map [--apply] [--output data/ebay-legacy-mapping.csv]`.
 
 4. Baseline all newly mapped eBay listings.
    - First sync/reconcile reads the eBay available quantity and records it as `lastRemoteQuantity` / `lastSyncedQuantity`.
@@ -138,7 +195,7 @@ Implementation sequence:
    - Keep a CSV/JSON export of the eBay listing scan.
    - Confirm the backup manifest before applying bulk mappings or enabling writes.
 
-Acceptance for the next eBay phase:
+Acceptance for the current eBay phase:
 
 - A read-only scan lists all active legacy eBay listings.
 - Exact SKU matches can be previewed before applying mappings.
@@ -215,14 +272,18 @@ CSV columns:
 
 Use either an absolute quantity or a delta on one CSV row, not both.
 
-Backup/export:
+Backup/export and reporting:
 
 ```powershell
+npm run inv -- doctor
 npm run inv -- export
 npm run inv -- export data/export.json
 npm run inv -- export-csv data/items.csv
+npm run inv -- export-events-csv data/events.csv
+npm run inv -- export-review-csv data/review-export
 npm run inv -- backup
 npm run inv -- backup D:\InventoryBackups
+npm run inv -- restore-dry-run
 ```
 
 SKU pairing audit:
@@ -234,6 +295,13 @@ npm run inv -- sku-audit --platform shopify --location "Main"
 npm run inv -- sku-audit --platform ebay
 ```
 
+SQLite storage:
+
+```powershell
+npm run inv -- migrate-sqlite --dry-run
+npm run inv -- migrate-sqlite
+```
+
 Postgres foundation:
 
 ```powershell
@@ -242,7 +310,7 @@ npm run inv -- migrate-postgres --dry-run
 npm run inv -- migrate-postgres
 ```
 
-eBay OAuth and helpers:
+eBay OAuth, legacy scan, and helpers:
 
 ```powershell
 npm run inv -- ebay-auth-url
@@ -250,6 +318,9 @@ npm run inv -- ebay-auth-callback "https://your-accept-url?code=...&state=..."
 npm run inv -- ebay-refresh
 npm run inv -- ebay-test
 npm run inv -- ebay-lookup NEON-MUG
+npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
+npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
+npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
 npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
 ```
@@ -280,6 +351,14 @@ npm run inv -- backup
 ```powershell
 npm run inv -- shopify-import --location "Main" --dry-run
 npm run inv -- shopify-import --location "Main"
+npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
+npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
+```
+
+Apply eBay legacy mappings only after reviewing the preview. The apply step changes local ERP mapping data only and leaves eBay sync baselines empty for a first read-only baseline.
+
+```powershell
+npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
 ```
 
 3. Import batch spreadsheet changes with a dry run first.
@@ -311,7 +390,7 @@ npm start
 
 ## Execution Roadmap
 
-This is the sequence to follow when you tell Codex to continue without further planning. Complete one phase at a time, run the verification listed for that phase, and avoid broad refactors outside the phase.
+This is the historical execution roadmap plus the current continuation point. The first eight phases are complete; when continuing work, start from the active eBay legacy listing safety plan unless Josh names a different task. Avoid broad refactors outside the active phase.
 
 Progress:
 
@@ -407,9 +486,9 @@ Phase 8 progress:
 | Backup rotation guidance | Complete | README now recommends pre-change backups, keeping at least 10 local operational backups, one monthly off-repo copy, and manifest checks before deletion. |
 | Recovery dry-run command | Complete | `restore-dry-run` inspects an operational backup manifest and verifies captured files exist without copying or overwriting anything. |
 
-### Phase 1: Documentation Alignment
+### Phase 1: Documentation Alignment Reference
 
-Goal: make the repository tell one consistent story.
+Goal completed: make the repository tell one consistent story.
 
 - Update `PLAN.md` so SQLite is the official local SQL database and PostgreSQL is optional for later deployment.
 - Update `UI_STYLE_GUIDE.md` with the professional redesign direction and component rules.
@@ -421,9 +500,9 @@ Acceptance:
 - `PLAN.md`, `README.md`, and `UI_STYLE_GUIDE.md` no longer disagree about the database direction.
 - The next implementation phase can be followed from this file without guessing.
 
-### Phase 2: Professional UI Rework
+### Phase 2: Professional UI Rework Reference
 
-Goal: preserve the working workflows while making the local ERP feel like a professional operations product.
+Goal completed: preserve the working workflows while making the local ERP feel like a professional operations product.
 
 Design direction:
 
@@ -433,7 +512,7 @@ Design direction:
 - Clear hierarchy through spacing, typography, and alignment instead of glow or heavy gradients.
 - Consistent button states, panel headers, tables, modals, notices, and stock indicators across all pages.
 
-Implementation sequence:
+Completed implementation sequence:
 
 1. Create design tokens in CSS for color, typography, borders, elevation, spacing, and status tones.
 2. Rework the global shell/topbar: smaller title treatment, quieter background, stable settings/notification placement, and cleaner mobile layout.
@@ -453,9 +532,9 @@ Acceptance:
 - Desktop and mobile screenshots show no overlapping text, broken buttons, or unclear disabled states.
 - The app still opens directly to the working tool, not a landing page.
 
-### Phase 3: Local SQL Store Hardening
+### Phase 3: Local SQL Store Hardening Reference
 
-Goal: move from JSON-compatible document storage toward a durable local SQL database without breaking current workflows or adding a background service.
+Goal completed: move from JSON-compatible document storage toward a durable local SQL database without breaking current workflows or adding a background service.
 
 Current bridge:
 
@@ -464,7 +543,7 @@ Current bridge:
 - `migrate-sqlite` copies JSON inventory into SQLite and writes a JSON backup first.
 - `PostgresInventoryStore` still exists as an optional hosted/deployment path, but it is not required for normal personal use.
 
-Implementation sequence:
+Completed implementation sequence:
 
 1. Keep the existing store contract while adding focused SQLite tests.
 2. Add `STORE_DRIVER=sqlite` and `DATABASE_FILE=data/inventory.sqlite`.
@@ -480,9 +559,9 @@ Acceptance:
 - SQLite store contract and migration tests pass in the normal test suite.
 - `list`, `create`, `add`, `subtract`, `map`, `shopify-import`, `csv-import`, `reconcile`, `sync`, `backup`, and `export` work with `STORE_DRIVER=sqlite`.
 
-### Phase 4: Operational Data Consolidation
+### Phase 4: Operational Data Consolidation Reference
 
-Goal: make backup, reporting, and recovery cover the whole business workflow, not just item inventory.
+Goal completed: make backup, reporting, and recovery cover the whole business workflow, not just item inventory.
 
 Move or formalize these data sets:
 
@@ -514,11 +593,11 @@ Acceptance:
 - Marketplace sales and instruction consumption are transactionally safe enough for the current business scale.
 - Local file assets remain on disk, but their metadata is tracked in the database.
 
-### Phase 5: Reporting And Review Workflows
+### Phase 5: Reporting And Review Workflows Reference
 
-Goal: turn operational history into useful review screens and safer decision points.
+Goal completed: turn operational history into useful review screens and safer decision points.
 
-Build after the data model is stable:
+Built after the data model stabilized:
 
 - Import history view.
 - Reconcile history view.
@@ -532,9 +611,9 @@ Acceptance:
 
 - Users can answer "what changed, when, why, and from where" without opening raw JSON or database files.
 
-### Phase 6: Production Readiness
+### Phase 6: Production Readiness Reference
 
-Goal: make the Cloud Run and Shopify deployment path repeatable.
+Goal completed: make the Cloud Run and Shopify deployment path repeatable.
 
 - Verify `ERP_API_TOKEN` is required in production.
 - Use Secret Manager for database passwords, marketplace tokens, Shopify secrets, and API tokens.
@@ -568,9 +647,9 @@ Why SQLite:
 
 JSON stays as a fallback/export format while SQLite becomes the real local source of truth.
 
-## Proposed SQLite Schema
+## SQLite Schema Reference
 
-Initial schema:
+The exact live schema is maintained in `src/server/sqliteStore.ts`. This excerpt documents the core local database shape so future work does not reintroduce JSON as the working store.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -713,25 +792,26 @@ Implemented now:
 
 - `import_batches` stores applied CSV and Shopify import summaries.
 - `import_batch_rows` stores row-level actions, messages, quantities, and raw row context.
-- Dry-runs still preview without changing inventory; applied imports create durable history for future reporting screens.
+- `print_instructions`, `print_instruction_events`, `sku_instruction_matches`, `print_settings`, and `print_assets` store printing workflow state and file metadata.
+- `reconcile_runs` and `reconcile_rows` store dry-run/reconcile snapshots automatically for Review Center history.
+- Dry-runs still preview without changing inventory; applied imports create durable history for Review Center and CSV export workflows.
 
 Optional later tables:
 
-- `reconcile_runs`: store dry-run snapshots for review history.
-- `reconcile_rows`: store each local vs remote comparison.
 - `oauth_tokens`: only if token storage is wanted in SQLite. Keep file-based token storage unless we also add encryption.
 - `app_settings`: generic key/value settings after schedule grows beyond one row.
 
-## SQLite Implementation Plan
+## SQLite Implementation Reference
 
-### Step 1: Add SQLite storage alongside JSON
+SQLite is already the default local driver. This section is retained as implementation history and migration reference, not as unfinished work.
 
-Create:
+### Step 1: SQLite storage alongside JSON
+
+Implemented files:
 
 ```text
 src/server/sqliteStore.ts
-src/server/migrations/001_initial.sql
-src/server/migrateJsonToSqlite.ts
+src/server/sqliteMigration.ts
 ```
 
 Add env:
@@ -748,7 +828,7 @@ Initial behavior:
 - `migrate-sqlite --dry-run` and `migrate-sqlite` are currently implemented.
 - `STORE_DRIVER=json` remains available as a fallback/export bridge.
 
-### Step 2: Create a store interface
+### Step 2: Store interface
 
 The current `InventoryStore` exposes:
 
@@ -756,7 +836,7 @@ The current `InventoryStore` exposes:
 - `mutate()`
 - `withLock()`
 
-Create an interface both JSON and SQLite stores can satisfy. Keep service code mostly unchanged at first.
+JSON, SQLite, and optional Postgres stores satisfy the shared driver shape. Service code still uses the store abstraction for low-risk portability.
 
 Target:
 
@@ -768,9 +848,9 @@ export interface InventoryDataStore {
 }
 ```
 
-This is the fastest low-risk bridge. A later pass can move services from document-style mutation to direct SQL queries.
+This remains the low-risk bridge. A later pass can move selected reporting paths from document-style mutation to direct SQL queries only when it clearly pays for itself.
 
-### Step 3: Build JSON to SQLite migration
+### Step 3: JSON to SQLite migration
 
 Migration command:
 
@@ -791,12 +871,12 @@ Migration behavior:
 8. Verify row counts.
 9. Write a fresh JSON backup before switching drivers.
 
-### Step 4: Move batch/import history to SQL rows
+### Step 4: Batch/import history in SQL rows
 
-Once SQLite is active, update:
+Implemented behavior:
 
-- `csv-import` to create `import_batches` and `import_batch_rows`.
-- `shopify-import` to create `import_batches` and `import_batch_rows`.
+- `csv-import` creates `import_batches` and `import_batch_rows` for applied imports.
+- `shopify-import` creates `import_batches` and `import_batch_rows` for applied imports.
 - Inventory quantity changes to continue creating `inventory_events`.
 
 Expected benefit:
@@ -805,31 +885,27 @@ Expected benefit:
 - You can see every row outcome in that batch.
 - You can tie actual quantity changes to the batch that caused them.
 
-### Step 5: Move reconcile history to SQL
+### Step 5: Reconcile history in SQL
 
-Current reconcile is preview-only. Later, add:
+Implemented tables:
 
 ```text
 reconcile_runs
 reconcile_rows
 ```
 
-That allows saving a review snapshot before pushing live inventory.
+Reconcile and `sync --dry-run` remain non-mutating for inventory quantities and marketplace pushes, but they now save review snapshots automatically for the Review Center. There is no separate `--save` or `reconcile-show` CLI command.
 
-Commands:
+### Step 6: Backup/export
 
-```powershell
-npm run inv -- reconcile shopify --save
-npm run inv -- reconcile-show <run-id>
-```
-
-### Step 6: Update backup/export
-
-After SQLite:
+Implemented behavior:
 
 - `backup` copies `data/inventory.sqlite`, a portable JSON inventory export, printing data/assets, and feedback scan history into one manifest-backed operational backup.
 - `export` still produces JSON for portability.
 - `export-csv` writes spreadsheet-friendly item and marketplace mapping rows for analysis.
+- `export-events-csv` writes inventory movement history.
+- `export-review-csv` writes Review Center tables into a folder of CSV files.
+- `restore-dry-run` inspects a backup manifest without restoring or overwriting files.
 
 Commands:
 
@@ -839,15 +915,15 @@ npm run inv -- export data/export.json
 npm run inv -- export-csv data/items.csv
 ```
 
-### Step 7: Cut over default storage
+### Step 7: Default storage
 
-After migration is tested:
+Current default:
 
 ```text
 STORE_DRIVER=sqlite
 ```
 
-Then later, once stable, make SQLite the default and keep JSON as an import/export format.
+SQLite is the default. JSON remains an import/export and backup format.
 
 ## SQLite Acceptance Checklist
 
@@ -863,13 +939,12 @@ Before calling the SQL migration complete:
 - A backup is created before any migration writes.
 - No marketplace tokens are committed or printed.
 
-## SQLite Work Order
+## SQLite Maintenance Guidance
 
-Current SQLite sequence:
+Current maintenance sequence:
 
-1. Finish the SQLite/Postgres storage decision and keep JSON as the local fallback/export format.
-2. Switch runtime services fully onto the chosen store interface.
-3. Add import batch tables to CSV and Shopify import flows.
-4. Add reconcile history only after the database cutover is stable.
-5. Add focused UI regression checks for Printing, Inventory, and eBay Reviews workflows.
-6. Keep `README.md` and `UI_STYLE_GUIDE.md` updated as workflow rules change.
+1. Keep SQLite as the local default and JSON as the portable export/backup format.
+2. Keep Postgres optional for hosted deployment only.
+3. Add new operational history to SQLite first, then surface it in Review Center or CSV exports.
+4. Keep focused tests around migration, backup/export, reconcile, sync, printing, and import workflows.
+5. Keep `README.md`, `PLAN.md`, and `UI_STYLE_GUIDE.md` updated as workflow rules change.

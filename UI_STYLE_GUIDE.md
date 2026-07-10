@@ -13,7 +13,7 @@ This app is a workbench for inventory, marketplace reviews, printing, and packag
 
 ## Professional Redesign Direction
 
-The next full UI pass should feel like a professional operations workbench designed by a product designer, not a themed dashboard.
+The local ERP should continue to feel like a professional operations workbench designed by a product designer, not a themed dashboard.
 
 Target qualities:
 
@@ -21,11 +21,11 @@ Target qualities:
 - Dense: useful information visible without feeling cramped.
 - Durable: readable during repeated daily work, not just impressive in a screenshot.
 - Trustworthy: destructive, disabled, warning, and success states must be unmistakable.
-- Consistent: the same action should look and behave the same across Inventory, Item Management, Printing, and eBay Reviews.
+- Consistent: the same action should look and behave the same across Inventory, Item Management, Printing, eBay Reviews, and Review Center.
 
 Visual direction:
 
-- Use a neutral dark or light-neutral base with restrained accent colors. Avoid the current neon/cyberpunk feel as the default product language.
+- Use a neutral dark or light-neutral base with restrained accent colors. Do not return to neon/cyberpunk styling as the default product language.
 - Remove decorative perspective grids, glow shadows, and ornamental gradients from the operational UI.
 - Reserve color for meaning: primary action, success, warning, danger, selected, focus, and unread.
 - Current local ERP palette: graphite base surfaces, teal for primary UI/action accents, green only for healthy/success states, amber for warnings, and red for danger/error states.
@@ -33,7 +33,7 @@ Visual direction:
 - Prefer crisp separators, controlled spacing, and clear alignment over heavy card effects.
 - Keep border radius at 8px or less.
 
-Design tokens should be created before broad CSS changes:
+Use the existing design token layer before adding page-specific CSS:
 
 - `--color-bg`
 - `--color-surface`
@@ -50,11 +50,11 @@ Design tokens should be created before broad CSS changes:
 - `--radius-*`
 - `--font-size-*`
 
-Do not begin a page-by-page redesign until the token layer exists. Without tokens, consistency will drift again.
+When a needed token is missing, add it deliberately and reuse it across pages instead of hard-coding one-off values.
 
 ## Shared Components
 
-Before or during the redesign, extract shared UI patterns instead of restyling each page independently.
+Use or extend shared UI patterns instead of restyling each page independently.
 
 Target shared pieces:
 
@@ -74,17 +74,14 @@ Target shared pieces:
 
 Shared pieces should support the states the app already needs: loading, disabled, selected, empty, warning, danger, success, and read-only.
 
-## Redesign Work Order
+## UI Change Work Order
 
-1. Create design tokens and replace hard-coded theme colors where practical.
-2. Rework the app shell, topbar, tool drawer, settings button, and notification button.
-3. Rework panels, buttons, form fields, tables, metrics, and notices globally.
-4. Rework Inventory.
-5. Rework Printing.
-6. Rework Item Management.
-7. Rework eBay Reviews.
-8. Add accessibility and responsive verification.
-9. Add Playwright visual smoke checks for the main pages.
+1. Check existing tokens and shared helpers before adding new visual rules.
+2. Keep app shell, topbar, tool drawer, settings button, and notification button consistent.
+3. Reuse panel, button, form field, table, metric, and notice patterns globally.
+4. Make page-level changes in the smallest workflow slice that solves the problem.
+5. Add accessibility and responsive verification when layout or interaction changes.
+6. Update Playwright visual smoke coverage after broad page or shell changes.
 
 Do not change inventory, printing, sync, or review business behavior as part of a pure visual redesign unless a UI bug requires it.
 
@@ -96,6 +93,7 @@ Each main page should have a distinct lucide icon or small visual mark that matc
 - Item Management: tag, barcode, or item-library icon.
 - Printing: printer, file, or document icon.
 - eBay Reviews: review, star, or marketplace scan icon.
+- Review Center: clipboard, activity, alert, or report icon.
 
 The icon should sit near the page title or primary page header. Do not rely on nav text alone for page identity.
 

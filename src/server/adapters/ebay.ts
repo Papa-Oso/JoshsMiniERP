@@ -31,6 +31,17 @@ export interface EbayInventoryItemSummary {
   listingId?: string;
 }
 
+export interface EbayLegacyListing {
+  itemId: string;
+  sku: string;
+  title: string;
+  quantity: number;
+  quantitySold: number;
+  quantityAvailable: number;
+  watchCount?: number;
+  url?: string;
+}
+
 interface InventoryItemsResponse {
   inventoryItems?: EbayInventoryItemSummary[];
   total?: number;
@@ -145,6 +156,7 @@ export class EbayAdapter implements PlatformAdapter {
           <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
             <Version>1209</Version>
             <DetailLevel>ReturnAll</DetailLevel>
+            <IncludeWatchCount>true</IncludeWatchCount>
             <ActiveList>
               <Include>true</Include>
               <Pagination>
@@ -282,16 +294,6 @@ export class EbayAdapter implements PlatformAdapter {
   }
 }
 
-interface EbayLegacyListing {
-  itemId: string;
-  sku: string;
-  title: string;
-  quantity: number;
-  quantitySold: number;
-  quantityAvailable: number;
-  url?: string;
-}
-
 function formatEbayErrors(errors: EbayErrorDetail[]) {
   return errors
     .map((error) => error.longMessage ?? error.message ?? `eBay error ${error.errorId ?? "unknown"}`)
@@ -322,6 +324,7 @@ function legacyListingFromNode($: cheerio.CheerioAPI, item: cheerio.Cheerio<AnyN
     quantity,
     quantitySold,
     quantityAvailable,
+    watchCount: optionalNumber(item.children("WatchCount").first().text()),
     url: item.find("ListingDetails > ViewItemURL").first().text() || undefined
   };
 }
@@ -342,4 +345,9 @@ function escapeXml(value: string) {
 function numberValue(value: string, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function optionalNumber(value: string) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
