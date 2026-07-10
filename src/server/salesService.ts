@@ -1,7 +1,7 @@
 import type { Platform, SalesDashboardPayload, SalesIntegrityWarningCode, SalesOrder, SalesReconciliationPayload, SalesRefund } from "../shared/types";
 import { platforms } from "../shared/types";
 import { importPlatformSales } from "./salesImporters";
-import { applySalesImport, loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, loadSalesRefunds, recordSalesPullFailure } from "./salesStore";
+import { applySalesImport, loadCanonicalProductNames, loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, loadSalesRefunds, recordSalesPullFailure } from "./salesStore";
 
 export async function refreshSales(selected: Platform[] = platforms) {
   const results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }> = [];
@@ -23,7 +23,7 @@ export async function getSalesDashboard({
   range = "90d",
   platform = "all"
 }: { range?: string; platform?: Platform | "all" } = {}): Promise<SalesDashboardPayload> {
-  const [allOrders, pulls, allEbayFinancials] = await Promise.all([loadSalesOrders(), loadSalesPulls(), loadEbayFinancialTransactions()]);
+  const [allOrders, pulls, allEbayFinancials, productNames] = await Promise.all([loadSalesOrders(), loadSalesPulls(), loadEbayFinancialTransactions(), loadCanonicalProductNames()]);
   const start = rangeStart(range);
   const orders = allOrders.filter((order) =>
     (platform === "all" || order.platform === platform) &&
@@ -62,7 +62,7 @@ export async function getSalesDashboard({
       unknownGeographyOrders: orders.filter((order) => !order.countryCode).length,
       missingSkuLines: sum(orders.map((order) => order.lineItems.filter((line) => !line.sku).length))
     },
-    products: aggregateProducts(orders),
+    products: aggregateProducts(orders, productNames),
     recentOrders: orders.slice(0, 25),
     coverage: platforms.map((source) => coverage(allOrders, source)),
     warnings
@@ -175,12 +175,12 @@ function aggregateLocations(orders: SalesOrder[]) {
   return [...groups.values()].sort((a, b) => b.orders - a.orders || b.revenue - a.revenue);
 }
 
-function aggregateProducts(orders: SalesOrder[]) {
+function aggregateProducts(orders: SalesOrder[], productNames: Map<string, string>) {
   const groups = new Map<string, { sku: string; title: string; revenue: number; orders: Set<string>; units: number }>();
   for (const order of orders) for (const line of order.lineItems) {
     const sku = line.sku.trim() === "--" ? "" : line.sku.trim();
     const key = sku || line.title || "Unknown product";
-    const group = groups.get(key) ?? { sku, title: line.title, revenue: 0, orders: new Set(), units: 0 };
+    const group = groups.get(key) ?? { sku, title: (sku && productNames.get(sku.toLowerCase())) || line.title, revenue: 0, orders: new Set(), units: 0 };
     group.revenue += line.amount; group.orders.add(`${order.platform}:${order.orderId}`); group.units += line.quantity;
     groups.set(key, group);
   }

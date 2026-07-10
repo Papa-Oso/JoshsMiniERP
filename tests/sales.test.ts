@@ -32,6 +32,7 @@ test("sales dashboard aggregates revenue, geography, products, and platform cove
   assert.equal(dashboard.locations[0].regionCode, "IL");
   assert.deepEqual(dashboard.dataQuality, { unknownGeographyOrders: 0, missingSkuLines: 0 });
   assert.equal(dashboard.products[0].sku, "SKU-1");
+  assert.equal(dashboard.products[0].title, "Product");
   assert.equal(dashboard.platforms.find((row) => row.platform === "shopify")?.orders, 1);
 });
 
