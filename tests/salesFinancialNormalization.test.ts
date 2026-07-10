@@ -13,6 +13,7 @@ test("normalizes eBay product, discounted shipping, tax, and comparable sales", 
   });
   assert.equal(order.shippingAmount, 8);
   assert.equal(order.discountAmount, 1);
+  assert.equal(order.productAmount, 29);
   assert.equal(order.taxAmount, 4);
   assert.equal(order.comparableSalesAmount, 37);
 });

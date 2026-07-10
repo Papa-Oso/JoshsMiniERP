@@ -4,6 +4,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
+- Added a read-only sales reconciliation API that separates currencies and explains comparable sales, cancellations, refunds, tax, fees, shipping labels, net proceeds, and categorized integrity warnings without returning order-level identifiers.
 - Added authoritative eBay refund and Etsy payment-adjustment imports with idempotent refund identities, atomic order/refund persistence, and explicit unresolved component handling.
 
 - Added a local-first Sales page with marketplace order pulls, revenue and order metrics, daily trends, platform and product analysis, recent orders, and country-level world-map visualization.

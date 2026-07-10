@@ -1,7 +1,7 @@
-import type { Platform, SalesDashboardPayload, SalesOrder } from "../shared/types";
+import type { Platform, SalesDashboardPayload, SalesIntegrityWarningCode, SalesOrder, SalesReconciliationPayload, SalesRefund } from "../shared/types";
 import { platforms } from "../shared/types";
 import { importPlatformSales } from "./salesImporters";
-import { applySalesImport, loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, recordSalesPullFailure } from "./salesStore";
+import { applySalesImport, loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, loadSalesRefunds, recordSalesPullFailure } from "./salesStore";
 
 export async function refreshSales(selected: Platform[] = platforms) {
   const results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }> = [];
@@ -68,6 +68,59 @@ export async function getSalesDashboard({
     warnings
   };
 }
+
+export async function getSalesReconciliation({ range = "90d", platform, currency }: { range?: string; platform: Platform; currency?: string }): Promise<SalesReconciliationPayload> {
+  const [orders, refunds, pulls, financials] = await Promise.all([loadSalesOrders(), loadSalesRefunds(), loadSalesPulls(), loadEbayFinancialTransactions()]);
+  return reconcileSales({ orders, refunds, pulls, financials, range, platform, currency, now: Date.now() });
+}
+
+type FinancialRow = Awaited<ReturnType<typeof loadEbayFinancialTransactions>>[number];
+export function reconcileSales({ orders, refunds, pulls, financials, range, platform, currency, now }: { orders: SalesOrder[]; refunds: SalesRefund[]; pulls: Array<Record<string, unknown>>; financials: FinancialRow[]; range: string; platform: Platform; currency?: string; now: number }): SalesReconciliationPayload {
+  const start = rangeStart(range, now);
+  const imported = orders.filter((order) => order.platform === platform && (!start || Date.parse(order.createdAt) >= start) && (!currency || order.currency === currency));
+  const orderKeys = new Set(imported.map((order) => order.orderId));
+  const matchingRefunds = refunds.filter((refund) => refund.platform === platform && orderKeys.has(refund.orderId) && (!currency || refund.currency === currency));
+  const currencies = [...new Set(imported.map((order) => order.currency || "USD"))].sort();
+  const rows = currencies.map((code) => reconciliationRow(code, imported.filter((order) => (order.currency || "USD") === code), matchingRefunds.filter((refund) => refund.currency === code), platform === "ebay" ? financials.filter((row) => row.currency === code && (!start || Date.parse(row.transactionDate) >= start)) : []));
+  const warnings: SalesReconciliationPayload["warnings"] = [];
+  const duplicateRefunds = matchingRefunds.length - new Set(matchingRefunds.map((refund) => `${refund.orderId}:${refund.refundId}`)).size;
+  addWarning(warnings, "duplicate_refund", duplicateRefunds, "Duplicate refund identities require review.");
+  addWarning(warnings, "unmatched_refund", refunds.filter((refund) => refund.platform === platform && (!start || Date.parse(refund.refundedAt) >= start) && !orders.some((order) => order.platform === platform && order.orderId === refund.orderId)).length, "Refunds without a matching saved order require review.");
+  addWarning(warnings, "unresolved_refund", matchingRefunds.filter((refund) => !refund.componentsComplete && !failedRefund(refund)).length, "Refund totals with unresolved product, shipping, or tax components are excluded from comparable sales.");
+  addWarning(warnings, "mixed_currency", !currency && currencies.length > 1 ? currencies.length : 0, "Currencies are reported separately and are not combined.");
+  addWarning(warnings, "missing_breakdown", imported.filter((order) => !order.financialsComplete).length, "Orders with incomplete financial breakdowns require backfill.");
+  addWarning(warnings, "impossible_total", imported.filter((order) => impossibleOrder(order)).length, "Orders whose components do not reconcile to comparable sales require review.");
+  const latestPull = pulls.find((pull) => pull.platform === platform);
+  addWarning(warnings, "stale_pull", !latestPull || now - Date.parse(String(latestPull.pulled_at ?? "")) > 48 * 3_600_000 ? 1 : 0, "The latest marketplace pull is missing or older than 48 hours.");
+  if (platform === "ebay") {
+    const financialOrderIds = new Set(financials.filter((row) => row.type.toLowerCase() === "order" && (!start || Date.parse(row.transactionDate) >= start)).map((row) => row.orderId).filter(Boolean));
+    addWarning(warnings, "api_report_disagreement", imported.filter((order) => financialOrderIds.size && !financialOrderIds.has(order.orderId)).length, "Saved API orders and imported financial-report orders do not fully overlap.");
+  }
+  return { generatedAt: new Date(now).toISOString(), range, platform, currency: currency ?? null, rows, warnings };
+}
+
+function reconciliationRow(currency: string, orders: SalesOrder[], refunds: SalesRefund[], platformFinancials: FinancialRow[]): SalesReconciliationPayload["rows"][number] {
+  const included = orders.filter((order) => !canceledOrder(order));
+  const completeRefunds = refunds.filter((refund) => refund.componentsComplete && !failedRefund(refund));
+  const productRevenue = sum(included.map((order) => order.productAmount ?? 0));
+  const shippingRevenue = sum(included.map((order) => order.shippingAmount ?? 0));
+  const discounts = sum(included.map((order) => order.discountAmount ?? 0));
+  const refundAmount = sum(completeRefunds.map((refund) => refund.productAmount + refund.shippingAmount));
+  const operational = platformFinancials.filter((row) => !["payout", "hold", "transfer", "reserve"].includes(row.type.toLowerCase()));
+  return { currency, importedOrders: orders.length, includedOrders: included.length, canceledOrders: orders.length - included.length,
+    refundedOrders: new Set(refunds.filter((refund) => !failedRefund(refund)).map((refund) => refund.orderId)).size,
+    unresolvedOrders: included.filter((order) => order.reconciliationState !== "complete" || !order.financialsComplete).length,
+    productRevenue, shippingRevenue, discounts, excludedTax: sum(included.map((order) => order.taxAmount ?? 0)), refunds: refundAmount,
+    comparableNetSales: productRevenue + shippingRevenue - refundAmount,
+    fees: platformFinancials.length ? Math.abs(sum(operational.map((row) => row.feeAmount))) : null,
+    shippingLabels: platformFinancials.length ? Math.abs(sum(platformFinancials.filter((row) => row.type.toLowerCase() === "shipping label").map((row) => row.netAmount))) : null,
+    netProceeds: platformFinancials.length ? sum(operational.map((row) => row.netAmount)) : null };
+}
+
+function canceledOrder(order: SalesOrder) { return Boolean(order.canceledAt) || order.status.toLowerCase().includes("cancel"); }
+function failedRefund(refund: SalesRefund) { return ["failed", "canceled", "cancelled"].includes(refund.status.toLowerCase()); }
+function impossibleOrder(order: SalesOrder) { if (!order.financialsComplete) return false; const expected=(order.productAmount??0)+(order.shippingAmount??0); return (order.comparableSalesAmount??expected)<0 || Math.abs(expected-(order.comparableSalesAmount??expected))>0.01; }
+function addWarning(warnings: SalesReconciliationPayload["warnings"], code: SalesIntegrityWarningCode, count: number, message: string) { if (count > 0) warnings.push({ code, count, message }); }
 
 function summarizeEbayFinancials(rows: Awaited<ReturnType<typeof loadEbayFinancialTransactions>>) {
   const operational = rows.filter((row) => !["payout", "hold", "transfer", "reserve"].includes(row.type.toLowerCase()));
@@ -138,10 +191,10 @@ function coverage(orders: SalesOrder[], platform: Platform) {
   return { platform, orders: dates.length, earliestAt: dates[0] ?? null, latestAt: dates.at(-1) ?? null };
 }
 
-function rangeStart(range: string) {
+function rangeStart(range: string, now = Date.now()) {
   if (range === "all") return null;
   const days = Number(range.replace(/d$/, ""));
-  return Number.isFinite(days) && days > 0 ? Date.now() - days * 86_400_000 : Date.now() - 90 * 86_400_000;
+  return Number.isFinite(days) && days > 0 ? now - days * 86_400_000 : now - 90 * 86_400_000;
 }
 function isExcludedOrder(order: SalesOrder) {
   return order.platform === "etsy" && order.status.trim().toLowerCase() === "canceled";
