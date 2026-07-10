@@ -81,7 +81,7 @@ export function ReviewPage() {
       <div className="review-priority-grid">
         <LowInventoryPanel rows={report.lowInventory} />
         <LowInstructionPanel rows={lowInstructions} />
-        <NegativeFeedbackPanel rows={report.feedbackConcerns} />
+        <NegativeFeedbackPanel rows={report.feedbackConcerns} scans={report.feedbackScanRuns} />
       </div>
 
       <div className="review-center-grid">
@@ -140,7 +140,14 @@ function LowInstructionPanel({ rows }: { rows: InstructionTrendRow[] }) {
   );
 }
 
-function NegativeFeedbackPanel({ rows }: { rows: FeedbackConcernRow[] }) {
+function NegativeFeedbackPanel({
+  rows,
+  scans
+}: {
+  rows: FeedbackConcernRow[];
+  scans: OperationsReportPayload["feedbackScanRuns"];
+}) {
+  const latestEtsyPull = scans.find((run) => run.platform === "etsy");
   return (
     <Panel title="Negative Feedback" icon={<ClipboardList size={18} />} className="review-priority-panel">
       <AttentionList empty="No negative marketplace reviews in history">
@@ -167,7 +174,11 @@ function NegativeFeedbackPanel({ rows }: { rows: FeedbackConcernRow[] }) {
       </AttentionList>
       <div className="review-source-note">
         <strong>Etsy</strong>
-        <span>Reviews not connected yet</span>
+        <span>
+          {latestEtsyPull
+            ? `Connected · ${latestEtsyPull.rowsSeen.toLocaleString()} reviews in latest pull`
+            : "No Etsy review pull recorded"}
+        </span>
       </div>
     </Panel>
   );
