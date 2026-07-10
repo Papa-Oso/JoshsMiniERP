@@ -112,8 +112,8 @@ The icon should sit near the page title or primary page header. Do not rely on n
 - Use `primary` only for the recommended or most common action in that group.
 - Keep less-preferred actions secondary.
 - Use danger styling only for destructive or risky actions.
-- Marketplace review imports should use official platform APIs and clearly identify the platform.
-- Incremental API import is the normal review workflow; avoid duplicate full/import actions unless they solve a demonstrated recovery need.
+- Marketplace review refreshes should use both official platform APIs; platform filtering is only for browsing saved reviews.
+- `Incremental CSV` and `Full CSV` describe export scope. Both actions refresh the complete saved review database before exporting.
 
 ## Settings
 
@@ -171,7 +171,7 @@ The icon should sit near the page title or primary page header. Do not rely on n
 ## CSS Conventions
 
 - Prefer existing classes before adding new ones: `icon-button`, `primary`, `settings-button`, `panel-header`, `notice`, `empty`.
-- After the professional redesign starts, prefer shared tokens and shared components over page-specific one-off classes.
+- Prefer shared tokens and shared components over page-specific one-off classes.
 - Keep border radius at 8px or less unless an existing component already uses a different radius.
 - Avoid one-note color themes. Accent color is useful, but the page should not become only one hue.
 - Do not use decorative gradient blobs or ornamental backgrounds.

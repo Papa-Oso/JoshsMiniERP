@@ -14,6 +14,9 @@ import {
 import { runDoctor } from "./diagnostics";
 import { getDatabaseStatus } from "./databaseStatus";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
+import { importEbaySalesCsv } from "./ebaySalesCsv";
+import { importEbayTransactionReports } from "./ebayTransactionCsv";
+import { importProductCatalogCsv } from "./ebayReviews/productCatalog";
 import {
   applyEbayLegacyMappings,
   previewEbayLegacyMappings,
@@ -119,6 +122,15 @@ try {
       break;
     case "ebay-refresh":
       await ebayRefreshFromCli();
+      break;
+    case "ebay-sales-import":
+      await ebaySalesImportFromCli(args.slice(1));
+      break;
+    case "ebay-transactions-import":
+      await ebayTransactionsImportFromCli(args.slice(1));
+      break;
+    case "review-product-alias-import":
+      await reviewProductAliasImportFromCli(args.slice(1));
       break;
     case "ebay-test":
       await ebayTestFromCli();
@@ -415,6 +427,26 @@ async function csvImportFromCli(input: string[]) {
       message: row.message
     }))
   );
+}
+
+async function ebaySalesImportFromCli(commandArgs: string[]) {
+  const file = commandArgs.find((value) => !value.startsWith("--"));
+  if (!file) throw new Error("Usage: npm run inv -- ebay-sales-import <orders-report.csv> [--dry-run]");
+  const result = await importEbaySalesCsv(file, { dryRun: commandArgs.includes("--dry-run") });
+  console.log(`${result.dryRun ? "Previewed" : "Imported"} ${result.orders} eBay orders and ${result.lineItems} line items.`);
+  console.log(`Coverage: ${result.earliestAt?.slice(0, 10) ?? "none"} through ${result.latestAt?.slice(0, 10) ?? "none"}.`);
+}
+
+async function ebayTransactionsImportFromCli(commandArgs: string[]) {
+  const inputPath = commandArgs.find((value) => !value.startsWith("--")); if (!inputPath) throw new Error("Usage: npm run inv -- ebay-transactions-import <file-or-directory> [--dry-run]");
+  const result = await importEbayTransactionReports(inputPath, { dryRun: commandArgs.includes("--dry-run") });
+  console.log(`${result.dryRun ? "Previewed" : "Imported"} ${result.transactions} financial transactions and ${result.orders} eBay orders from ${result.files} files.`);
+  console.log(`Removed ${result.duplicates} overlapping rows. Coverage: ${result.earliestAt?.slice(0,10)} through ${result.latestAt?.slice(0,10)}.`);
+}
+
+async function reviewProductAliasImportFromCli(commandArgs: string[]) {
+  const file = commandArgs[0]; if (!file) throw new Error("Usage: npm run inv -- review-product-alias-import <file.csv>");
+  const result = await importProductCatalogCsv(file); console.log(`Imported ${result.imported_rows} review product aliases into SQLite.`);
 }
 
 async function doctorFromCli() {
@@ -1001,6 +1033,9 @@ Commands:
   npm run inv -- ebay-auth-url
   npm run inv -- ebay-auth-callback "https://..."
   npm run inv -- ebay-refresh
+  npm run inv -- ebay-sales-import <orders-report.csv> [--dry-run]
+  npm run inv -- ebay-transactions-import <file-or-directory> [--dry-run]
+  npm run inv -- review-product-alias-import <file.csv>
   npm run inv -- ebay-test
   npm run inv -- ebay-lookup <sku>
   npm run inv -- ebay-legacy-scan [--output data/ebay-legacy-listings.csv]

@@ -5,9 +5,7 @@ import {
   Download,
   ExternalLink,
   FileSpreadsheet,
-  Image as ImageIcon,
-  Loader2,
-  RotateCcw
+  Loader2
 } from "lucide-react";
 import { PanelFrame } from "./ui";
 
@@ -21,11 +19,12 @@ const columns = [
   "reviewer_email",
   "product_id",
   "product_handle",
+  "product_sku",
   "reply",
   "picture_urls"
 ];
 
-type ExportScope = "latest" | "all";
+type ExportScope = "incremental" | "full";
 
 type ReviewRow = {
   platform?: "ebay" | "etsy";
@@ -68,6 +67,7 @@ type ReviewResult = {
   listings?: ListingSummary[];
   rows?: ReviewRow[];
   latestRows?: ReviewRow[];
+  exportRows?: ReviewRow[];
   warnings?: string[];
   history?: ReviewHistory;
 };
@@ -89,9 +89,7 @@ const emptyResult: ReviewResult = {
 
 export function EbayReviewsPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [etsyLoading, setEtsyLoading] = useState(false);
-  const [ebayApiLoading, setEbayApiLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState<ExportScope | null>(null);
   const [platformFilter, setPlatformFilter] = useState<"all" | "ebay" | "etsy">("all");
   const [result, setResult] = useState<ReviewResult>(emptyResult);
   const [error, setError] = useState("");
@@ -106,7 +104,7 @@ export function EbayReviewsPage() {
     (row) => platformFilter === "all" || (row.platform || "ebay") === platformFilter
   ).length;
   const allCount = visibleRows.length;
-  const loading = etsyLoading || ebayApiLoading;
+  const loading = exportLoading !== null;
 
   useEffect(() => {
     void loadSavedReviews();
@@ -128,87 +126,39 @@ export function EbayReviewsPage() {
     }
   }
 
-  async function importEtsyAndDownload() {
-    setEtsyLoading(true);
+  async function refreshAndDownload(scope: ExportScope) {
+    setExportLoading(scope);
     setError("");
-    setLog(["Requesting Etsy reviews through the official Etsy API"]);
+    setLog(["Refreshing eBay and Etsy reviews through their official APIs"]);
 
     try {
-      const payload = await request<ReviewResult>("/api/ebay-reviews/etsy-import", {
+      const payload = await request<ReviewResult>("/api/ebay-reviews/refresh", {
         method: "POST",
-        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 })
+        body: JSON.stringify({ exportMode: scope, maxPages: 100 })
       });
       setResult(payload);
-      setPlatformFilter("etsy");
       setLog([
-        `Loaded ${payload.rows?.filter((row) => row.platform === "etsy").length ?? 0} saved Etsy reviews`,
-        `${payload.history?.new_rows ?? 0} new, ${payload.history?.skipped_existing_rows ?? 0} already imported`
+        `Database refreshed: ${payload.history?.new_rows ?? 0} new review${payload.history?.new_rows === 1 ? "" : "s"}`,
+        `${payload.history?.rows_exported ?? 0} review${payload.history?.rows_exported === 1 ? "" : "s"} selected for the ${scope} CSV`
       ]);
-      if (payload.latestRows?.length) downloadCsv(payload.latestRows, "latest", payload);
-      else setLog((entries) => [...entries, "No new Etsy reviews found. No CSV was created."]);
+      if (payload.exportRows?.length) downloadCsv(payload.exportRows, scope, payload);
+      else setLog((entries) => [...entries, "No new reviews found. No incremental CSV was created."]);
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
-      setEtsyLoading(false);
+      setExportLoading(null);
     }
   }
 
-  async function importEbayApiAndDownload() {
-    setEbayApiLoading(true);
-    setError("");
-    setLog(["Requesting eBay feedback through the official Feedback API"]);
-
-    try {
-      const payload = await request<ReviewResult>("/api/ebay-reviews/ebay-import", {
-        method: "POST",
-        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 })
-      });
-      setResult(payload);
-      setPlatformFilter("ebay");
-      setLog([
-        `Loaded ${payload.rows?.filter((row) => (row.platform || "ebay") === "ebay").length ?? 0} saved eBay reviews`,
-        `${payload.history?.new_rows ?? 0} new, ${payload.history?.skipped_existing_rows ?? 0} already imported`
-      ]);
-      if (payload.latestRows?.length) downloadCsv(payload.latestRows, "latest", payload);
-      else setLog((entries) => [...entries, "No new eBay reviews found. No CSV was created."]);
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      setEbayApiLoading(false);
-    }
-  }
-
-  async function resetIncrementalHistory() {
-    const confirmed = window.confirm("Reset all saved eBay and Etsy review history?");
+  async function resetIncrementalExport() {
+    const confirmed = window.confirm("Reset the incremental CSV checkpoint? Saved reviews will not be deleted.");
     if (!confirmed) return;
-
-    setResetLoading(true);
     setError("");
-
     try {
-      const payload = await request<{ deleted_rows: number }>("/api/ebay-reviews/feedback-history/reset", {
-        method: "POST"
-      });
-      setResult((current) => ({
-        ...current,
-        rows: [],
-        latestRows: [],
-        history: {
-          ...current.history,
-          rows_seen: 0,
-          rows_exported: 0,
-          new_rows: 0,
-          skipped_existing_rows: 0
-        }
-      }));
-      setLog((entries) => [
-        ...entries,
-        `Reset incremental history: removed ${payload.deleted_rows} scanned row${payload.deleted_rows === 1 ? "" : "s"}`
-      ]);
+      const payload = await request<{ reset_rows: number }>("/api/ebay-reviews/export-history/reset", { method: "POST" });
+      setLog([`Incremental checkpoint reset for ${payload.reset_rows} saved review${payload.reset_rows === 1 ? "" : "s"}.`]);
     } catch (caught) {
       setError(errorMessage(caught));
-    } finally {
-      setResetLoading(false);
     }
   }
 
@@ -238,22 +188,16 @@ export function EbayReviewsPage() {
 
         <div className="review-form">
           <div className="review-action-row">
-            <button className="icon-button primary" type="button" disabled={loading || historyLoading} onClick={() => void importEbayApiAndDownload()}>
-              {ebayApiLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {ebayApiLoading ? "Importing eBay" : "Import eBay + Latest CSV"}
+            <button className="icon-button primary" type="button" disabled={loading || historyLoading} onClick={() => void refreshAndDownload("incremental")}>
+              {exportLoading === "incremental" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+              {exportLoading === "incremental" ? "Refreshing reviews" : "Incremental CSV"}
             </button>
-            <button className="icon-button" type="button" disabled={loading || historyLoading} onClick={() => void importEtsyAndDownload()}>
-              {etsyLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {etsyLoading ? "Importing Etsy" : "Import Etsy + Latest CSV"}
+            <button className="icon-button" type="button" disabled={loading || historyLoading} onClick={() => void refreshAndDownload("full")}>
+              {exportLoading === "full" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+              {exportLoading === "full" ? "Refreshing reviews" : "Full CSV"}
             </button>
-            <button
-              type="button"
-              className="icon-button danger-button"
-              onClick={resetIncrementalHistory}
-              disabled={loading || resetLoading}
-            >
-              {resetLoading ? <Loader2 className="spin" size={18} /> : <RotateCcw size={18} />}
-              Reset
+            <button className="icon-button danger-button" type="button" disabled={loading || historyLoading} onClick={() => void resetIncrementalExport()}>
+              Reset incremental
             </button>
           </div>
         </div>
@@ -335,19 +279,22 @@ export function EbayReviewsPage() {
                     </td>
                     <td>{row.rating || "Unknown"}</td>
                     <td>{row.star_rating === "" || row.star_rating == null ? "Unknown" : Number(row.star_rating).toFixed(0)}</td>
-                    <td>{row.feedback_date || "Unknown"}</td>
+                    <td>{formatReviewDate(row.feedback_date)}</td>
                     <td>{row.feedback_text}</td>
                     <td>
-                      {row.matched_item_url || row.feedback_profile_url ? (
-                        <a href={row.matched_item_url || row.feedback_profile_url} target="_blank" rel="noreferrer" title="Open source review">
-                          <ExternalLink size={17} />
-                        </a>
-                      ) : null}
-                      {row.feedback_image_urls ? (
-                        <a href={row.feedback_image_urls.split(",")[0]} target="_blank" rel="noreferrer" title="Open review photo">
-                          <ImageIcon size={17} />
-                        </a>
-                      ) : null}
+                      <div className="review-table-links">
+                        {row.matched_item_url || row.feedback_profile_url ? (
+                          <a href={row.matched_item_url || row.feedback_profile_url} target="_blank" rel="noreferrer" title="Open source review" aria-label="Open source review">
+                            <ExternalLink size={17} />
+                          </a>
+                        ) : null}
+                        {row.feedback_image_urls ? (
+                          <a className="review-photo-link compact" href={row.feedback_image_urls.split(",")[0]} target="_blank" rel="noreferrer" title="Open review photo">
+                            <img className="review-photo-thumbnail" src={row.feedback_image_urls.split(",")[0]} alt="Customer review attachment" loading="lazy" />
+                            <span>Photo</span>
+                          </a>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -394,8 +341,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-function toCsv(rows: ReviewRow[]) {
-  const importableRows = rows.filter((row) => row.feedback_text?.trim());
+export function toCsv(rows: ReviewRow[]) {
+  const importableRows = rows.filter((row) => row.feedback_text?.trim() && !isGenericEbayFeedback(row));
   const escape = (value: unknown) => {
     const text = String(value ?? "");
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -417,11 +364,20 @@ function directImportValue(row: ReviewRow, column: string) {
     reviewer_email: "",
     product_id: "",
     product_handle: row.product_handle || row.product_sku || "",
+    product_sku: row.product_sku || "",
     reply: "",
     picture_urls: row.feedback_image_urls || ""
   };
 
   return values[column];
+}
+
+function isGenericEbayFeedback(row: ReviewRow) {
+  if ((row.platform || "ebay") !== "ebay") return false;
+  return String(row.feedback_text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim() === "order delivered on time with no issues";
 }
 
 function marketplaceReviewerName(row: ReviewRow) {
@@ -438,18 +394,35 @@ function reviewTitle(text = "") {
   return firstSentence.length > 80 ? `${firstSentence.slice(0, 77)}...` : firstSentence;
 }
 
-function reviewDate(value = "") {
-  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value;
-  const date = new Date();
+export function reviewDate(value = "") {
+  const relative = /past\s+6\s+months|past\s+month|past\s+year|more than a year ago/i.test(value);
+  const date = relative ? new Date() : new Date(value);
 
-  if (/past\s+6\s+months/i.test(value)) date.setMonth(date.getMonth() - 6);
-  else if (/past\s+month/i.test(value)) date.setMonth(date.getMonth() - 1);
-  else if (/past\s+year/i.test(value)) date.setFullYear(date.getFullYear() - 1);
+  if (/past\s+6\s+months/i.test(value)) date.setUTCMonth(date.getUTCMonth() - 6);
+  else if (/past\s+month/i.test(value)) date.setUTCMonth(date.getUTCMonth() - 1);
+  else if (/past\s+year|more than a year ago/i.test(value)) date.setUTCFullYear(date.getUTCFullYear() - 1);
 
-  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return [
+    String(validDate.getUTCDate()).padStart(2, "0"),
+    String(validDate.getUTCMonth() + 1).padStart(2, "0"),
+    validDate.getUTCFullYear()
+  ].join("/");
 }
 
-function csvFilename(result: ReviewResult, scope: "latest" | "all") {
+function formatReviewDate(value?: string) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function csvFilename(result: ReviewResult, scope: ExportScope) {
   const date = new Date().toISOString().slice(0, 10);
   const firstListing = result.listings?.[0] ?? {};
   const firstRow = result.rows?.[0] ?? {};

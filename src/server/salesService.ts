@@ -1,7 +1,7 @@
 import type { Platform, SalesDashboardPayload, SalesOrder } from "../shared/types";
 import { platforms } from "../shared/types";
 import { importPlatformSales } from "./salesImporters";
-import { loadSalesOrders, loadSalesPulls, recordSalesPullFailure, upsertSalesOrders } from "./salesStore";
+import { loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, recordSalesPullFailure, upsertSalesOrders } from "./salesStore";
 
 export async function refreshSales(selected: Platform[] = platforms) {
   const results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }> = [];
@@ -23,14 +23,16 @@ export async function getSalesDashboard({
   range = "90d",
   platform = "all"
 }: { range?: string; platform?: Platform | "all" } = {}): Promise<SalesDashboardPayload> {
-  const [allOrders, pulls] = await Promise.all([loadSalesOrders(), loadSalesPulls()]);
+  const [allOrders, pulls, allEbayFinancials] = await Promise.all([loadSalesOrders(), loadSalesPulls(), loadEbayFinancialTransactions()]);
   const start = rangeStart(range);
   const orders = allOrders.filter((order) =>
-    (platform === "all" || order.platform === platform) && (!start || Date.parse(order.createdAt) >= start)
+    (platform === "all" || order.platform === platform) &&
+    (!start || Date.parse(order.createdAt) >= start) &&
+    !isExcludedOrder(order)
   );
   const currencies = [...new Set(orders.map((order) => order.currency).filter(Boolean))];
   const currency = currencies[0] ?? "USD";
-  const revenue = sum(orders.map((order) => order.grossAmount));
+  const revenue = sum(orders.map(revenueAmount));
   const units = sum(orders.map((order) => order.itemCount));
   const warnings: string[] = [];
   if (currencies.length > 1) warnings.push("Multiple currencies are shown without exchange-rate conversion.");
@@ -51,13 +53,32 @@ export async function getSalesDashboard({
       averageOrderValue: orders.length ? revenue / orders.length : 0,
       currency
     },
+    ebayFinancials: platform === "etsy" || platform === "shopify" ? null : summarizeEbayFinancials(allEbayFinancials.filter((row) => !start || Date.parse(row.transactionDate) >= start)),
     trend: aggregateTrend(orders),
     platforms: platforms.map((source) => aggregatePlatform(orders, source)),
     countries: aggregateCountries(orders),
+    locations: aggregateLocations(orders),
+    dataQuality: {
+      unknownGeographyOrders: orders.filter((order) => !order.countryCode).length,
+      missingSkuLines: sum(orders.map((order) => order.lineItems.filter((line) => !line.sku).length))
+    },
     products: aggregateProducts(orders),
     recentOrders: orders.slice(0, 25),
     coverage: platforms.map((source) => coverage(allOrders, source)),
     warnings
+  };
+}
+
+function summarizeEbayFinancials(rows: Awaited<ReturnType<typeof loadEbayFinancialTransactions>>) {
+  const operational = rows.filter((row) => !["payout", "hold", "transfer", "reserve"].includes(row.type.toLowerCase()));
+  const byType = (type: string) => rows.filter((row) => row.type.toLowerCase() === type);
+  return {
+    grossSales: sum(byType("order").map((row) => row.grossAmount)),
+    fees: Math.abs(sum(operational.map((row) => row.feeAmount))),
+    refunds: Math.abs(sum(byType("refund").map((row) => row.netAmount))),
+    shippingLabels: Math.abs(sum(byType("shipping label").map((row) => row.netAmount))),
+    netProceeds: sum(operational.map((row) => row.netAmount)),
+    transactionCount: rows.length
   };
 }
 
@@ -66,7 +87,7 @@ function aggregateTrend(orders: SalesOrder[]) {
   for (const order of orders) {
     const date = order.createdAt.slice(0, 10);
     const group = groups.get(date) ?? { date, revenue: 0, orders: 0, units: 0 };
-    group.revenue += order.grossAmount; group.orders += 1; group.units += order.itemCount;
+    group.revenue += revenueAmount(order); group.orders += 1; group.units += order.itemCount;
     groups.set(date, group);
   }
   return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -74,7 +95,7 @@ function aggregateTrend(orders: SalesOrder[]) {
 
 function aggregatePlatform(orders: SalesOrder[], platform: Platform) {
   const matching = orders.filter((order) => order.platform === platform);
-  return { platform, revenue: sum(matching.map((order) => order.grossAmount)), orders: matching.length, units: sum(matching.map((order) => order.itemCount)) };
+  return { platform, revenue: sum(matching.map(revenueAmount)), orders: matching.length, units: sum(matching.map((order) => order.itemCount)) };
 }
 
 function aggregateCountries(orders: SalesOrder[]) {
@@ -82,8 +103,21 @@ function aggregateCountries(orders: SalesOrder[]) {
   for (const order of orders) {
     const countryCode = order.countryCode || "Unknown";
     const group = groups.get(countryCode) ?? { countryCode, revenue: 0, orders: 0, units: 0 };
-    group.revenue += order.grossAmount; group.orders += 1; group.units += order.itemCount;
+    group.revenue += revenueAmount(order); group.orders += 1; group.units += order.itemCount;
     groups.set(countryCode, group);
+  }
+  return [...groups.values()].sort((a, b) => b.orders - a.orders || b.revenue - a.revenue);
+}
+
+function aggregateLocations(orders: SalesOrder[]) {
+  const groups = new Map<string, { countryCode: string; regionCode: string; revenue: number; orders: number; units: number }>();
+  for (const order of orders) {
+    const countryCode = order.countryCode || "Unknown";
+    const regionCode = order.regionCode || "";
+    const key = `${countryCode}:${regionCode}`;
+    const group = groups.get(key) ?? { countryCode, regionCode, revenue: 0, orders: 0, units: 0 };
+    group.revenue += revenueAmount(order); group.orders += 1; group.units += order.itemCount;
+    groups.set(key, group);
   }
   return [...groups.values()].sort((a, b) => b.orders - a.orders || b.revenue - a.revenue);
 }
@@ -108,6 +142,12 @@ function rangeStart(range: string) {
   if (range === "all") return null;
   const days = Number(range.replace(/d$/, ""));
   return Number.isFinite(days) && days > 0 ? Date.now() - days * 86_400_000 : Date.now() - 90 * 86_400_000;
+}
+function isExcludedOrder(order: SalesOrder) {
+  return order.platform === "etsy" && order.status.trim().toLowerCase() === "canceled";
+}
+function revenueAmount(order: SalesOrder) {
+  return order.platform === "etsy" ? order.netAmount : order.grossAmount;
 }
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }
 function label(platform: Platform) { return platform === "ebay" ? "eBay" : platform[0].toUpperCase() + platform.slice(1); }

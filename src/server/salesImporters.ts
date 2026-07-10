@@ -79,7 +79,7 @@ interface EbayOrderPage { total?: number; next?: string; orders?: EbayOrder[] }
 interface EbayOrder {
   orderId: string; creationDate: string; lastModifiedDate?: string; orderPaymentStatus?: string;
   orderFulfillmentStatus?: string; cancelStatus?: { cancelState?: string };
-  pricingSummary?: { total?: Money; priceSubtotal?: Money };
+  pricingSummary?: { total?: Money; priceSubtotal?: Money; deliveryCost?: Money; deliveryDiscount?: Money; priceDiscount?: Money; tax?: Money };
   fulfillmentStartInstructions?: Array<{ shippingStep?: { shipTo?: { contactAddress?: { countryCode?: string; stateOrProvince?: string } } } }>;
   lineItems?: Array<{ lineItemId: string; sku?: string; title?: string; quantity?: number; total?: Money }>;
 }
@@ -99,9 +99,14 @@ async function importEbaySales() {
   return orders;
 }
 
-function toEbayOrder(order: EbayOrder): SalesOrder {
+export function toEbayOrder(order: EbayOrder): SalesOrder {
   const address = order.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo?.contactAddress;
   const total = order.pricingSummary?.total;
+  const productAmount = number(order.pricingSummary?.priceSubtotal?.value ?? total?.value);
+  const shippingAmount = number(order.pricingSummary?.deliveryCost?.value) + number(order.pricingSummary?.deliveryDiscount?.value);
+  const discountAmount = Math.abs(number(order.pricingSummary?.priceDiscount?.value));
+  const taxAmount = number(order.pricingSummary?.tax?.value);
+  const canceled = order.cancelStatus?.cancelState && order.cancelStatus.cancelState !== "NONE_REQUESTED" ? order.lastModifiedDate ?? order.creationDate : "";
   const lineItems = (order.lineItems ?? []).map((line) => ({
     platform: "ebay" as const, orderId: order.orderId, lineId: line.lineItemId,
     sku: line.sku ?? "", title: line.title ?? "", quantity: line.quantity ?? 0, amount: number(line.total?.value)
@@ -112,6 +117,11 @@ function toEbayOrder(order: EbayOrder): SalesOrder {
     status: [order.orderPaymentStatus, order.orderFulfillmentStatus, order.cancelStatus?.cancelState].filter(Boolean).join(" / "),
     currency: total?.currency ?? "USD", grossAmount: number(total?.value),
     netAmount: number(order.pricingSummary?.priceSubtotal?.value ?? total?.value),
+    productAmount, shippingAmount, discountAmount, taxAmount, refundedAmount: 0,
+    comparableSalesAmount: Math.max(0, productAmount + shippingAmount - discountAmount),
+    financialStatus: order.orderPaymentStatus ?? "", canceledAt: canceled,
+    financialsComplete: Boolean(order.pricingSummary?.priceSubtotal && order.pricingSummary?.deliveryCost && order.pricingSummary?.tax),
+    financialsSource: "order_api",
     countryCode: address?.countryCode ?? "", regionCode: address?.stateOrProvince ?? "",
     itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
     sourceUrl: `https://www.ebay.com/sh/ord/details?orderid=${encodeURIComponent(order.orderId)}`,
@@ -123,6 +133,7 @@ interface EtsyReceiptPage { count?: number; results?: EtsyReceipt[]; error?: str
 interface EtsyReceipt {
   receipt_id: number; create_timestamp: number; update_timestamp?: number; status?: string;
   country_iso?: string; state?: string; total_price?: EtsyMoney; subtotal?: EtsyMoney;
+  total_shipping_cost?: EtsyMoney; total_tax_cost?: EtsyMoney; total_vat_cost?: EtsyMoney; discount_amt?: EtsyMoney;
   transactions?: Array<{ transaction_id: number; listing_id?: number; title?: string; quantity?: number; sku?: string; price?: EtsyMoney }>;
 }
 interface EtsyMoney { amount?: number; divisor?: number; currency_code?: string }
@@ -150,8 +161,13 @@ async function importEtsySales() {
   return orders;
 }
 
-function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
+export function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
   const total = money(receipt.total_price);
+  const productAmount = money(receipt.subtotal ?? receipt.total_price).amount;
+  const shippingAmount = money(receipt.total_shipping_cost).amount;
+  const discountAmount = money(receipt.discount_amt).amount;
+  const taxAmount = money(receipt.total_tax_cost).amount + money(receipt.total_vat_cost).amount;
+  const canceled = receipt.status?.toLowerCase() === "canceled" ? iso(receipt.update_timestamp ?? receipt.create_timestamp) : "";
   const lines = (receipt.transactions ?? []).map((line) => ({
     platform: "etsy" as const, orderId: String(receipt.receipt_id), lineId: String(line.transaction_id),
     sku: line.sku ?? "", title: line.title ?? "", quantity: line.quantity ?? 0,
@@ -162,6 +178,11 @@ function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
     createdAt: iso(receipt.create_timestamp), updatedAt: iso(receipt.update_timestamp ?? receipt.create_timestamp),
     status: receipt.status ?? "", currency: total.currency, grossAmount: total.amount,
     netAmount: money(receipt.subtotal ?? receipt.total_price).amount,
+    productAmount, shippingAmount, discountAmount, taxAmount, refundedAmount: 0,
+    comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
+    financialStatus: receipt.status ?? "", canceledAt: canceled,
+    financialsComplete: Boolean(receipt.subtotal && receipt.total_shipping_cost && receipt.total_tax_cost),
+    financialsSource: "order_api",
     countryCode: receipt.country_iso ?? "", regionCode: receipt.state ?? "",
     itemCount: lines.reduce((sum, line) => sum + line.quantity, 0),
     sourceUrl: `https://www.etsy.com/your/shops/me/orders/sold?order_id=${receipt.receipt_id}`,

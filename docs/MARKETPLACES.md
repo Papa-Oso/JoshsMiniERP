@@ -48,9 +48,13 @@ Etsy inventory updates require a unique product match and a single offering for 
 
 Marketplace Reviews imports Etsy reviews through the official `GET /v3/application/shops/{shop_id}/reviews` API. Etsy prohibits screen scraping, so this workflow must not be replaced with a browser scraper.
 
-The import is paginated and incremental by default. It stores Etsy reviews in the canonical local database alongside eBay reviews with `platform=etsy`, preserves exact star ratings and `image_url_fullxfull`, and matches reviews to local products through Etsy listing IDs when mappings exist.
+The import is paginated and stores Etsy reviews in the canonical local database alongside eBay reviews with `platform=etsy`, preserves exact star ratings and `image_url_fullxfull`, and matches reviews to local products through Etsy listing IDs when mappings exist.
 
-The combined review screen can filter eBay, Etsy, or both. Judge.me CSV exports include `source_platform` for operator reference and `picture_urls` for review photos. Exported reviewer names are prefixed as `eBay buyer <identifier>` or `Etsy buyer <buyer_user_id>` so imported Shopify reviews retain visible source context. Judge.me's import wizard can map or skip `source_platform`. Rating-only Etsy reviews remain visible locally but are omitted from the Judge.me CSV because Judge.me requires review text.
+The combined review screen refreshes both official marketplace APIs before either export. `Incremental CSV` contains reviews not included in a previous CSV pull; `Full CSV` contains all saved reviews. Either pull advances the export checkpoint. `Reset incremental` clears only that checkpoint, so the next incremental CSV contains every saved review without deleting the database. The platform filter affects only the on-screen review list.
+
+Judge.me CSV exports use Judge.me's required `dd/mm/yyyy` review-date format, include `source_platform` and `product_sku` for operator reference and import mapping, and include `picture_urls` for review photos. Exported reviewer names are prefixed as `eBay buyer <identifier>` or `Etsy buyer <buyer_user_id>` so imported Shopify reviews retain visible source context. Judge.me's import wizard can map or skip the reference columns. Rating-only Etsy reviews and eBay's generic `Order delivered on time with no issues` delivery message remain visible locally but are omitted from the Judge.me CSV because they are not substantive written reviews.
+
+Review Center shows the six most recent substantive reviews. Unacknowledged negative reviews stay pinned even when older than the normal six-row window; use the eye action to mark one seen. Acknowledged negatives remain softly highlighted while recent, then age out normally. Acknowledgment is stored in SQLite and is preserved by later marketplace refreshes.
 
 ## eBay OAuth and Inspection
 
@@ -70,7 +74,7 @@ The RuName is eBay's OAuth `redirect_uri` value, not an ordinary HTTPS callback 
 
 Marketplace Reviews imports seller feedback through eBay's official `GET /commerce/feedback/v1/feedback` endpoint with `role:SELLER`. The authorization requires both inventory access and `https://api.ebay.com/oauth/api_scope/commerce.feedback`; existing tokens created before feedback support must be authorized again.
 
-The import is paginated and incremental. It stores stable feedback IDs, buyer public IDs, listing IDs/titles, rating type, comment text, dates, and `images[].url` values in the shared review history. Browser scraping is no longer part of the supported workflow.
+The import is paginated and upserts the complete API response into shared review history. It stores stable feedback IDs, buyer public IDs, listing IDs/titles, rating type, comment text, dates, and `images[].url` values. Browser scraping is no longer part of the supported workflow. Incremental behavior applies to the CSV export checkpoint, not to whether the database is refreshed.
 
 ## Sales Reporting
 
@@ -78,6 +82,8 @@ The local Sales page reads official order APIs and stores normalized reporting t
 
 - Shopify requires `read_orders`. Without approved `read_all_orders`, Shopify normally limits order access to the most recent 60 days.
 - eBay requires `https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly`. Re-run the documented eBay authorization flow after adding this scope.
+- The Fulfillment API supplies the ongoing 90-day eBay window. Backfill older Seller Hub order-report CSV files with `npm run inv -- ebay-sales-import <file.csv> --dry-run`, then rerun without `--dry-run`; stable eBay order IDs make the import repeat-safe.
+- Import overlapping Payments transaction reports with `npm run inv -- ebay-transactions-import <directory> --dry-run`. Exact financial events are deduplicated by a stable content key, while order rows are grouped by eBay order number; customer names and street-level details are not stored.
 - Etsy requires `transactions_r`. Re-run the Etsy authorization flow after adding this scope.
 
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.

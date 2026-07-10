@@ -30,11 +30,34 @@ export interface SalesOrder {
   currency: string;
   grossAmount: number;
   netAmount: number;
+  productAmount?: number;
+  shippingAmount?: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  refundedAmount?: number;
+  comparableSalesAmount?: number;
+  financialStatus?: string;
+  canceledAt?: string;
+  financialsComplete?: boolean;
+  financialsSource?: string;
   countryCode: string;
   regionCode: string;
   itemCount: number;
   sourceUrl: string;
   lineItems: SalesLineItem[];
+}
+
+export interface SalesRefund {
+  platform: Platform;
+  orderId: string;
+  refundId: string;
+  refundedAt: string;
+  productAmount: number;
+  shippingAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  status: string;
+  currency: string;
 }
 
 export interface SalesDashboardPayload {
@@ -43,9 +66,12 @@ export interface SalesDashboardPayload {
   range: string;
   platform: Platform | "all";
   summary: { revenue: number; orders: number; units: number; averageOrderValue: number; currency: string };
+  ebayFinancials: { grossSales: number; fees: number; refunds: number; shippingLabels: number; netProceeds: number; transactionCount: number } | null;
   trend: Array<{ date: string; revenue: number; orders: number; units: number }>;
   platforms: Array<{ platform: Platform; revenue: number; orders: number; units: number }>;
   countries: Array<{ countryCode: string; revenue: number; orders: number; units: number }>;
+  locations: Array<{ countryCode: string; regionCode: string; revenue: number; orders: number; units: number }>;
+  dataQuality: { unknownGeographyOrders: number; missingSkuLines: number };
   products: Array<{ sku: string; title: string; revenue: number; orders: number; units: number }>;
   recentOrders: SalesOrder[];
   coverage: Array<{ platform: Platform; orders: number; earliestAt: string | null; latestAt: string | null }>;
@@ -184,14 +210,17 @@ export interface LowInventoryRow {
 }
 
 export interface FeedbackConcernRow {
+  feedbackKey: string;
   platform: Platform;
-  rating: "negative";
+  rating: "positive" | "neutral" | "negative";
   buyerUsername: string;
   itemTitle: string;
   feedbackText: string;
   photoUrl: string;
+  reviewUrl: string;
   feedbackDate: string;
   lastSeenAt: string;
+  acknowledgedAt: string;
 }
 
 export type ImportBatchSource = "csv" | "shopify";

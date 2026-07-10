@@ -829,6 +829,74 @@ h2 {
   border-color: rgba(255, 107, 107, 0.22);
 }
 
+.attention-row.danger-row.urgent {
+  border-color: rgba(255, 107, 107, 0.62);
+  background: rgba(108, 28, 34, 0.34);
+}
+
+.attention-row.danger-row.acknowledged {
+  border-color: rgba(255, 107, 107, 0.18);
+  background: rgba(65, 31, 35, 0.18);
+}
+
+.feedback-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-self: end;
+}
+
+.feedback-acknowledge {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.feedback-links,
+.review-table-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.feedback-source-link,
+.review-photo-link {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.review-photo-thumbnail {
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.review-photo-link.compact {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.review-photo-link.compact .review-photo-thumbnail {
+  width: 38px;
+  height: 38px;
+}
+
+.review-table-links {
+  min-width: 72px;
+  margin-top: 0;
+}
+
 .attention-row strong,
 .attention-row span,
 .attention-row p,
@@ -2583,8 +2651,11 @@ tbody tr.selected,
 .world-map { width: 100%; max-height: 245px; display: block; }
 .world-land { fill: var(--color-surface-raised); stroke: var(--color-border-strong); stroke-width: 1; }
 .world-map circle { fill: color-mix(in srgb, var(--color-primary) 76%, transparent); stroke: var(--color-text); stroke-width: .6; }
+.world-map circle:focus { outline: none; stroke: var(--color-warning); stroke-width: 2; }
+.map-legend, .map-note { margin: 4px 0 10px; color: var(--color-text-muted); font-size: 11px; }
+.map-legend span { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: var(--color-primary); }
 .country-list { display: grid; gap: 2px; }
-.country-list > div { display: grid; grid-template-columns: 55px 1fr auto; gap: 10px; padding: 6px 0; border-top: 1px solid var(--color-border); font-size: 13px; }
+.country-list > div { display: grid; grid-template-columns: minmax(90px, 1fr) auto auto; gap: 10px; padding: 6px 0; border-top: 1px solid var(--color-border); font-size: 13px; }
 .country-list span { color: var(--color-text-muted); }
 .platform-mix { display: grid; gap: 16px; }
 .platform-mix > div > div { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }

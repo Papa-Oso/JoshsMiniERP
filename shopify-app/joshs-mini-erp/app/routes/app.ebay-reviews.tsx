@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -52,6 +52,7 @@ type ReviewResult = {
   listings?: ListingSummary[];
   rows?: ReviewRow[];
   latestRows?: ReviewRow[];
+  exportRows?: ReviewRow[];
   warnings?: string[];
   history?: ReviewHistory;
 };
@@ -66,6 +67,7 @@ type ActionData =
       ok: true;
       message: string;
       result: ReviewResult;
+      exportMode?: "incremental" | "full";
     }
   | {
       ok: false;
@@ -83,6 +85,7 @@ const columns = [
   "reviewer_email",
   "product_id",
   "product_handle",
+  "product_sku",
   "reply",
   "picture_urls",
 ];
@@ -124,41 +127,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = field(formData, "intent");
 
   try {
-    if (intent === "reset-history") {
-      const stats = await erpRequest<{ deleted_rows: number }>(
-        "/ebay-reviews/feedback-history/reset",
+    if (intent === "reset-export") {
+      const stats = await erpRequest<{ reset_rows: number }>(
+        "/ebay-reviews/export-history/reset",
         { method: "POST" },
       );
       return {
         ok: true,
-        message: `Reset ${stats.deleted_rows} saved row${
-          stats.deleted_rows === 1 ? "" : "s"
-        }.`,
-        result: emptyResult,
+        message: `Incremental checkpoint reset for ${stats.reset_rows} saved review${stats.reset_rows === 1 ? "" : "s"}.`,
+        result: await getReviewHistory(),
       } satisfies ActionData;
     }
 
-    if (intent === "etsy-import") {
-      const result = await erpRequest<ReviewResult>("/ebay-reviews/etsy-import", {
+    if (intent === "refresh-reviews") {
+      const exportMode = field(formData, "exportMode");
+      if (exportMode !== "incremental" && exportMode !== "full") {
+        throw new Error("Choose an incremental or full CSV export.");
+      }
+      const result = await erpRequest<ReviewResult>("/ebay-reviews/refresh", {
         method: "POST",
-        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 }),
+        body: JSON.stringify({ exportMode, maxPages: 100 }),
       });
       return {
         ok: true,
-        message: "Etsy reviews imported through the official API.",
+        message: `Both marketplaces refreshed; ${result.exportRows?.length ?? 0} reviews selected for the ${exportMode} CSV.`,
         result,
-      } satisfies ActionData;
-    }
-
-    if (intent === "ebay-import") {
-      const result = await erpRequest<ReviewResult>("/ebay-reviews/ebay-import", {
-        method: "POST",
-        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 }),
-      });
-      return {
-        ok: true,
-        message: "eBay reviews imported through the official Feedback API.",
-        result,
+        exportMode,
       } satisfies ActionData;
     }
 
@@ -179,6 +173,8 @@ export default function EbayReviews() {
   const result = fetcher.data?.result ?? loaderData.result;
   const busy = fetcher.state !== "idle";
   const pendingIntent = field(fetcher.formData, "intent");
+  const pendingExportMode = field(fetcher.formData, "exportMode");
+  const downloadedResult = useRef<ReviewResult | null>(null);
   const rows = useMemo(() => result.rows ?? [], [result.rows]);
   const latestRows = result.latestRows ?? [];
   const exactCount = useMemo(
@@ -190,6 +186,17 @@ export default function EbayReviews() {
     if (!fetcher.data) return;
     if (fetcher.data.ok) {
       shopify.toast.show(fetcher.data.message);
+      if (downloadedResult.current !== fetcher.data.result) {
+        downloadedResult.current = fetcher.data.result;
+        const exportRows = fetcher.data.result.exportRows ?? [];
+        if (exportRows.length && fetcher.data.exportMode) {
+          downloadCsv(
+            fetcher.data.result,
+            exportRows,
+            fetcher.data.exportMode,
+          );
+        }
+      }
     } else {
       shopify.toast.show(fetcher.data.error, { isError: true });
     }
@@ -218,56 +225,49 @@ export default function EbayReviews() {
 
         <div className="button-row">
           <fetcher.Form method="post">
-            <input type="hidden" name="intent" value="ebay-import" />
+            <input type="hidden" name="intent" value="refresh-reviews" />
+            <input type="hidden" name="exportMode" value="incremental" />
             <s-button
               type="submit"
-              icon="import"
+              icon="export"
               variant="primary"
-              {...(pendingIntent === "ebay-import" ? { loading: true } : {})}
+              {...(pendingIntent === "refresh-reviews" && pendingExportMode === "incremental" ? { loading: true } : {})}
               {...(busy ? { disabled: true } : {})}
             >
-              Import eBay reviews
+              Incremental CSV
             </s-button>
           </fetcher.Form>
           <fetcher.Form method="post">
-            <input type="hidden" name="intent" value="etsy-import" />
+            <input type="hidden" name="intent" value="refresh-reviews" />
+            <input type="hidden" name="exportMode" value="full" />
             <s-button
               type="submit"
-              icon="import"
+              icon="export"
               variant="secondary"
-              {...(pendingIntent === "etsy-import" ? { loading: true } : {})}
+              {...(pendingIntent === "refresh-reviews" && pendingExportMode === "full" ? { loading: true } : {})}
               {...(busy ? { disabled: true } : {})}
             >
-              Import Etsy reviews
+              Full CSV
             </s-button>
           </fetcher.Form>
-          <s-button
-            icon="export"
-            variant="secondary"
-            onClick={() => downloadCsv(result, latestRows, "latest")}
-            {...(!latestRows.length ? { disabled: true } : {})}
+          <fetcher.Form
+            method="post"
+            onSubmit={(event) => {
+              if (!window.confirm("Reset the incremental CSV checkpoint? Saved reviews will not be deleted.")) {
+                event.preventDefault();
+              }
+            }}
           >
-            Latest CSV
-          </s-button>
-          <s-button
-            icon="export"
-            variant="secondary"
-            onClick={() => downloadCsv(result, rows, "all")}
-            {...(!rows.length ? { disabled: true } : {})}
-          >
-            All CSV
-          </s-button>
-          <fetcher.Form method="post">
-            <input type="hidden" name="intent" value="reset-history" />
+            <input type="hidden" name="intent" value="reset-export" />
             <s-button
               type="submit"
               icon="reset"
               variant="secondary"
               tone="critical"
-              {...(pendingIntent === "reset-history" ? { loading: true } : {})}
+              {...(pendingIntent === "reset-export" ? { loading: true } : {})}
               {...(busy ? { disabled: true } : {})}
             >
-              Reset history
+              Reset incremental
             </s-button>
           </fetcher.Form>
         </div>
@@ -323,7 +323,7 @@ export default function EbayReviews() {
                       ? "Unknown"
                       : Number(row.star_rating).toFixed(0)}
                   </s-table-cell>
-                  <s-table-cell>{row.feedback_date || "Unknown"}</s-table-cell>
+                  <s-table-cell>{formatReviewDate(row.feedback_date)}</s-table-cell>
                   <s-table-cell>{row.feedback_text}</s-table-cell>
                 </s-table-row>
               ))}
@@ -363,7 +363,7 @@ async function safeReviewHistory() {
 function downloadCsv(
   result: ReviewResult,
   rows: ReviewRow[],
-  scope: "latest" | "all",
+  scope: "incremental" | "full",
 ) {
   if (!rows.length) return;
   const csv = toCsv(rows);
@@ -376,7 +376,7 @@ function downloadCsv(
 }
 
 function toCsv(rows: ReviewRow[]) {
-  const importableRows = rows.filter((row) => row.feedback_text?.trim());
+  const importableRows = rows.filter((row) => row.feedback_text?.trim() && !isGenericEbayFeedback(row));
   const escape = (value: unknown) => {
     const text = String(value ?? "");
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -400,11 +400,20 @@ function directImportValue(row: ReviewRow, column: string) {
     reviewer_email: "",
     product_id: "",
     product_handle: row.product_handle || row.product_sku || "",
+    product_sku: row.product_sku || "",
     reply: "",
     picture_urls: row.feedback_image_urls || "",
   };
 
   return values[column];
+}
+
+function isGenericEbayFeedback(row: ReviewRow) {
+  if ((row.platform || "ebay") !== "ebay") return false;
+  return String(row.feedback_text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim() === "order delivered on time with no issues";
 }
 
 function marketplaceReviewerName(row: ReviewRow) {
@@ -424,17 +433,34 @@ function reviewTitle(text = "") {
 }
 
 function reviewDate(value = "") {
-  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value;
-  const date = new Date();
+  const relative = /past\s+6\s+months|past\s+month|past\s+year|more than a year ago/i.test(value);
+  const date = relative ? new Date() : new Date(value);
 
-  if (/past\s+6\s+months/i.test(value)) date.setMonth(date.getMonth() - 6);
-  else if (/past\s+month/i.test(value)) date.setMonth(date.getMonth() - 1);
-  else if (/past\s+year/i.test(value)) date.setFullYear(date.getFullYear() - 1);
+  if (/past\s+6\s+months/i.test(value)) date.setUTCMonth(date.getUTCMonth() - 6);
+  else if (/past\s+month/i.test(value)) date.setUTCMonth(date.getUTCMonth() - 1);
+  else if (/past\s+year|more than a year ago/i.test(value)) date.setUTCFullYear(date.getUTCFullYear() - 1);
 
-  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return [
+    String(validDate.getUTCDate()).padStart(2, "0"),
+    String(validDate.getUTCMonth() + 1).padStart(2, "0"),
+    validDate.getUTCFullYear(),
+  ].join("/");
 }
 
-function csvFilename(result: ReviewResult, scope: "latest" | "all") {
+function formatReviewDate(value?: string) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function csvFilename(result: ReviewResult, scope: "incremental" | "full") {
   const date = new Date().toISOString().slice(0, 10);
   const firstListing = result.listings?.[0] ?? {};
   const firstRow = result.rows?.[0] ?? {};

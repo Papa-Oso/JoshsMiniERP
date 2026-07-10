@@ -8,7 +8,7 @@ import type { SalesOrder } from "../src/shared/types";
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), "joshs-erp-sales-"));
 process.env.DATABASE_FILE = path.join(directory, "inventory.sqlite");
 process.env.SALES_DATABASE_FILE = path.join(directory, "legacy-sales.sqlite");
-const { loadSalesOrders, upsertSalesOrders } = await import("../src/server/salesStore.ts");
+const { loadSalesOrders, loadSalesRefunds, upsertSalesOrders, upsertSalesRefunds } = await import("../src/server/salesStore.ts");
 const { getSalesDashboard } = await import("../src/server/salesService.ts");
 const { SQLiteInventoryStore } = await import("../src/server/sqliteStore.ts");
 
@@ -29,6 +29,8 @@ test("sales dashboard aggregates revenue, geography, products, and platform cove
   assert.equal(dashboard.summary.orders, 1);
   assert.equal(dashboard.summary.revenue, 30);
   assert.equal(dashboard.countries[0].countryCode, "US");
+  assert.equal(dashboard.locations[0].regionCode, "IL");
+  assert.deepEqual(dashboard.dataQuality, { unknownGeographyOrders: 0, missingSkuLines: 0 });
   assert.equal(dashboard.products[0].sku, "SKU-1");
   assert.equal(dashboard.platforms.find((row) => row.platform === "shopify")?.orders, 1);
 });
@@ -45,6 +47,37 @@ test("inventory and sales share one SQLite file without overwriting each other",
   await upsertSalesOrders("etsy", [{ ...order(), platform: "etsy", orderId: "etsy-1", lineItems: [] }]);
   assert.equal((await inventory.read()).items.some((item) => item.id === "item-1"), true);
   assert.equal((await loadSalesOrders()).some((row) => row.orderId === "etsy-1"), true);
+});
+
+test("Etsy revenue uses merchandise subtotal and excludes canceled receipts", async () => {
+  await upsertSalesOrders("etsy", [
+    { ...order(), platform: "etsy", orderId: "etsy-completed", status: "Completed", grossAmount: 27, netAmount: 20 },
+    { ...order(), platform: "etsy", orderId: "etsy-canceled", status: "Canceled", grossAmount: 15, netAmount: 12 }
+  ]);
+  const dashboard = await getSalesDashboard({ range: "all", platform: "etsy" });
+  assert.equal(dashboard.summary.orders, 2);
+  assert.equal(dashboard.summary.revenue, 42);
+  assert.equal(dashboard.platforms.find((row) => row.platform === "etsy")?.revenue, 42);
+  assert.equal(dashboard.recentOrders.some((row) => row.orderId === "etsy-canceled"), false);
+});
+
+test("sales financial components persist and refunds upsert idempotently", async () => {
+  await upsertSalesOrders("ebay", [{
+    ...order(), platform: "ebay", orderId: "ebay-financial", productAmount: 30, shippingAmount: 8,
+    discountAmount: 2, taxAmount: 3, refundedAmount: 0, comparableSalesAmount: 36,
+    financialStatus: "paid", financialsComplete: true, financialsSource: "order_api"
+  }]);
+  const saved = (await loadSalesOrders()).find((row) => row.orderId === "ebay-financial");
+  assert.equal(saved?.comparableSalesAmount, 36);
+  assert.equal(saved?.taxAmount, 3);
+  assert.equal(saved?.financialsComplete, true);
+
+  const refund = { platform: "ebay" as const, orderId: "ebay-financial", refundId: "refund-1", refundedAt: "2026-07-10T13:00:00.000Z", productAmount: 5, shippingAmount: 0, taxAmount: 0.5, totalAmount: 5.5, status: "completed", currency: "USD" };
+  await upsertSalesRefunds([refund]);
+  await upsertSalesRefunds([{ ...refund, productAmount: 6, totalAmount: 6.5 }]);
+  const refunds = (await loadSalesRefunds()).filter((row) => row.orderId === "ebay-financial");
+  assert.equal(refunds.length, 1);
+  assert.equal(refunds[0].productAmount, 6);
 });
 
 function order(overrides: Partial<SalesOrder> = {}): SalesOrder {

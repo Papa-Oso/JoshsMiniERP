@@ -1,15 +1,13 @@
 // @ts-nocheck
 import fs from 'node:fs/promises';
-import path from 'node:path';
-
-const rootDir = path.resolve(process.env.ERP_ROOT_DIR || process.cwd());
-const catalogPath = path.join(rootDir, 'data', 'Item_SKU_X_Ref.csv');
+import { listData } from '../inventoryService';
+import { loadReviewProductAliases, replaceReviewProductAliases } from './feedbackStore';
 let cachedCatalog;
 let cachedCatalogStatus = {
   available: false,
   missing: false,
   count: 0,
-  path: catalogPath
+  path: 'data/inventory.sqlite'
 };
 
 export async function enrichRowsWithProducts(rows) {
@@ -29,35 +27,22 @@ export async function enrichRowsWithProducts(rows) {
 export async function loadProductCatalog() {
   if (cachedCatalog) return cachedCatalog;
 
-  try {
-    const csv = await fs.readFile(catalogPath, 'utf8');
-    const [, ...records] = parseCsv(csv);
-    cachedCatalog = records
-      .map(([title, sku]) => ({
-        title: cleanTitle(title),
-        normalizedTitle: normalizeTitle(title),
-        sku: cleanText(sku)
-      }))
-      .filter((record) => record.title && record.sku);
-    cachedCatalogStatus = {
-      available: true,
-      missing: false,
-      count: cachedCatalog.length,
-      path: catalogPath
-    };
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-
-    cachedCatalog = [];
-    cachedCatalogStatus = {
-      available: false,
-      missing: true,
-      count: 0,
-      path: catalogPath
-    };
-  }
+  const [data, aliases] = await Promise.all([listData(), loadReviewProductAliases()]);
+  cachedCatalog = [...data.items.map((item) => ({ title: item.name, sku: item.sku })), ...aliases]
+    .map((record) => ({ title: cleanTitle(record.title), normalizedTitle: normalizeTitle(record.title), sku: cleanText(record.sku) }))
+    .filter((record) => record.title && record.sku);
+  cachedCatalogStatus = { available: cachedCatalog.length > 0, missing: cachedCatalog.length === 0, count: cachedCatalog.length, path: 'data/inventory.sqlite' };
 
   return cachedCatalog;
+}
+
+export async function importProductCatalogCsv(file) {
+  const rows = parseCsv(await fs.readFile(file, 'utf8'));
+  const header = (rows[0] || []).map((value) => String(value).replace(/^\uFEFF/, '').trim());
+  const titleIndex = header.indexOf('Title'); const skuIndex = header.indexOf('Custom label (SKU)');
+  if (titleIndex < 0 || skuIndex < 0) throw new Error('Review product alias CSV must include Title and Custom label (SKU).');
+  const aliases = rows.slice(1).map((row) => ({ title: cleanText(row[titleIndex]), sku: cleanText(row[skuIndex]) })).filter((row) => row.title && row.sku);
+  const result = await replaceReviewProductAliases(aliases); cachedCatalog = undefined; return result;
 }
 
 export async function productCatalogStatus() {

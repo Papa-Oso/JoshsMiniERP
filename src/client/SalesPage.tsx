@@ -7,8 +7,8 @@ import { platformLabels } from "../shared/types";
 
 const empty: SalesDashboardPayload = {
   generatedAt: "", lastPulledAt: null, range: "90d", platform: "all",
-  summary: { revenue: 0, orders: 0, units: 0, averageOrderValue: 0, currency: "USD" },
-  trend: [], platforms: [], countries: [], products: [], recentOrders: [], coverage: [], warnings: []
+  summary: { revenue: 0, orders: 0, units: 0, averageOrderValue: 0, currency: "USD" }, ebayFinancials: null,
+  trend: [], platforms: [], countries: [], locations: [], dataQuality: { unknownGeographyOrders: 0, missingSkuLines: 0 }, products: [], recentOrders: [], coverage: [], warnings: []
 };
 
 export function SalesPage() {
@@ -52,9 +52,20 @@ export function SalesPage() {
         <Metric label="Units sold" value={data.summary.units} />
         <Metric label="Average order" value={money(data.summary.averageOrderValue)} />
       </section>
+      {data.ebayFinancials ? (
+        <Panel title="eBay financials" icon={<BarChart3 size={17} />}>
+          <section className="sales-metrics ebay-financial-metrics">
+            <Metric label="Gross eBay sales" value={money(data.ebayFinancials.grossSales)} />
+            <Metric label="eBay fees" value={money(data.ebayFinancials.fees)} tone="warn" />
+            <Metric label="Refunds" value={money(data.ebayFinancials.refunds)} tone="warn" />
+            <Metric label="Shipping labels" value={money(data.ebayFinancials.shippingLabels)} />
+            <Metric label="Net proceeds" value={money(data.ebayFinancials.netProceeds)} />
+          </section>
+        </Panel>
+      ) : null}
       <section className="sales-primary-grid">
         <Panel title="Sales trend" icon={<TrendingUp size={17} />}><TrendChart data={data.trend} money={money} /></Panel>
-        <Panel title="Sales around the world" icon={<Globe2 size={17} />}><WorldSalesMap countries={data.countries} /><CountryList countries={data.countries.slice(0, 6)} money={money} /></Panel>
+        <Panel title="Sales around the world" icon={<Globe2 size={17} />}><WorldSalesMap locations={data.locations} money={money} /><CountryList countries={data.countries.slice(0, 6)} money={money} />{data.dataQuality.unknownGeographyOrders ? <p className="map-note">{data.dataQuality.unknownGeographyOrders} orders have no saved geography.</p> : null}</Panel>
       </section>
       <section className="sales-secondary-grid">
         <Panel title="Marketplace mix" icon={<BarChart3 size={17} />}><PlatformMix rows={data.platforms} money={money} /></Panel>
@@ -77,14 +88,17 @@ function TrendChart({ data, money }: { data: SalesDashboardPayload["trend"]; mon
 }
 
 const countryPoints: Record<string, [number, number]> = { US:[108,80],CA:[102,53],MX:[92,103],BR:[143,142],AR:[137,174],GB:[184,56],FR:[190,70],DE:[198,62],ES:[183,79],IT:[202,80],NL:[193,58],SE:[204,43],NO:[195,40],PL:[211,62],UA:[226,65],TR:[226,83],ZA:[211,164],EG:[218,101],NG:[194,123],KE:[224,132],IN:[266,106],CN:[294,88],JP:[337,88],KR:[326,89],AU:[318,159],NZ:[353,176],SG:[288,135],PH:[318,125],ID:[303,143],TH:[289,122],AE:[245,104],SA:[235,107],IL:[225,96],RU:[257,48] };
-function WorldSalesMap({ countries }: { countries: SalesDashboardPayload["countries"] }) {
-  const max = Math.max(1, ...countries.map((row) => row.orders));
-  return <svg className="world-map" viewBox="0 0 380 200" role="img" aria-label="World map of sales by country">
+const usRegionOffsets: Record<string, [number, number]> = { CA:[-18,2],OR:[-17,-7],WA:[-16,-13],AZ:[-12,8],TX:[1,12],IL:[7,-2],MI:[10,-8],FL:[15,14],GA:[13,8],NC:[16,3],VA:[15,0],PA:[13,-5],NY:[15,-9],NJ:[16,-6],MA:[18,-11],CO:[-4,1],OH:[11,-3],TN:[9,6] };
+function locationPoint(countryCode: string, regionCode: string) { const base = countryPoints[countryCode]; if (!base) return null; const offset = countryCode === "US" ? usRegionOffsets[regionCode.toUpperCase()] : null; return offset ? [base[0] + offset[0], base[1] + offset[1]] as [number, number] : base; }
+function placeName(countryCode:string, regionCode:string) { try { const countries = new Intl.DisplayNames(undefined,{type:"region"}); const country = countries.of(countryCode) || countryCode; return regionCode ? `${regionCode}, ${country}` : country; } catch { return [regionCode,countryCode].filter(Boolean).join(", "); } }
+function WorldSalesMap({ locations, money }: { locations: SalesDashboardPayload["locations"]; money:(value:number)=>string }) {
+  const max = Math.max(1, ...locations.map((row) => row.orders));
+  return <><svg className="world-map" viewBox="0 0 380 200" role="img" aria-label="Approximate regional sales destinations">
     <g className="world-land"><path d="M20 48 48 25 92 22 126 39 122 68 99 77 87 112 61 103 48 76 24 69Z"/><path d="M103 111 139 105 156 126 146 181 128 190 118 153Z"/><path d="M169 45 205 35 232 52 229 76 245 92 229 112 215 104 205 86 183 87 170 69Z"/><path d="M188 92 222 91 245 117 231 177 205 181 190 140Z"/><path d="M228 51 286 33 350 54 358 91 329 110 317 139 281 139 255 111 242 83Z"/><path d="M298 148 340 143 359 166 343 190 307 184Z"/></g>
-    {countries.map((row) => { const point = countryPoints[row.countryCode]; if (!point) return null; const radius = 3 + Math.sqrt(row.orders / max) * 9; return <circle key={row.countryCode} cx={point[0]} cy={point[1]} r={radius}><title>{row.countryCode}: {row.orders} orders</title></circle>; })}
-  </svg>;
+    {locations.map((row) => { const point = locationPoint(row.countryCode,row.regionCode); if (!point) return null; const radius = 3 + Math.sqrt(row.orders / max) * 8; const label=`${placeName(row.countryCode,row.regionCode)}: ${row.orders} orders, ${money(row.revenue)}`; return <circle key={`${row.countryCode}:${row.regionCode}`} cx={point[0]} cy={point[1]} r={radius} tabIndex={0} role="listitem" aria-label={label}><title>{label}</title></circle>; })}
+  </svg><div className="map-legend"><span aria-hidden="true" /> Pin size represents orders · approximate region centroids</div></>;
 }
-function CountryList({ countries, money }: { countries: SalesDashboardPayload["countries"]; money:(value:number)=>string }) { return <div className="country-list">{countries.map((row) => <div key={row.countryCode}><strong>{row.countryCode}</strong><span>{row.orders} orders</span><span>{money(row.revenue)}</span></div>)}</div>; }
+function CountryList({ countries, money }: { countries: SalesDashboardPayload["countries"]; money:(value:number)=>string }) { return <div className="country-list">{countries.map((row) => <div key={row.countryCode}><strong>{placeName(row.countryCode,"")}</strong><span>{row.orders} orders</span><span>{money(row.revenue)}</span></div>)}</div>; }
 function PlatformMix({ rows, money }: { rows: SalesDashboardPayload["platforms"]; money:(value:number)=>string }) { const max=Math.max(1,...rows.map(r=>r.revenue)); return <div className="platform-mix">{rows.map(row=><div key={row.platform}><div><strong>{platformLabels[row.platform]}</strong><span>{row.orders} orders · {money(row.revenue)}</span></div><progress max={max} value={row.revenue}/></div>)}</div>; }
 function ProductTable({ rows, money }: { rows: SalesDashboardPayload["products"]; money:(value:number)=>string }) { return <div className="sales-table-wrap compact"><table><thead><tr><th>Product</th><th>Units</th><th>Revenue</th></tr></thead><tbody>{rows.map(row=><tr key={`${row.sku}:${row.title}`}><td><strong>{row.sku || "No SKU"}</strong><small>{row.title}</small></td><td>{row.units}</td><td>{money(row.revenue)}</td></tr>)}</tbody></table>{!rows.length?<p className="empty">No product sales yet.</p>:null}</div>; }
 function formatDate(value:string){ const date=new Date(value); return Number.isNaN(date.valueOf())?value:new Intl.DateTimeFormat(undefined,{month:"short",day:"numeric",year:"numeric"}).format(date); }

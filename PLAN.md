@@ -54,11 +54,11 @@ product revenue after seller discounts
 
 ### Normalized Financial Model
 
-- [ ] Add order-level product, shipping, discount, tax, refund, and comparable-sales amounts to the canonical SQLite sales ledger.
-- [ ] Add normalized, idempotent refund records keyed by platform, order, and refund identity.
+- [x] Add order-level product, shipping, discount, tax, refund, and comparable-sales amounts to the canonical SQLite sales ledger.
+- [x] Add normalized, idempotent refund records keyed by platform, order, and refund identity.
 - [ ] Record financial completeness, source, source update time, and reconciliation state without retaining additional customer information.
-- [ ] Preserve existing gross and subtotal values during migration for audit and rollback comparison.
-- [ ] Document the durable financial model in `docs/DATA_MODEL.md` and an ADR before switching the headline metric.
+- [x] Preserve existing gross and subtotal values during migration for audit and rollback comparison.
+- [x] Document the durable financial model in `docs/DATA_MODEL.md` and an ADR before switching the headline metric.
 
 ### Marketplace Ingestion
 

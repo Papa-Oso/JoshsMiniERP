@@ -60,6 +60,8 @@ npm run inv -- export-review-csv data/review-export
 
 JSON is the portable migration/backup representation. CSV exports are intended for review and analysis, not as a second source of truth.
 
+CSV files used for imports are transient staging files. Preview, back up, import, verify SQLite row counts, and then delete the source CSV. Do not make application behavior depend on a CSV remaining under `data/`.
+
 ## Backup and Recovery
 
 ```powershell

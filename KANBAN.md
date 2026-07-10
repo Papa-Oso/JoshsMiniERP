@@ -13,25 +13,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-00 — Finish and publish the comparable-sales foundation
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Review and finish the in-progress comparable-sales foundation before adding further behavior. Verify ADR 0002, the additive order financial columns, normalized refund ledger, eBay/Etsy component normalization, migration behavior, and focused tests as one coherent change. Preserve existing gross/subtotal history, mark incomplete financial history rather than guessing, update canonical data-model and marketplace documentation, run the full code verification matrix, and publish the focused work without switching the dashboard headline metric.
-
-**Acceptance:**
-
-- Migration is additive and verified against an existing SQLite schema.
-- Refund records have stable identities and upsert idempotently.
-- Product, shipping, discount, tax, and refund components have documented semantics.
-- Existing dashboard behavior remains backward compatible until reconciliation is approved.
-
-**Depends on:** Review of the current uncommitted sales-integrity worktree changes.
-
-## Next
-
 ### SALES-01 — Import authoritative refunds and payment details
 
 **Epic:** Comparable Sales Integrity
@@ -47,7 +28,9 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 - Missing or ambiguous components are marked incomplete rather than guessed.
 - Existing gross/subtotal history and reporting behavior remain backward compatible.
 
-**Depends on:** SALES-00.
+**Depends on:** ADR 0002 and the additive financial/refund schema.
+
+## Next
 
 ### SALES-02 — Build period reconciliation and integrity warnings
 
@@ -150,4 +133,5 @@ None. Move a card here only when it needs user authority, unavailable credential
 
 ## Recently Completed
 
+- Completed and verified the comparable-sales schema, ADR, normalization foundation, and idempotent refund ledger.
 - Added the required development task workflow to `AGENTS.md`.

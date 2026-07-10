@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeFeedbackDate, normalizeFeedbackRow } from "../src/server/ebayReviews/normalization";
+import { decodeHtmlEntities, normalizeFeedbackDate, normalizeFeedbackRow } from "../src/server/ebayReviews/normalization";
 
 test("normalizes eBay feedback dates that include adjacent action text", () => {
   assert.equal(normalizeFeedbackDate("Past monthReply"), "Past month");
@@ -19,5 +19,16 @@ test("normalizes feedback rows without changing other fields", () => {
       feedback_date: "Past month",
       feedback_text: "Great item."
     }
+  );
+});
+
+test("decodes HTML entities in marketplace review content", () => {
+  assert.equal(
+    decodeHtmlEntities("So far so good! We&#39;ve shared it &amp; it&#x27;s useful."),
+    "So far so good! We've shared it & it's useful."
+  );
+  assert.equal(
+    normalizeFeedbackRow({ feedback_text: "I&#39;ve used it", source_item_title: "Kayak &amp; seat clip" }).feedback_text,
+    "I've used it"
   );
 });

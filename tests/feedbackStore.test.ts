@@ -11,7 +11,7 @@ process.env.DATABASE_FILE = databaseFile;
 
 process.env.FEEDBACK_DATA_FILE = feedbackFile;
 
-const { anonymizeFeedbackUsernames, applyFeedbackHistory, loadFeedbackHistory, loadFeedbackScanRuns, resetFeedbackHistory } =
+const { acknowledgeFeedback, anonymizeFeedbackUsernames, applyFeedbackHistory, loadFeedbackHistory, loadFeedbackScanRuns, loadUnexportedFeedbackHistory, markFeedbackExported, resetFeedbackExportHistory, resetFeedbackHistory } =
   await import("../src/server/ebayReviews/feedbackStore.ts");
 
 after(async () => {
@@ -48,6 +48,11 @@ test("feedback store tracks rows and scan runs in the configured SQLite file", a
   assert.equal(etsy.stats.platform, "etsy");
   assert.equal((await loadFeedbackHistory()).find((row) => row.feedback_id === "etsy-1")?.platform, "etsy");
 
+  const negative = (await loadFeedbackHistory()).find((row) => row.feedback_id === "etsy-1");
+  const acknowledged = await acknowledgeFeedback(negative?.feedback_key);
+  assert.ok(acknowledged.acknowledged_at);
+  assert.ok((await loadFeedbackHistory()).find((row) => row.feedback_id === "etsy-1")?.feedback_acknowledged_at);
+
   const anonymized = await anonymizeFeedbackUsernames(["buyer-2"], {
     replacementFactory: () => "deleted-silver-river-test"
   });
@@ -62,6 +67,15 @@ test("feedback store tracks rows and scan runs in the configured SQLite file", a
   const noMatch = await anonymizeFeedbackUsernames(["missing-buyer"]);
   assert.equal(noMatch.matchedRows, 0);
   assert.equal(noMatch.changedRows, 0);
+
+  const unexported = await loadUnexportedFeedbackHistory();
+  assert.equal(unexported.length, 4);
+  const marked = await markFeedbackExported(unexported.map((row) => row.feedback_key));
+  assert.equal(marked.exported_rows, 4);
+  assert.equal((await loadUnexportedFeedbackHistory()).length, 0);
+  const exportReset = await resetFeedbackExportHistory();
+  assert.equal(exportReset.reset_rows, 4);
+  assert.equal((await loadUnexportedFeedbackHistory()).length, 4);
 
   const reset = await resetFeedbackHistory();
   assert.equal(reset.deleted_rows, 4);

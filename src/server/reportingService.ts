@@ -12,6 +12,7 @@ import type {
 import { platformLabels, platforms } from "../shared/types";
 import { adapterByPlatform } from "./adapters";
 import { loadFeedbackHistory, loadFeedbackScanRuns } from "./ebayReviews/feedbackStore";
+import { dedupeFeedbackRows } from "./ebayReviews/deduplication";
 import { listData } from "./inventoryService";
 import { getPrintingData } from "./printingService";
 import { store } from "./store";
@@ -30,7 +31,7 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
   const inventoryEvents = data.events.slice(0, 40);
   const printEvents = printing.events.slice(0, 40);
   const instructionTrends = buildInstructionTrends(printing);
-  const feedbackConcerns = buildFeedbackConcerns(feedbackHistory);
+  const recentFeedback = buildRecentFeedback(feedbackHistory);
   const syncRuns = data.syncRuns.slice(0, 12);
   const mappingHealth = buildMappingHealth(data.items).slice(0, 80);
 
@@ -43,7 +44,7 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
     inventoryEvents,
     printEvents,
     instructionTrends,
-    feedbackConcerns: feedbackConcerns.slice(0, 20),
+    feedbackConcerns: recentFeedback,
     feedbackScanRuns,
     mappingHealth,
     totals: {
@@ -54,7 +55,7 @@ export async function getOperationsReport(): Promise<OperationsReportPayload> {
       inventoryEvents: inventoryEvents.length,
       printEvents: printEvents.length,
       instructionLow: instructionTrends.filter((row) => row.status === "low").length,
-      negativeFeedback: feedbackConcerns.length,
+      negativeFeedback: recentFeedback.filter((row) => row.rating === "negative" && !row.acknowledgedAt).length,
       feedbackScanRuns: feedbackScanRuns.length,
       mappingIssues: mappingHealth.filter((row) => row.status !== "ok" && row.status !== "disabled").length
     }
@@ -165,19 +166,44 @@ function mappingHealthRow(item: InventoryItem, platform: Platform, mapping: Plat
   };
 }
 
-function buildFeedbackConcerns(rows: Array<Record<string, unknown>>): FeedbackConcernRow[] {
-  return rows
-    .filter((row) => String(row.rating ?? "").toLowerCase() === "negative")
+export function buildRecentFeedback(rows: Array<Record<string, unknown>>): FeedbackConcernRow[] {
+  const feedback = dedupeFeedbackRows(rows)
+    .filter((row) => String(row.feedback_text ?? "").trim() && !isGenericEbayFeedback(row))
     .map((row) => ({
+      feedbackKey: String(row.feedback_key ?? ""),
       platform: String(row.platform ?? "ebay") === "etsy" ? "etsy" : "ebay",
-      rating: "negative",
+      rating: normalizeFeedbackRating(row.rating),
       buyerUsername: String(row.buyer_username ?? ""),
       itemTitle: String(row.matched_item_title || row.source_item_title || row.source_item_id || "Unknown item"),
       feedbackText: String(row.feedback_text ?? ""),
       photoUrl: String(row.feedback_image_urls ?? ""),
+      reviewUrl: String(row.matched_item_url || row.source_listing_url || row.feedback_profile_url || ""),
       feedbackDate: String(row.feedback_date ?? ""),
-      lastSeenAt: String(row.last_seen_at ?? "")
-    }));
+      lastSeenAt: String(row.last_seen_at ?? ""),
+      acknowledgedAt: String(row.feedback_acknowledged_at ?? "")
+    } satisfies FeedbackConcernRow))
+    .sort((left, right) => feedbackTimestamp(right) - feedbackTimestamp(left));
+
+  const pinned = feedback.filter((row) => row.rating === "negative" && !row.acknowledgedAt);
+  const pinnedKeys = new Set(pinned.map((row) => row.feedbackKey));
+  return [...pinned, ...feedback.filter((row) => !pinnedKeys.has(row.feedbackKey)).slice(0, Math.max(0, 6 - pinned.length))];
+}
+
+function normalizeFeedbackRating(value: unknown): FeedbackConcernRow["rating"] {
+  const rating = String(value ?? "").toLowerCase();
+  return rating === "negative" ? "negative" : rating === "neutral" ? "neutral" : "positive";
+}
+
+function feedbackTimestamp(row: FeedbackConcernRow) {
+  const feedbackDate = Date.parse(row.feedbackDate);
+  if (Number.isFinite(feedbackDate)) return feedbackDate;
+  const lastSeenAt = Date.parse(row.lastSeenAt);
+  return Number.isFinite(lastSeenAt) ? lastSeenAt : 0;
+}
+
+function isGenericEbayFeedback(row: Record<string, unknown>) {
+  if ((row.platform || "ebay") !== "ebay") return false;
+  return String(row.feedback_text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === "order delivered on time with no issues";
 }
 
 function normalizeFeedbackScanRuns(rows: Array<Record<string, unknown>>): FeedbackScanRunRecord[] {

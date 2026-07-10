@@ -49,6 +49,8 @@ export const api = {
     request("/api/schedule", { method: "PATCH", body: JSON.stringify(input) }),
   runSync: () => request("/api/sync", { method: "POST" }),
   operationsReport: () => request<OperationsReportPayload>("/api/reports/operations"),
+  acknowledgeFeedback: (feedbackKey: string) =>
+    request(`/api/ebay-reviews/feedback/${encodeURIComponent(feedbackKey)}/acknowledge`, { method: "POST" }),
   sales: (range = "90d", platform: Platform | "all" = "all") =>
     request<SalesDashboardPayload>(`/api/sales?range=${encodeURIComponent(range)}&platform=${encodeURIComponent(platform)}`),
   refreshSales: () => request<{ results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }>; dashboard: SalesDashboardPayload }>("/api/sales/refresh", { method: "POST", body: "{}" }),

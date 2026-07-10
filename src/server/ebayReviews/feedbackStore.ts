@@ -43,8 +43,65 @@ export async function loadFeedbackHistory() {
   await ensureLegacyFeedbackMigrated();
   return database.read((db) => {
     createSchema(db);
-    return queryRows(db, `SELECT platform, feedback_key, feedback_id, seller_username, source_item_id, source_item_title, source_item_image_url, matched_item_id, matched_item_title, matched_item_image_url, rating, star_rating, buyer_username, feedback_date, feedback_text, feedback_image_urls, source_listing_url, matched_item_url, feedback_profile_url, match_type, first_seen_at, last_seen_at FROM scanned_feedback ORDER BY last_seen_at DESC, first_seen_at DESC`).map(normalizeFeedbackRow);
+    return queryRows(db, `SELECT platform, feedback_key, feedback_id, seller_username, source_item_id, source_item_title, source_item_image_url, matched_item_id, matched_item_title, matched_item_image_url, rating, star_rating, buyer_username, feedback_date, feedback_text, feedback_image_urls, source_listing_url, matched_item_url, feedback_profile_url, match_type, feedback_acknowledged_at, first_seen_at, last_seen_at FROM scanned_feedback ORDER BY last_seen_at DESC, first_seen_at DESC`).map(normalizeFeedbackRow);
   });
+}
+
+export async function acknowledgeFeedback(feedbackKey) {
+  const key = String(feedbackKey || '').trim();
+  if (!key) throw new Error('A feedback key is required.');
+  await ensureLegacyFeedbackMigrated();
+  return database.write((db) => {
+    createSchema(db);
+    const acknowledgedAt = new Date().toISOString();
+    db.run(`UPDATE scanned_feedback SET feedback_acknowledged_at = ? WHERE feedback_key = ? AND lower(rating) = 'negative'`, [acknowledgedAt, key]);
+    if (!db.getRowsModified()) throw new Error('Negative feedback was not found.');
+    return { feedback_key: key, acknowledged_at: acknowledgedAt };
+  });
+}
+
+export async function loadUnexportedFeedbackHistory() {
+  await ensureLegacyFeedbackMigrated();
+  return database.read((db) => {
+    createSchema(db);
+    return queryRows(db, `SELECT platform, feedback_key, feedback_id, seller_username, source_item_id, source_item_title, source_item_image_url, matched_item_id, matched_item_title, matched_item_image_url, rating, star_rating, buyer_username, feedback_date, feedback_text, feedback_image_urls, source_listing_url, matched_item_url, feedback_profile_url, match_type, first_seen_at, last_seen_at FROM scanned_feedback WHERE last_exported_at IS NULL ORDER BY first_seen_at ASC`).map(normalizeFeedbackRow);
+  });
+}
+
+export async function markFeedbackExported(feedbackKeys) {
+  const keys = [...new Set(feedbackKeys.map((key) => String(key || '').trim()).filter(Boolean))];
+  if (!keys.length) return { exported_rows: 0, database_path: config.databaseFile };
+  await ensureLegacyFeedbackMigrated();
+  return database.write((db) => {
+    createSchema(db);
+    const now = new Date().toISOString();
+    let exportedRows = 0;
+    for (const key of keys) {
+      db.run('UPDATE scanned_feedback SET last_exported_at = ? WHERE feedback_key = ?', [now, key]);
+      exportedRows += db.getRowsModified();
+    }
+    return { exported_rows: exportedRows, database_path: config.databaseFile };
+  });
+}
+
+export async function resetFeedbackExportHistory() {
+  await ensureLegacyFeedbackMigrated();
+  return database.write((db) => {
+    createSchema(db);
+    const resetRows = Number(queryRows(db, 'SELECT COUNT(*) AS count FROM scanned_feedback WHERE last_exported_at IS NOT NULL')[0]?.count ?? 0);
+    db.run('UPDATE scanned_feedback SET last_exported_at = NULL');
+    return { reset_rows: resetRows, database_path: config.databaseFile };
+  });
+}
+
+export async function replaceReviewProductAliases(rows) {
+  await ensureLegacyFeedbackMigrated();
+  return database.write((db) => { createSchema(db); db.run('BEGIN'); try { db.run('DELETE FROM review_product_aliases'); for (const row of rows) db.run('INSERT INTO review_product_aliases (title, sku) VALUES (?, ?)', [String(row.title || '').trim(), String(row.sku || '').trim()]); db.run('COMMIT'); return { imported_rows: rows.length, database_path: config.databaseFile }; } catch (error) { db.run('ROLLBACK'); throw error; } });
+}
+
+export async function loadReviewProductAliases() {
+  await ensureLegacyFeedbackMigrated();
+  return database.read((db) => { createSchema(db); return queryRows(db, 'SELECT title, sku FROM review_product_aliases ORDER BY title'); });
 }
 
 export async function resetFeedbackHistory(platform = '') {
@@ -130,7 +187,7 @@ function feedbackKeyForRaw(row) {
   const parts=[platform==='ebay'?'':platform,row.seller_username,row.source_item_id,row.matched_item_id,row.buyer_username,row.feedback_date,row.feedback_text].filter(Boolean);
   return crypto.createHash('sha256').update(parts.length?parts.join('|'):JSON.stringify(row)).digest('hex');
 }
-function createSchema(db) { db.run(schema); ensureColumn(db,'scanned_feedback','platform',"TEXT NOT NULL DEFAULT 'ebay'"); ensureColumn(db,'scanned_feedback','source_item_image_url','TEXT'); ensureColumn(db,'scanned_feedback','matched_item_image_url','TEXT'); ensureColumn(db,'scanned_feedback','feedback_image_urls','TEXT'); ensureColumn(db,'feedback_scan_runs','platform',"TEXT NOT NULL DEFAULT 'ebay'"); }
+function createSchema(db) { db.run(schema); ensureColumn(db,'scanned_feedback','platform',"TEXT NOT NULL DEFAULT 'ebay'"); ensureColumn(db,'scanned_feedback','source_item_image_url','TEXT'); ensureColumn(db,'scanned_feedback','matched_item_image_url','TEXT'); ensureColumn(db,'scanned_feedback','feedback_image_urls','TEXT'); ensureColumn(db,'scanned_feedback','last_exported_at','TEXT'); ensureColumn(db,'scanned_feedback','feedback_acknowledged_at','TEXT'); ensureColumn(db,'feedback_scan_runs','platform',"TEXT NOT NULL DEFAULT 'ebay'"); }
 function queryRows(db,sql){ const result=db.exec(sql)[0]; return result?result.values.map(values=>Object.fromEntries(result.columns.map((column,index)=>[column,values[index]??'']))):[]; }
 function hasFeedback(db,key){ const statement=db.prepare('SELECT 1 FROM scanned_feedback WHERE feedback_key=? LIMIT 1'); try{statement.bind([key]);return statement.step();}finally{statement.free();} }
 function rowCount(db){return Number(queryRows(db,'SELECT COUNT(*) AS count FROM scanned_feedback')[0]?.count??0);}
@@ -148,4 +205,4 @@ function randomDeletedUsername(){return `deleted-${crypto.randomBytes(8).toStrin
 function uniqueDeletedUsername(db,factory){for(let i=0;i<100;i+=1){const value=String(factory()).trim();if(value&&!usernameExists(db,value))return value;}throw new Error('Could not create a unique deleted username.');}
 function anonymizedFeedbackKey(key){return crypto.createHash('sha256').update(`anonymized|${key}|${crypto.randomUUID()}`).digest('hex');}
 
-const schema=`CREATE TABLE IF NOT EXISTS scanned_feedback (feedback_key TEXT PRIMARY KEY,platform TEXT NOT NULL DEFAULT 'ebay',feedback_id TEXT,seller_username TEXT,source_item_id TEXT,source_item_title TEXT,source_item_image_url TEXT,matched_item_id TEXT,matched_item_title TEXT,matched_item_image_url TEXT,rating TEXT,star_rating REAL,buyer_username TEXT,feedback_date TEXT,feedback_text TEXT,feedback_image_urls TEXT,source_listing_url TEXT,matched_item_url TEXT,feedback_profile_url TEXT,match_type TEXT,first_seen_at TEXT NOT NULL,last_seen_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_scanned_feedback_seller ON scanned_feedback(seller_username); CREATE INDEX IF NOT EXISTS idx_scanned_feedback_item ON scanned_feedback(source_item_id,matched_item_id); CREATE TABLE IF NOT EXISTS feedback_scan_runs (id TEXT PRIMARY KEY,platform TEXT NOT NULL DEFAULT 'ebay',scan_mode TEXT NOT NULL CHECK(scan_mode IN ('full','incremental')),rows_seen INTEGER NOT NULL DEFAULT 0,rows_exported INTEGER NOT NULL DEFAULT 0,new_rows INTEGER NOT NULL DEFAULT 0,skipped_existing_rows INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_feedback_scan_runs_created ON feedback_scan_runs(created_at DESC);`;
+const schema=`CREATE TABLE IF NOT EXISTS scanned_feedback (feedback_key TEXT PRIMARY KEY,platform TEXT NOT NULL DEFAULT 'ebay',feedback_id TEXT,seller_username TEXT,source_item_id TEXT,source_item_title TEXT,source_item_image_url TEXT,matched_item_id TEXT,matched_item_title TEXT,matched_item_image_url TEXT,rating TEXT,star_rating REAL,buyer_username TEXT,feedback_date TEXT,feedback_text TEXT,feedback_image_urls TEXT,source_listing_url TEXT,matched_item_url TEXT,feedback_profile_url TEXT,match_type TEXT,first_seen_at TEXT NOT NULL,last_seen_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_scanned_feedback_seller ON scanned_feedback(seller_username); CREATE INDEX IF NOT EXISTS idx_scanned_feedback_item ON scanned_feedback(source_item_id,matched_item_id); CREATE TABLE IF NOT EXISTS feedback_scan_runs (id TEXT PRIMARY KEY,platform TEXT NOT NULL DEFAULT 'ebay',scan_mode TEXT NOT NULL CHECK(scan_mode IN ('full','incremental')),rows_seen INTEGER NOT NULL DEFAULT 0,rows_exported INTEGER NOT NULL DEFAULT 0,new_rows INTEGER NOT NULL DEFAULT 0,skipped_existing_rows INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_feedback_scan_runs_created ON feedback_scan_runs(created_at DESC); CREATE TABLE IF NOT EXISTS review_product_aliases (title TEXT PRIMARY KEY, sku TEXT NOT NULL);`;

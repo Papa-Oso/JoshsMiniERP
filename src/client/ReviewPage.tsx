@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertTriangle, ClipboardList, FileSpreadsheet, GitCompare, History, Image as ImageIcon, PackageCheck, RefreshCw, SearchCheck } from "lucide-react";
+import { Activity, AlertTriangle, ClipboardList, ExternalLink, Eye, FileSpreadsheet, GitCompare, History, PackageCheck, RefreshCw, SearchCheck } from "lucide-react";
 import { api } from "./api";
 import { Metric, Panel } from "./ui";
 import type {
@@ -38,6 +38,16 @@ export function ReviewPage() {
     }
   }
 
+  async function acknowledgeFeedback(feedbackKey: string) {
+    setError("");
+    try {
+      await api.acknowledgeFeedback(feedbackKey);
+      await load();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   const mappingIssues = useMemo(
     () => report?.mappingHealth.filter((row) => row.status !== "ok" && row.status !== "disabled") ?? [],
     [report]
@@ -66,7 +76,7 @@ export function ReviewPage() {
       <div className="review-center-summary">
         <Metric label="Low SKUs" value={report.totals.inventoryLow} tone={report.totals.inventoryLow ? "warn" : "ok"} />
         <Metric label="Low Instr" value={report.totals.instructionLow} tone={report.totals.instructionLow ? "warn" : "ok"} />
-        <Metric label="Negative" value={report.totals.negativeFeedback} tone={report.totals.negativeFeedback ? "danger" : "ok"} />
+        <Metric label="Unseen Negative" value={report.totals.negativeFeedback} tone={report.totals.negativeFeedback ? "danger" : "ok"} />
         <Metric label="Sync Runs" value={report.totals.syncRuns} />
         <Metric label="Review Pulls" value={report.totals.feedbackScanRuns} />
         <Metric label="Map Issues" value={report.totals.mappingIssues} tone={report.totals.mappingIssues ? "warn" : "ok"} />
@@ -81,7 +91,7 @@ export function ReviewPage() {
       <div className="review-priority-grid">
         <LowInventoryPanel rows={report.lowInventory} />
         <LowInstructionPanel rows={lowInstructions} />
-        <NegativeFeedbackPanel rows={report.feedbackConcerns} />
+        <RecentFeedbackPanel rows={report.feedbackConcerns} onAcknowledge={acknowledgeFeedback} />
       </div>
 
       <div className="review-center-grid">
@@ -140,28 +150,46 @@ function LowInstructionPanel({ rows }: { rows: InstructionTrendRow[] }) {
   );
 }
 
-function NegativeFeedbackPanel({ rows }: { rows: FeedbackConcernRow[] }) {
+function RecentFeedbackPanel({ rows, onAcknowledge }: { rows: FeedbackConcernRow[]; onAcknowledge: (feedbackKey: string) => Promise<void> }) {
   return (
-    <Panel title="Negative Feedback" icon={<ClipboardList size={18} />} className="review-priority-panel">
-      <AttentionList empty="No negative marketplace reviews in history">
-        {rows.slice(0, 6).map((row) => (
-          <article className="attention-row danger-row" key={`${row.platform}:${row.buyerUsername}:${row.feedbackDate}:${row.feedbackText}`}>
+    <Panel title="Recent Feedback" icon={<ClipboardList size={18} />} className="review-priority-panel">
+      <AttentionList empty="No marketplace reviews in history">
+        {rows.map((row) => (
+          <article
+            className={`attention-row feedback-row ${row.rating === "negative" ? row.acknowledgedAt ? "danger-row acknowledged" : "danger-row urgent" : ""}`}
+            key={row.feedbackKey}
+          >
             <div>
               <strong>{row.itemTitle}</strong>
               <span>
-                {row.buyerUsername || "Unknown buyer"} - {row.feedbackDate || formatDate(row.lastSeenAt)}
+                {row.buyerUsername || "Unknown buyer"} - {formatReviewDate(row.feedbackDate || row.lastSeenAt)}
               </span>
               {row.feedbackText ? <p className="attention-note">{row.feedbackText}</p> : null}
-              {row.photoUrl ? (
-                <a href={row.photoUrl.split(",")[0]} target="_blank" rel="noreferrer" title="Open review photo">
-                  <ImageIcon size={16} /> Review photo
-                </a>
+              <div className="feedback-links">
+                {row.reviewUrl ? (
+                  <a className="feedback-source-link" href={row.reviewUrl} target="_blank" rel="noreferrer" title="Open source review">
+                    <ExternalLink size={15} /> Open review
+                  </a>
+                ) : null}
+                {row.photoUrl ? (
+                  <a className="review-photo-link" href={row.photoUrl.split(",")[0]} target="_blank" rel="noreferrer" title="Open review photo">
+                    <img className="review-photo-thumbnail" src={row.photoUrl.split(",")[0]} alt="Customer review attachment" loading="lazy" />
+                    <span>Has photo</span>
+                  </a>
+                ) : null}
+              </div>
+            </div>
+            <div className="feedback-actions">
+              <span className="attention-count">
+                {row.platform === "etsy" ? "Etsy" : "eBay"}
+                <small>{row.acknowledgedAt ? "Seen" : row.rating}</small>
+              </span>
+              {row.rating === "negative" && !row.acknowledgedAt ? (
+                <button className="icon-button feedback-acknowledge" type="button" title="Mark negative feedback as seen" aria-label="Mark negative feedback as seen" onClick={() => void onAcknowledge(row.feedbackKey)}>
+                  <Eye size={17} />
+                </button>
               ) : null}
             </div>
-            <span className="attention-count">
-              {row.platform === "etsy" ? "Etsy" : "eBay"}
-              <small>{row.rating}</small>
-            </span>
           </article>
         ))}
       </AttentionList>
@@ -379,4 +407,16 @@ function formatDate(value?: string | null) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatReviewDate(value?: string | null) {
+  if (!value) return "Unknown date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(date);
 }
