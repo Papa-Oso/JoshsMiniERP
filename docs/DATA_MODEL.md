@@ -25,6 +25,8 @@ JSON files are export, backup, or migration formats. Timestamped `*.sqlite.migra
 - Comparable net sales are product revenue after seller discounts, plus buyer-paid shipping, minus refunded pre-tax product and shipping revenue. Canceled orders and marketplace-collected tax/VAT contribute zero.
 - Marketplace fees and purchased shipping labels remain separate from comparable sales and contribute only to expense and net-proceeds reporting.
 - Financial completeness and source are stored explicitly; incomplete historical values must not be presented as fully reconciled.
+- Refunds retain authoritative totals plus separate product, shipping, and tax components when the provider proves that breakdown. `components_complete=0` means the total is known but its pre-tax components must not be guessed or applied to comparable sales.
+- Order/refund imports commit atomically and record source update time and reconciliation state. Repeated provider pulls update stable refund identities instead of duplicating them.
 - Marketplace pulls use upserts with stable compound identities, making repeated pulls idempotent.
 - Foreign keys and indexes support common joins and dashboard filters.
 - Bulk imports and migrations require a backup and post-write row-count/integrity checks.

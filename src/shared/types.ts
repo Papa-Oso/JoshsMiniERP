@@ -40,6 +40,8 @@ export interface SalesOrder {
   canceledAt?: string;
   financialsComplete?: boolean;
   financialsSource?: string;
+  financialsUpdatedAt?: string;
+  reconciliationState?: "complete" | "incomplete" | "unresolved";
   countryCode: string;
   regionCode: string;
   itemCount: number;
@@ -58,6 +60,9 @@ export interface SalesRefund {
   totalAmount: number;
   status: string;
   currency: string;
+  componentsComplete: boolean;
+  source: string;
+  sourceUpdatedAt: string;
 }
 
 export interface SalesDashboardPayload {

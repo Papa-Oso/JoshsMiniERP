@@ -13,25 +13,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-01 — Import authoritative refunds and payment details
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Extend the read-only sales import pipeline to ingest authoritative eBay refund records and Etsy payment/refund details into the normalized `sales_refunds` ledger. Preserve the source-precedence rules in ADR 0002, do not retain additional customer information, and make repeated imports idempotent. Populate order-level refunded amount, financial source, source-updated time, completeness, and reconciliation state without switching the dashboard headline metric. Add fixtures for full refunds, partial product refunds, shipping refunds, tax refunds, duplicate pulls, and updated refunds. Run the server/data verification matrix.
-
-**Acceptance:**
-
-- Refunds have stable marketplace identities and cannot be applied twice.
-- Product, shipping, and tax refund components remain separate.
-- Missing or ambiguous components are marked incomplete rather than guessed.
-- Existing gross/subtotal history and reporting behavior remain backward compatible.
-
-**Depends on:** ADR 0002 and the additive financial/refund schema.
-
-## Next
-
 ### SALES-02 — Build period reconciliation and integrity warnings
 
 **Epic:** Comparable Sales Integrity
@@ -48,6 +29,8 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 - Warning counts link to an actionable category, not customer details.
 
 **Depends on:** SALES-01.
+
+## Next
 
 ### MAP-01 — Replace the decorative map with real geography
 
@@ -133,5 +116,6 @@ None. Move a card here only when it needs user authority, unavailable credential
 
 ## Recently Completed
 
+- Added authoritative eBay refund and Etsy payment-adjustment ingestion with stable identities and unresolved-component safeguards.
 - Completed and verified the comparable-sales schema, ADR, normalization foundation, and idempotent refund ledger.
 - Added the required development task workflow to `AGENTS.md`.

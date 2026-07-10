@@ -86,6 +86,8 @@ The local Sales page reads official order APIs and stores normalized reporting t
 - Import overlapping Payments transaction reports with `npm run inv -- ebay-transactions-import <directory> --dry-run`. Exact financial events are deduplicated by a stable content key, while order rows are grouped by eBay order number; customer names and street-level details are not stored.
 - Etsy requires `transactions_r`. Re-run the Etsy authorization flow after adding this scope.
 
+Sales refresh also reads authoritative refund data. eBay supplies order- and line-level refund totals through Fulfillment order payment details. Etsy supplies payment adjustments through the shop payments endpoint. When a provider does not expose a provable product/shipping/tax split, the ERP stores the authoritative refund total as unresolved and does not guess a pre-tax comparable-sales deduction.
+
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 
 ## Legacy eBay Listings
