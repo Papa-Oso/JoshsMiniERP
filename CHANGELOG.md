@@ -4,6 +4,8 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
+- Added authoritative eBay refund and Etsy payment-adjustment imports with idempotent refund identities, atomic order/refund persistence, and explicit unresolved component handling.
+
 - Added a local-first Sales page with marketplace order pulls, revenue and order metrics, daily trends, platform and product analysis, recent orders, and country-level world-map visualization.
 - Added a repeat-safe Seller Hub order-report CSV importer for historical eBay sales backfills.
 - Added overlap-safe eBay transaction-report imports for historical orders and a separate financial ledger of fees, refunds, labels, payouts, charges, and holds.

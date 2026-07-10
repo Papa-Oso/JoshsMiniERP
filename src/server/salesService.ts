@@ -1,15 +1,15 @@
 import type { Platform, SalesDashboardPayload, SalesOrder } from "../shared/types";
 import { platforms } from "../shared/types";
 import { importPlatformSales } from "./salesImporters";
-import { loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, recordSalesPullFailure, upsertSalesOrders } from "./salesStore";
+import { applySalesImport, loadEbayFinancialTransactions, loadSalesOrders, loadSalesPulls, recordSalesPullFailure } from "./salesStore";
 
 export async function refreshSales(selected: Platform[] = platforms) {
   const results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }> = [];
   for (const platform of selected) {
     try {
-      const orders = await importPlatformSales(platform);
-      await upsertSalesOrders(platform, orders);
-      results.push({ platform, ok: true, ordersSeen: orders.length, message: "" });
+      const batch = await importPlatformSales(platform);
+      await applySalesImport(platform, batch.orders, batch.refunds);
+      results.push({ platform, ok: true, ordersSeen: batch.orders.length, message: "" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await recordSalesPullFailure(platform, message);

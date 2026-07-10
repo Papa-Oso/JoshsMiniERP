@@ -32,16 +32,30 @@ export async function upsertSalesOrders(platform: Platform, orders: SalesOrder[]
   return { platform, ordersSeen: orders.length, pulledAt: seenAt };
 }
 
+export async function applySalesImport(platform: Platform, orders: SalesOrder[], refunds: SalesRefund[]) {
+  await ensureLegacySalesMigrated();
+  const seenAt = new Date().toISOString();
+  await database.write((db) => {
+    ensureSchema(db); db.run("BEGIN");
+    try {
+      for (const order of orders) upsertOrder(db, platform, order, seenAt);
+      for (const refund of refunds) upsertRefund(db, refund);
+      updateRefundTotals(db, platform, orders.map((order) => order.orderId));
+      db.run(`INSERT INTO sales_pulls (platform, pulled_at, orders_seen, status, message) VALUES (?, ?, ?, 'success', '')`, [platform, seenAt, orders.length]);
+      db.run("COMMIT");
+    } catch (error) { db.run("ROLLBACK"); throw error; }
+  });
+  return { platform, ordersSeen: orders.length, refundsSeen: refunds.length, pulledAt: seenAt };
+}
+
 export async function upsertSalesRefunds(refunds: SalesRefund[]) {
   await ensureLegacySalesMigrated();
   await database.write((db) => {
     ensureSchema(db);
     db.run("BEGIN");
     try {
-      for (const refund of refunds) db.run(`INSERT INTO sales_refunds (platform, order_id, refund_id, refunded_at, product_amount, shipping_amount, tax_amount, total_amount, status, currency)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(platform, order_id, refund_id) DO UPDATE SET refunded_at=excluded.refunded_at, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, tax_amount=excluded.tax_amount, total_amount=excluded.total_amount, status=excluded.status, currency=excluded.currency`,
-        [refund.platform, refund.orderId, refund.refundId, refund.refundedAt, refund.productAmount, refund.shippingAmount, refund.taxAmount, refund.totalAmount, refund.status, refund.currency]);
+      for (const refund of refunds) upsertRefund(db, refund);
+      for (const platform of new Set(refunds.map((refund) => refund.platform))) updateRefundTotals(db, platform, [...new Set(refunds.filter((refund) => refund.platform === platform).map((refund) => refund.orderId))]);
       db.run("COMMIT");
     } catch (error) { db.run("ROLLBACK"); throw error; }
   });
@@ -54,7 +68,8 @@ export async function loadSalesRefunds(): Promise<SalesRefund[]> {
     return queryRows(db, "SELECT * FROM sales_refunds ORDER BY refunded_at DESC").map((row) => ({
       platform: String(row.platform) as Platform, orderId: String(row.order_id), refundId: String(row.refund_id), refundedAt: String(row.refunded_at),
       productAmount: Number(row.product_amount ?? 0), shippingAmount: Number(row.shipping_amount ?? 0), taxAmount: Number(row.tax_amount ?? 0),
-      totalAmount: Number(row.total_amount ?? 0), status: String(row.status ?? ""), currency: String(row.currency ?? "USD")
+      totalAmount: Number(row.total_amount ?? 0), status: String(row.status ?? ""), currency: String(row.currency ?? "USD"),
+      componentsComplete: Number(row.components_complete ?? 0) === 1, source: String(row.source ?? "legacy"), sourceUpdatedAt: String(row.source_updated_at ?? row.refunded_at)
     }));
   });
 }
@@ -131,12 +146,18 @@ async function loadCanonicalOrderCount() {
 }
 
 function upsertOrder(db: Database, platform: Platform, order: SalesOrder, seenAt: string) {
-  db.run(`INSERT INTO sales_orders (platform, order_id, order_number, created_at, updated_at, status, currency, gross_amount, net_amount, product_amount, shipping_amount, discount_amount, tax_amount, refunded_amount, comparable_sales_amount, financial_status, canceled_at, financials_complete, financials_source, country_code, region_code, item_count, source_url, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(platform, order_id) DO UPDATE SET order_number=excluded.order_number, created_at=excluded.created_at, updated_at=excluded.updated_at, status=excluded.status, currency=excluded.currency, gross_amount=excluded.gross_amount, net_amount=excluded.net_amount, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, discount_amount=excluded.discount_amount, tax_amount=excluded.tax_amount, refunded_amount=excluded.refunded_amount, comparable_sales_amount=excluded.comparable_sales_amount, financial_status=excluded.financial_status, canceled_at=excluded.canceled_at, financials_complete=excluded.financials_complete, financials_source=excluded.financials_source, country_code=excluded.country_code, region_code=excluded.region_code, item_count=excluded.item_count, source_url=excluded.source_url, last_seen_at=excluded.last_seen_at`,
-    [platform, order.orderId, order.orderNumber, order.createdAt, order.updatedAt, order.status, order.currency, order.grossAmount, order.netAmount, order.productAmount ?? order.netAmount, order.shippingAmount ?? 0, order.discountAmount ?? 0, order.taxAmount ?? 0, order.refundedAmount ?? 0, order.comparableSalesAmount ?? order.netAmount, order.financialStatus ?? order.status, order.canceledAt ?? "", order.financialsComplete ? 1 : 0, order.financialsSource ?? "legacy", order.countryCode, order.regionCode, order.itemCount, order.sourceUrl, seenAt]);
+  db.run(`INSERT INTO sales_orders (platform, order_id, order_number, created_at, updated_at, status, currency, gross_amount, net_amount, product_amount, shipping_amount, discount_amount, tax_amount, refunded_amount, comparable_sales_amount, financial_status, canceled_at, financials_complete, financials_source, financials_updated_at, reconciliation_state, country_code, region_code, item_count, source_url, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(platform, order_id) DO UPDATE SET order_number=excluded.order_number, created_at=excluded.created_at, updated_at=excluded.updated_at, status=excluded.status, currency=excluded.currency, gross_amount=excluded.gross_amount, net_amount=excluded.net_amount, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, discount_amount=excluded.discount_amount, tax_amount=excluded.tax_amount, financial_status=excluded.financial_status, canceled_at=excluded.canceled_at, financials_complete=excluded.financials_complete, financials_source=excluded.financials_source, financials_updated_at=excluded.financials_updated_at, reconciliation_state=excluded.reconciliation_state, country_code=excluded.country_code, region_code=excluded.region_code, item_count=excluded.item_count, source_url=excluded.source_url, last_seen_at=excluded.last_seen_at`,
+    [platform, order.orderId, order.orderNumber, order.createdAt, order.updatedAt, order.status, order.currency, order.grossAmount, order.netAmount, order.productAmount ?? order.netAmount, order.shippingAmount ?? 0, order.discountAmount ?? 0, order.taxAmount ?? 0, order.refundedAmount ?? 0, order.comparableSalesAmount ?? order.netAmount, order.financialStatus ?? order.status, order.canceledAt ?? "", order.financialsComplete ? 1 : 0, order.financialsSource ?? "legacy", order.financialsUpdatedAt ?? order.updatedAt, order.reconciliationState ?? "incomplete", order.countryCode, order.regionCode, order.itemCount, order.sourceUrl, seenAt]);
   db.run("DELETE FROM sales_line_items WHERE platform = ? AND order_id = ?", [platform, order.orderId]);
   for (const line of order.lineItems) db.run(`INSERT INTO sales_line_items (platform, order_id, line_id, sku, title, quantity, amount) VALUES (?, ?, ?, ?, ?, ?, ?)`, [platform, order.orderId, line.lineId, line.sku, line.title, line.quantity, line.amount]);
 }
+
+function upsertRefund(db: Database, refund: SalesRefund) { db.run(`INSERT INTO sales_refunds (platform, order_id, refund_id, refunded_at, product_amount, shipping_amount, tax_amount, total_amount, status, currency, components_complete, source, source_updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(platform, order_id, refund_id) DO UPDATE SET refunded_at=excluded.refunded_at, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, tax_amount=excluded.tax_amount, total_amount=excluded.total_amount, status=excluded.status, currency=excluded.currency, components_complete=excluded.components_complete, source=excluded.source, source_updated_at=excluded.source_updated_at`,
+  [refund.platform, refund.orderId, refund.refundId, refund.refundedAt, refund.productAmount, refund.shippingAmount, refund.taxAmount, refund.totalAmount, refund.status, refund.currency, refund.componentsComplete ? 1 : 0, refund.source, refund.sourceUpdatedAt]); }
+function updateRefundTotals(db: Database, platform: Platform, orderIds: string[]) { for (const orderId of orderIds) db.run(`UPDATE sales_orders SET refunded_amount=COALESCE((SELECT SUM(product_amount+shipping_amount) FROM sales_refunds WHERE platform=? AND order_id=? AND components_complete=1 AND lower(status) NOT IN ('failed','canceled')),0), reconciliation_state=CASE WHEN EXISTS(SELECT 1 FROM sales_refunds WHERE platform=? AND order_id=? AND components_complete=0 AND lower(status) NOT IN ('failed','canceled')) THEN 'unresolved' ELSE reconciliation_state END WHERE platform=? AND order_id=?`, [platform, orderId, platform, orderId, platform, orderId]); }
 
 function ensureSchema(db: Database) {
   db.run(schema);
@@ -150,10 +171,15 @@ function ensureSchema(db: Database) {
   ensureColumn(db, "sales_orders", "canceled_at", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "sales_orders", "financials_complete", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "sales_orders", "financials_source", "TEXT NOT NULL DEFAULT 'legacy'");
+  ensureColumn(db, "sales_orders", "financials_updated_at", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "sales_orders", "reconciliation_state", "TEXT NOT NULL DEFAULT 'incomplete'");
+  ensureColumn(db, "sales_refunds", "components_complete", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "sales_refunds", "source", "TEXT NOT NULL DEFAULT 'legacy'");
+  ensureColumn(db, "sales_refunds", "source_updated_at", "TEXT NOT NULL DEFAULT ''");
 }
 function ensureColumn(db: Database, table: string, column: string, definition: string) { const columns=db.exec(`PRAGMA table_info(${table})`)[0]?.values??[]; if(!columns.some((row)=>row[1]===column)) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); }
 function queryRows(db: Database, sql: string): Array<Record<string, SqlValue>> { const result=db.exec(sql)[0]; return result ? result.values.map(values=>Object.fromEntries(result.columns.map((column,index)=>[column,values[index]]))) : []; }
-function rowToOrder(row: Record<string, SqlValue>): SalesOrder { return { platform:String(row.platform) as Platform, orderId:String(row.order_id), orderNumber:String(row.order_number??""), createdAt:String(row.created_at), updatedAt:String(row.updated_at), status:String(row.status??""), currency:String(row.currency??"USD"), grossAmount:Number(row.gross_amount??0), netAmount:Number(row.net_amount??0), productAmount:Number(row.product_amount??0), shippingAmount:Number(row.shipping_amount??0), discountAmount:Number(row.discount_amount??0), taxAmount:Number(row.tax_amount??0), refundedAmount:Number(row.refunded_amount??0), comparableSalesAmount:Number(row.comparable_sales_amount??0), financialStatus:String(row.financial_status??""), canceledAt:String(row.canceled_at??""), financialsComplete:Number(row.financials_complete??0)===1, financialsSource:String(row.financials_source??"legacy"), countryCode:String(row.country_code??""), regionCode:String(row.region_code??""), itemCount:Number(row.item_count??0), sourceUrl:String(row.source_url??""), lineItems:[] }; }
+function rowToOrder(row: Record<string, SqlValue>): SalesOrder { return { platform:String(row.platform) as Platform, orderId:String(row.order_id), orderNumber:String(row.order_number??""), createdAt:String(row.created_at), updatedAt:String(row.updated_at), status:String(row.status??""), currency:String(row.currency??"USD"), grossAmount:Number(row.gross_amount??0), netAmount:Number(row.net_amount??0), productAmount:Number(row.product_amount??0), shippingAmount:Number(row.shipping_amount??0), discountAmount:Number(row.discount_amount??0), taxAmount:Number(row.tax_amount??0), refundedAmount:Number(row.refunded_amount??0), comparableSalesAmount:Number(row.comparable_sales_amount??0), financialStatus:String(row.financial_status??""), canceledAt:String(row.canceled_at??""), financialsComplete:Number(row.financials_complete??0)===1, financialsSource:String(row.financials_source??"legacy"), financialsUpdatedAt:String(row.financials_updated_at??""), reconciliationState:String(row.reconciliation_state??"incomplete") as SalesOrder["reconciliationState"], countryCode:String(row.country_code??""), regionCode:String(row.region_code??""), itemCount:Number(row.item_count??0), sourceUrl:String(row.source_url??""), lineItems:[] }; }
 
 const schema = `
 PRAGMA foreign_keys = ON;

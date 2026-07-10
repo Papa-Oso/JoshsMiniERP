@@ -8,7 +8,7 @@ import type { SalesOrder } from "../src/shared/types";
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), "joshs-erp-sales-"));
 process.env.DATABASE_FILE = path.join(directory, "inventory.sqlite");
 process.env.SALES_DATABASE_FILE = path.join(directory, "legacy-sales.sqlite");
-const { loadSalesOrders, loadSalesRefunds, upsertSalesOrders, upsertSalesRefunds } = await import("../src/server/salesStore.ts");
+const { applySalesImport, loadSalesOrders, loadSalesRefunds, upsertSalesOrders, upsertSalesRefunds } = await import("../src/server/salesStore.ts");
 const { getSalesDashboard } = await import("../src/server/salesService.ts");
 const { SQLiteInventoryStore } = await import("../src/server/sqliteStore.ts");
 
@@ -72,12 +72,21 @@ test("sales financial components persist and refunds upsert idempotently", async
   assert.equal(saved?.taxAmount, 3);
   assert.equal(saved?.financialsComplete, true);
 
-  const refund = { platform: "ebay" as const, orderId: "ebay-financial", refundId: "refund-1", refundedAt: "2026-07-10T13:00:00.000Z", productAmount: 5, shippingAmount: 0, taxAmount: 0.5, totalAmount: 5.5, status: "completed", currency: "USD" };
+  const refund = { platform: "ebay" as const, orderId: "ebay-financial", refundId: "refund-1", refundedAt: "2026-07-10T13:00:00.000Z", productAmount: 5, shippingAmount: 0, taxAmount: 0.5, totalAmount: 5.5, status: "completed", currency: "USD", componentsComplete: true, source: "order_api", sourceUpdatedAt: "2026-07-10T13:00:00.000Z" };
   await upsertSalesRefunds([refund]);
   await upsertSalesRefunds([{ ...refund, productAmount: 6, totalAmount: 6.5 }]);
   const refunds = (await loadSalesRefunds()).filter((row) => row.orderId === "ebay-financial");
   assert.equal(refunds.length, 1);
   assert.equal(refunds[0].productAmount, 6);
+});
+
+test("atomic sales imports apply only complete pre-tax refund components to orders", async () => {
+  const base = { ...order(), platform: "etsy" as const, orderId: "etsy-refunds", productAmount: 30, shippingAmount: 8, comparableSalesAmount: 38 };
+  const refund = { platform: "etsy" as const, orderId: base.orderId, refundedAt: "2026-07-10T14:00:00.000Z", status: "completed", currency: "USD", source: "payment_api", sourceUpdatedAt: "2026-07-10T14:00:00.000Z" };
+  await applySalesImport("etsy", [base], [{ ...refund, refundId: "complete", productAmount: 5, shippingAmount: 2, taxAmount: 1, totalAmount: 8, componentsComplete: true }, { ...refund, refundId: "unresolved", productAmount: 0, shippingAmount: 0, taxAmount: 0, totalAmount: 4, componentsComplete: false }]);
+  const saved = (await loadSalesOrders()).find((row) => row.orderId === base.orderId);
+  assert.equal(saved?.refundedAmount, 7);
+  assert.equal(saved?.reconciliationState, "unresolved");
 });
 
 function order(overrides: Partial<SalesOrder> = {}): SalesOrder {
