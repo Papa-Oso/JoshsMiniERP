@@ -1,14 +1,12 @@
 // @ts-nocheck
 import { chromium } from 'playwright';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as cheerio from 'cheerio';
 import { normalizeFeedbackDate } from './normalization';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(process.env.ERP_ROOT_DIR || process.cwd());
 const browserProfileDir = path.join(rootDir, 'data', 'browser-profile');
 
@@ -648,14 +646,11 @@ async function goto(page, url, options) {
 }
 
 async function navigateWithRetry(page, url) {
-  let lastError;
-
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
       return;
     } catch (error) {
-      lastError = error;
       if (!isRetryableNavigationError(error)) throw error;
       await page.waitForTimeout(1200 + attempt * 1000).catch(() => {});
     }

@@ -5,7 +5,6 @@ import type {
   PlatformMapping,
   ReconcileResult,
   ReconcileRow,
-  ReconcileStatus,
   SyncSummary
 } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";

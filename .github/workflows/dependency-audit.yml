@@ -1,0 +1,35 @@
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "20 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            shopify-app/joshs-mini-erp/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install Shopify app dependencies
+        working-directory: shopify-app/joshs-mini-erp
+        run: npm ci
+
+      - name: Audit dependency trees
+        run: npm run audit:all

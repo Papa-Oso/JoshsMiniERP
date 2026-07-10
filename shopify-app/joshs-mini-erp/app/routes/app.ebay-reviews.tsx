@@ -173,7 +173,7 @@ export default function EbayReviews() {
   const result = fetcher.data?.result ?? loaderData.result;
   const busy = fetcher.state !== "idle";
   const pendingIntent = field(fetcher.formData, "intent");
-  const rows = result.rows ?? [];
+  const rows = useMemo(() => result.rows ?? [], [result.rows]);
   const latestRows = result.latestRows ?? [];
   const exactCount = useMemo(
     () => rows.filter((row) => row.match_type !== "seller-profile").length,

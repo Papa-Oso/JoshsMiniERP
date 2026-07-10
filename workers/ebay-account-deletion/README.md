@@ -35,12 +35,8 @@ The verification token must be the same value pasted into eBay's Alerts & Notifi
 Add the admin token and endpoint to the local ERP `.env` so app notifications can poll stored notices:
 
 ```env
-EBAY_DELETION_NOTICES_URL=https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
+EBAY_DELETION_NOTICES_URL=https://example-worker.workers.dev
 EBAY_DELETION_NOTICES_TOKEN=<same value as EBAY_NOTIFICATION_ADMIN_TOKEN>
 ```
 
-For this deployment, the eBay notification endpoint is pinned in `wrangler.toml` as:
-
-```text
-https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
-```
+Use the actual deployed Worker URL only in ignored local configuration and the eBay developer console. Do not record production tokens in this file.

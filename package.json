@@ -10,9 +10,15 @@
     "dev:client": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/**/*.test.ts",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write README.md PLAN.md AGENTS.md UI_STYLE_GUIDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs .github package.json eslint.config.js .prettierrc.json",
+    "format:check": "prettier --check README.md PLAN.md AGENTS.md UI_STYLE_GUIDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs .github package.json eslint.config.js .prettierrc.json",
     "test:postgres": "tsx --test tests/postgresStore.test.ts",
     "smoke:ui": "node scripts/ui-smoke.mjs",
-    "check": "npm run build && npm test && npm run shopify:typecheck",
+    "check": "npm run format:check && npm run lint && npm run build && npm test && npm run shopify:typecheck && npm run shopify:lint",
+    "check:ui": "npm run smoke:ui",
+    "check:worker": "node workers/ebay-account-deletion/test-worker.mjs",
+    "check:all": "npm run check && npm run check:worker && npm run check:ui",
     "start": "tsx src/server/index.ts",
     "inv": "tsx src/server/cli.ts",
     "shopify": "shopify",
@@ -22,6 +28,7 @@
     "shopify:env": "cd shopify-app/joshs-mini-erp && npm run env",
     "shopify:export-session": "cd shopify-app/joshs-mini-erp && npm run export-session",
     "shopify:typecheck": "cd shopify-app/joshs-mini-erp && npm run typecheck",
+    "shopify:lint": "cd shopify-app/joshs-mini-erp && npm run lint -- --max-warnings=0",
     "audit": "npm audit",
     "audit:all": "npm audit --audit-level=moderate && cd shopify-app/joshs-mini-erp && npm audit --audit-level=moderate"
   },
@@ -52,6 +59,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@shopify/cli": "3.92.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.0",
@@ -60,7 +68,12 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^9.2.3",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^6.1.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.5",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0",
     "vite": "^6.4.3"
   }
 }

@@ -2,11 +2,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import initSqlJs from 'sql.js';
 import { normalizeFeedbackRow } from './normalization';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(process.env.ERP_ROOT_DIR || process.cwd());
 const dataDir = path.join(rootDir, 'data');
 const dbPath = path.resolve(process.env.FEEDBACK_DATA_FILE || path.join(dataDir, 'feedback.sqlite'));
@@ -375,10 +373,6 @@ function usernameExists(db, username) {
   } finally {
     statement.free();
   }
-}
-
-function touchFeedback(db, feedbackKey, now) {
-  db.run('UPDATE scanned_feedback SET last_seen_at = ? WHERE feedback_key = ?', [now, feedbackKey]);
 }
 
 function upsertFeedback(db, feedbackKey, row, now) {

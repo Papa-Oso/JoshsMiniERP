@@ -1,10 +1,12 @@
 # Josh's Mini ERP
 
-Local inventory source of truth with scheduled/manual sync hooks for Etsy, eBay, and Shopify.
+Local-first inventory, printing, review, and marketplace synchronization for a personal Etsy, eBay, and Shopify operation.
 
-## Run It
+The normal application runs on one computer with SQLite at `data/inventory.sqlite`. It does not require Docker, a database service, or a cloud account. JSON is reserved for backups, exports, and migrations; PostgreSQL is optional for hosted deployment.
 
-Node `>=20.19 <22` or `>=22.12` is required for the Shopify app scaffold. The inventory app itself was initially built on Node `20.18.0`, but Shopify's template install will fail on that version.
+## Quick Start
+
+Requires Node `>=20.19 <22` or `>=22.12`.
 
 ```powershell
 npm install
@@ -12,663 +14,69 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://127.0.0.1:5175`. The API runs on `http://127.0.0.1:5174`.
+Open `http://127.0.0.1:5175`. The API listens on `http://127.0.0.1:5174`.
 
-No Docker, local database server, or cloud service is required for normal personal-store use. The intended local database is SQLite at `data/inventory.sqlite`: real SQL in one local file, with no background service or bill. JSON remains available for backup/export and migration.
+Leave `NODE_ENV` unset for local use. Production startup requires `ERP_API_TOKEN`.
 
-Leave `NODE_ENV` unset for normal local use. When `NODE_ENV=production`, the API refuses to start unless `ERP_API_TOKEN` is set.
+## Daily Safety Rules
 
-If you already have inventory in `data/inventory.json`, migrate it once:
+- Add and subtract inventory through this application so the event history remains accurate.
+- Run `npm run inv -- backup` before bulk imports, migrations, credential changes, or marketplace mapping changes.
+- Preview imports and marketplace changes before applying them.
+- Reconcile before running a live sync.
+- Treat legacy eBay listings as protected assets. Read-only scans and local mapping are allowed; live quantity writes remain disabled by default.
+- Never commit `.env`, OAuth tokens, database credentials, or anything under `data/`.
 
-```powershell
-npm run inv -- migrate-sqlite --dry-run
-npm run inv -- migrate-sqlite
-```
+See [Operations](docs/OPERATIONS.md) for the complete safe workflow and recovery guidance.
 
-The default driver is now SQLite. Keep or set this in `.env`:
-
-```text
-STORE_DRIVER=sqlite
-DATABASE_FILE=data/inventory.sqlite
-```
-
-For embedded Shopify app development, set `DATABASE_URL` to an existing Postgres database, then run:
+## Common Commands
 
 ```powershell
-npm run shopify:dev:full
+npm run dev                  # Local UI and API
+npm run inv -- doctor       # Non-destructive health check
+npm run inv -- backup       # Operational backup
+npm run inv -- list         # List inventory
+npm run inv -- reconcile shopify
+npm run inv -- sync --dry-run --platform shopify
+npm run check               # Build, tests, lint, and Shopify typecheck
 ```
 
-For a built UI served by the API:
+The complete CLI and marketplace setup references are in [Operations](docs/OPERATIONS.md) and [Marketplaces](docs/MARKETPLACES.md).
 
-```powershell
-npm run build
-npm start
-```
+## Documentation
+
+| Document                                   | Purpose                                                       |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| [Development](docs/DEVELOPMENT.md)         | Setup, scripts, project layout, and change workflow           |
+| [Architecture](docs/ARCHITECTURE.md)       | Data ownership, storage, sync behavior, and system boundaries |
+| [Operations](docs/OPERATIONS.md)           | Daily commands, backup, restore, scheduler, and CSV workflows |
+| [Marketplaces](docs/MARKETPLACES.md)       | Shopify, Etsy, eBay, OAuth, mapping, and write-safety rules   |
+| [Deployment](docs/DEPLOYMENT.md)           | Cloud Run, Cloud SQL, secrets, and production checks          |
+| [Testing](docs/TESTING.md)                 | Test layers, required checks, and live-service boundaries     |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common startup, storage, credential, and sync problems        |
+| [UI style guide](UI_STYLE_GUIDE.md)        | Local ERP visual and interaction standards                    |
+| [Plan](PLAN.md)                            | Active priorities and acceptance criteria                     |
+
+AI coding agents must also follow [AGENTS.md](AGENTS.md).
 
 ## Quality Checks
 
-Run the standard local checks before committing app changes:
-
 ```powershell
 npm run check
+npm run check:worker
+npm run check:ui
+npm run check:all
 npm run audit:all
 ```
 
-`check` runs the root TypeScript/Vite build, the Node test suite, and the embedded Shopify app typecheck. `audit:all` checks both npm dependency trees. The Postgres store test is optional and requires `TEST_POSTGRES_DATABASE_URL`.
+Optional PostgreSQL tests require an existing `TEST_POSTGRES_DATABASE_URL`. Do not create a local database service solely to run them.
 
-Do not install or start Docker just to run optional Postgres tests. SQLite tests run in the normal test suite and require no service. Use `npm run test:postgres` only when an existing test database URL is already available or Josh explicitly asks to set one up.
+## Data Locations
 
-## UI Style Guide
+- `data/inventory.sqlite`: normal local inventory and operational history
+- `data/inventory.json`: portable migration/export format
+- `data/printing/`: uploaded print assets
+- `data/feedback.sqlite`: local eBay feedback history
+- `data/backups/`: operational backups
 
-Use [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) before changing app screens, buttons, panels, settings, or user-facing workflow copy.
-
-## Roadmap
-
-Use [PLAN.md](PLAN.md) as the authoritative execution roadmap. The current direction is:
-
-- Keep the working inventory, printing, sync, and review workflows stable.
-- Keep the app cheap and local by default; SQLite is the real personal-use database.
-- Maintain the calmer professional operations UI described in [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md).
-- Keep JSON as a backup/export format and use PostgreSQL only as an optional hosted deployment path.
-- Keep the embedded Shopify app on Shopify Admin UI components while sharing product language and API contracts.
-- Keep operational history in SQLite where practical so Review Center, exports, backup, and recovery stay aligned.
-- Treat legacy eBay listings as protected assets: scan and map them locally, but do not revise live listing quantities until the write path is deliberately reviewed.
-
-## Notifications
-
-The topbar bell shows active alerts and tracks unread alerts locally in the browser. Current alert sources include low item inventory, low instruction inventory, sync errors or warnings, and printer status problems when Windows reports a saved printer as missing, offline, stopped, or unknown. Low and over-max inventory alerts are not dismissible; they clear only when the inventory state or threshold is fixed. Operational alerts such as printer and sync problems can be dismissed locally until they change.
-
-## Doctor Check
-
-Run a local maintenance check without changing inventory counts:
-
-```powershell
-npm run inv -- doctor
-```
-
-The doctor reports storage mode, production token safety, inventory readability, duplicate active SKUs, low/over-max stock counts, backup manifest recency, and marketplace credential status.
-
-## Backup Rotation
-
-For this personal-store setup, keep backups simple and boring:
-
-- Run `npm run inv -- backup` before bulk imports, migrations, credential changes, or deployment work.
-- Keep at least the latest 10 operational backup folders/files under `data/backups`.
-- Keep one monthly backup outside the repo, such as an external drive or private cloud folder.
-- Do not delete backup files until a newer backup has been opened and its manifest exists.
-- Keep print assets and feedback history with the backup manifest; they are part of the operational record, not throwaway cache.
-
-To inspect a backup before relying on it:
-
-```powershell
-npm run inv -- restore-dry-run data/backups/operational-backup-YYYYMMDDTHHMMSSZ.json
-```
-
-If you omit the manifest path, the command checks the newest manifest under `data/backups`. This is a dry run only: it verifies captured files and prints what would be available, but does not restore or overwrite files.
-
-## Review Center
-
-The local UI includes a Review tool for operational history and daily exception checks. Its first screen prioritizes low product inventory, low instruction inventory, and negative eBay feedback, then keeps recent imports, reconcile snapshots, sync runs, inventory movement, instruction movement, mapping health, and eBay feedback scan runs below. Etsy review pulls are not connected yet, so Review marks that lane as pending instead of treating it as monitored.
-
-## Inventory Rules
-
-- Add inventory only in this tool.
-- Batch adds increase the local master count and are pushed to mapped stores on sync.
-- Manual subtracts reduce the local master count for discards, personal use, damage, or corrections.
-- Item and instruction inventory both use configurable max inventory values for their visual status bars. Counts can go over max and should show an over-max warning.
-- Printing product labels records a batch add for newly manufactured, sellable stock using the printed label quantity and the activity note `Manufactured and ready for sale`.
-- Store sales are detected on sync by comparing each platform's current quantity to the last quantity this tool successfully pushed.
-- First sync for a newly mapped store captures a baseline only. It does not push that store until a later sync, so you can confirm the local count before anything writes to the marketplace.
-
-## eBay Legacy Listings
-
-Existing eBay listings are treated as protected business assets. Do not end, relist, recreate, migrate, or bulk revise them just to connect the ERP. Many existing listings are traditional eBay listings, not Sell Inventory API-managed SKUs, so the app reads them through eBay's Trading API using the listing's Custom label/SKU and Item ID.
-
-Legacy eBay listing quantity writes are intentionally disabled until the write path is reviewed. Use `ebay-legacy-scan` to export active listings and `ebay-legacy-map` to preview exact SKU mappings before saving them locally with `--apply`. The apply step changes only local ERP mapping data and leaves sync baselines empty so the next reconcile/sync captures a read-only baseline first.
-
-If a listing should become Sell Inventory API-managed, use `ebay-migrate <sku-or-listing-id>` first. Preview mode checks the local SKU, eBay Custom label, Item ID, fixed-price listing type, business policies, immediate payment, inventory location, variation shape, and obvious legacy-only features without changing live eBay data. The live migration path is one listing at a time and requires `--apply --confirm-listing-id <id>`; after a successful eBay response, the local mapping switches from legacy `listingId` to Inventory API `offerId` and resets baselines for the next sync. See [PLAN.md](PLAN.md#ebay-legacy-listing-safety-plan).
-
-That last-synced baseline lets simultaneous sales subtract correctly. If Etsy drops from 15 to 14 and eBay drops from 15 to 13 before the next sync, the tool subtracts 3 total units from the master inventory, then pushes the new count to every mapped store.
-
-## CLI
-
-```powershell
-npm run inv -- list
-npm run inv -- create NEON-MUG "Neon Mug" 30
-npm run inv -- add NEON-MUG 15 "July restock"
-npm run inv -- subtract NEON-MUG 1 "personal use"
-npm run inv -- reconcile shopify
-npm run inv -- sync --dry-run --platform shopify
-npm run inv -- sync
-npm run inv -- doctor
-npm run inv -- csv-import inventory-batch.csv --dry-run
-npm run inv -- csv-import inventory-batch.csv
-npm run inv -- backup
-npm run inv -- export data/export.json
-npm run inv -- export-csv data/items.csv
-npm run inv -- export-events-csv data/events.csv
-npm run inv -- export-review-csv data/review-export
-npm run inv -- restore-dry-run
-npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
-npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
-npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
-npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
-npm run inv -- ebay-migrate NEON-MUG --output data/ebay-migration-preview.csv
-npm run inv -- migrate-sqlite --dry-run
-npm run inv -- migrate-sqlite
-npm run inv -- migrate-postgres --dry-run
-npm run inv -- migrate-postgres
-npm run inv -- shopify-lookup NEON-MUG
-npm run inv -- shopify-map NEON-MUG --location "Main"
-npm run inv -- shopify-import --location "Main" --dry-run
-npm run inv -- shopify-import --location "Main"
-npm run inv -- shopify-refresh-details --dry-run
-npm run inv -- shopify-refresh-details
-npm run inv -- schedule on 30
-npm run inv -- schedule off
-```
-
-Mapping examples:
-
-```powershell
-npm run inv -- map NEON-MUG etsy --listing-id 1234567890 --remote-sku NEON-MUG --enable
-npm run inv -- map NEON-MUG ebay --remote-sku NEON-MUG --offer-id 9876543210 --enable
-npm run inv -- map NEON-MUG shopify --inventory-item-id 123456789 --location-id 987654321 --enable
-```
-
-For Shopify, the helper command can find and save those IDs for a local SKU:
-
-```powershell
-npm run inv -- shopify-map NEON-MUG
-npm run inv -- shopify-map LOCAL-SKU SHOPIFY-SKU --location "Main"
-```
-
-To import Shopify variants in bulk, use:
-
-```powershell
-npm run inv -- shopify-import --location "Main" --dry-run
-npm run inv -- shopify-import --location "Main"
-```
-
-`shopify-import` scans Shopify variants with SKUs. Missing local SKUs are created with Shopify's available quantity. Existing local SKUs keep their local count and get a Shopify mapping, so run `reconcile` before syncing when local and Shopify differ. If a SKU exists on multiple Shopify variants, the importer skips it until the SKU is unique.
-
-To refresh local names/descriptions from Shopify product details:
-
-```powershell
-npm run inv -- shopify-refresh-details --dry-run
-npm run inv -- shopify-refresh-details
-```
-
-This requires Shopify app scopes `read_products` plus the existing inventory scopes. By default it updates names only when the local name is still the SKU; pass `--overwrite` to replace custom local names.
-
-If the command says `read_products` is required, approve the updated Shopify app scopes and export a fresh token:
-
-```powershell
-npm run shopify:dev
-npm run shopify:export-session
-```
-
-Copy the new `SHOPIFY_ADMIN_ACCESS_TOKEN` into the root `.env`, then rerun `shopify-refresh-details`.
-
-Dry-run/reconcile commands pull live marketplace quantities and show what a sync would do without changing local inventory or pushing inventory:
-
-```powershell
-npm run inv -- reconcile shopify
-npm run inv -- sync --dry-run --platform shopify
-```
-
-CSV batch import supports these columns:
-
-- `sku` is required.
-- `name` is required only for new SKUs.
-- `quantity` or `qty` sets an absolute on-hand count.
-- `add`, `delta`, `adjustment`, or `received` applies a batch quantity change.
-- `safety_stock` or `safety` updates safety stock.
-- `max_inventory`, `max_stock`, or `capacity` updates the visual max inventory level.
-- `note` is saved on inventory events.
-
-Use either an absolute `quantity` or an adjustment column on a row, not both.
-
-Data export and backup commands:
-
-```powershell
-npm run inv -- export
-npm run inv -- export data/export.json
-npm run inv -- export-csv data/items.csv
-npm run inv -- export-events-csv data/events.csv
-npm run inv -- export-review-csv data/review-export
-npm run inv -- backup
-npm run inv -- backup D:\InventoryBackups
-```
-
-`export` prints portable inventory JSON when no output path is supplied. `export-csv` writes one spreadsheet-friendly row per SKU with inventory fields and marketplace mapping columns. `export-events-csv` writes inventory movement history with deltas, resulting quantity, source, platform, notes, and timestamps. `export-review-csv` writes the Review Center tables into a folder of CSV files. `backup` writes one operational manifest under `data/backups` unless you pass a directory. The backup captures an inventory JSON export, the SQLite database file, printing data/assets, and feedback scan history when those files exist.
-
-SKU pairing audit:
-
-```powershell
-npm run inv -- sku-audit --location "Main"
-npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
-npm run inv -- sku-audit --platform shopify --location "Main"
-npm run inv -- sku-audit --platform ebay
-```
-
-`sku-audit` compares local SKUs with Shopify variant SKUs and eBay Sell Inventory SKUs. It reports whether each SKU pairs cleanly, is missing locally, is missing on a marketplace, has duplicate remote records, or has quantity differences that should be reviewed with `reconcile`.
-
-SQLite storage:
-
-```powershell
-npm run inv -- migrate-sqlite --dry-run
-npm run inv -- migrate-sqlite
-```
-
-SQLite is the default local driver. Keep `STORE_DRIVER=sqlite` and `DATABASE_FILE=data/inventory.sqlite` to run the local ERP on SQLite. This is the preferred personal-store database path because it is real SQL without Docker, a database server, or cloud cost. `migrate-sqlite` copies the current JSON inventory into SQLite and writes a JSON backup first. It refuses to overwrite a non-empty SQLite database unless you pass `--force`.
-
-Postgres storage, optional later:
-
-```powershell
-$env:DATABASE_URL="postgresql://erp_user:<password>@127.0.0.1:5432/erp"
-npm run inv -- migrate-postgres --dry-run
-npm run inv -- migrate-postgres
-```
-
-Set `STORE_DRIVER=postgres` and `DATABASE_URL` only when you intentionally want to use an existing Postgres database. `migrate-postgres` copies the current JSON inventory into Postgres and writes a JSON backup first. It refuses to overwrite a non-empty Postgres database unless you pass `--force`.
-
-To run the Postgres store contract test against a disposable/local database:
-
-```powershell
-$env:TEST_POSTGRES_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/joshs_mini_erp_erp?schema=public"
-npm run test:postgres
-```
-
-## Shopify CLI
-
-This repo includes Shopify CLI as a local dev dependency. Use it through npm:
-
-```powershell
-npm run shopify -- app init --name joshs-mini-erp --path shopify-app --template reactRouter --flavor typescript --package-manager npm
-npm run shopify:dev
-npm run shopify:deploy
-```
-
-Shopify's current scaffold path is `shopify app init`. Shopify CLI can create app records, scaffold an app, run local development, and execute Admin GraphQL queries from an app context. If you already created the app record, pass its client ID with `--client-id <value>` to avoid the app selection prompt.
-
-This inventory tool still runs as its own local ERP app. The Shopify app is now the embedded App Home surface for running sync and basic inventory controls from Shopify admin. During local Shopify development, keep the ERP API running too:
-
-```powershell
-npm run shopify:dev:full
-```
-
-The embedded app proxies to `http://127.0.0.1:5174/api` by default. Set `ERP_API_BASE_URL` in the Shopify app environment if the ERP API runs somewhere else, for example `https://inventory.example.com/api`.
-
-## Production Deployment
-
-Production target: **Google Cloud Run** for compute and **Cloud SQL for PostgreSQL** for persistence.
-
-Production needs two Cloud Run services:
-
-1. **ERP API service** from the repo root. This owns inventory data and runs the marketplace sync engine.
-2. **Shopify app service** from `shopify-app/joshs-mini-erp`. This is the embedded Shopify Admin UI and calls the ERP API.
-
-The local Cloudflare URL from `shopify app dev` is only for development. For production, deploy both services to stable HTTPS Cloud Run URLs, then optionally map Cloudflare subdomains later.
-
-For this personal-store deploy, the helper script performs the Google Cloud setup/deploy steps after you authenticate with `gcloud`:
-
-```powershell
-gcloud auth login
-.\scripts\deploy-personal-shopify-app.ps1 `
-  -ProjectId <google-cloud-project-id> `
-  -ShopifyClientId <shopify-client-id> `
-  -ShopifyClientSecret <shopify-client-secret>
-```
-
-The script prompts for database passwords, generates `ERP_API_TOKEN` if you do not provide one, stores sensitive runtime values in Secret Manager, grants the default Cloud Run runtime service account access to those generated secrets, deploys both Cloud Run services, updates `shopify.app.toml` to the Cloud Run app URL, and can release Shopify config too when run with `-ReleaseShopifyConfig`. It also forwards known Etsy/eBay values from your local `.env` into the ERP API service when those values are present, and forwards the local Etsy OAuth refresh token after the helper saves one.
-
-Enable the core Google APIs:
-
-```powershell
-gcloud services enable run.googleapis.com sqladmin.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
-```
-
-Create one Cloud SQL for PostgreSQL instance, then create two databases in it:
-
-```powershell
-gcloud sql instances create joshs-mini-erp --database-version=POSTGRES_16 --region=us-central1 --tier=db-f1-micro
-gcloud sql databases create erp --instance=joshs-mini-erp
-gcloud sql databases create shopify_sessions --instance=joshs-mini-erp
-```
-
-Create database users/passwords in the Cloud SQL console or with `gcloud sql users create`. Save the instance connection name; it looks like:
-
-```text
-PROJECT_ID:us-central1:joshs-mini-erp
-```
-
-When you deploy each Cloud Run service, add that Cloud SQL connection to the service. Google mounts the Cloud SQL socket under `/cloudsql/<instance-connection-name>`.
-
-ERP API production environment:
-
-```text
-NODE_ENV=production
-HOST=0.0.0.0
-ERP_API_TOKEN=<long random shared secret>
-STORE_DRIVER=postgres
-DATABASE_URL=postgresql://erp_user:<password>@localhost/erp?host=/cloudsql/PROJECT_ID:us-central1:joshs-mini-erp
-SHOPIFY_SHOP_DOMAIN=aqrqyf-uw.myshopify.com
-SHOPIFY_CLIENT_ID=<Shopify app client ID>
-SHOPIFY_CLIENT_SECRET=<Shopify app client secret>
-SHOPIFY_API_VERSION=2026-07
-```
-
-Add Etsy/eBay credentials to this service too if those sync targets are enabled. If the database password has special characters, URL-encode it in `DATABASE_URL`.
-
-Shopify app production environment:
-
-```text
-SHOPIFY_API_KEY=<Shopify app client ID>
-SHOPIFY_API_SECRET=<Shopify app client secret>
-SHOPIFY_APP_URL=https://your-shopify-app.example.com
-SCOPES=read_inventory,write_inventory,read_products,read_locations
-DATABASE_URL=postgresql://shopify_user:<password>@localhost/shopify_sessions?host=/cloudsql/PROJECT_ID:us-central1:joshs-mini-erp
-ERP_API_BASE_URL=https://your-erp-api-url.run.app/api
-ERP_API_TOKEN=<same shared secret as ERP API service>
-NODE_ENV=production
-```
-
-Deploy the ERP API from the repo root:
-
-```powershell
-gcloud run deploy joshs-erp-api --source . --region us-central1 --allow-unauthenticated --add-cloudsql-instances PROJECT_ID:us-central1:joshs-mini-erp
-```
-
-Deploy the embedded Shopify app from its app directory:
-
-```powershell
-cd shopify-app/joshs-mini-erp
-gcloud run deploy joshs-shopify-app --source . --region us-central1 --allow-unauthenticated --add-cloudsql-instances PROJECT_ID:us-central1:joshs-mini-erp
-```
-
-Set the environment variables above in each Cloud Run service. Use Secret Manager for passwords, Shopify secrets, marketplace tokens, and `ERP_API_TOKEN`; the helper script does this automatically for sensitive values.
-
-For a manual deploy, keep these values aligned with the helper script:
-
-- ERP API uses `STORE_DRIVER=postgres`, `NODE_ENV=production`, and `DATABASE_URL=postgresql://erp_user:<password>@localhost/erp?host=/cloudsql/<instance-connection-name>`.
-- Shopify app uses its own `shopify_sessions` database and calls the ERP API through `ERP_API_BASE_URL=https://<erp-service-url>/api`.
-- Both services must share the same `ERP_API_TOKEN`; the ERP API rejects unauthenticated API requests in production.
-
-If you already have local JSON inventory data, migrate it once after the ERP database exists:
-
-```powershell
-$env:DATABASE_URL="postgresql://erp_user:<password>@127.0.0.1:5432/erp"
-npm run inv -- migrate-postgres --dry-run
-npm run inv -- migrate-postgres
-```
-
-For Cloud SQL, run the migration from a machine that can reach the database, or use the Cloud SQL Auth Proxy locally.
-
-Restore rehearsal:
-
-1. Pick the latest operational backup manifest from `data/backups`.
-2. Restore the ERP database from the backup's exported inventory JSON or from a database dump if you created one.
-3. Restore print assets by copying the backup's `printing-assets-*` directory back to `data/printing/` before starting the ERP API.
-4. Restore feedback history by copying the backup's `feedback-*.sqlite` file back to `data/feedback.sqlite` if eBay review history matters for that deploy.
-5. Start the ERP API with `STORE_DRIVER=postgres`, run `npm run inv -- reconcile shopify`, and review the result before any live sync.
-
-Post-deploy smoke checklist:
-
-- `Invoke-WebRequest https://<erp-api-url>/api/health` returns `401 Unauthorized` without a token.
-- `Invoke-WebRequest https://<erp-api-url>/api/health -Headers @{ Authorization = 'Bearer <ERP_API_TOKEN>' }` returns `{ "ok": true }`.
-- Opening the Shopify app in the store admin loads App Home without an ERP connection error.
-- The embedded app dashboard count matches the local ERP inventory count for a known SKU.
-- `npm run inv -- reconcile shopify` or the hosted equivalent is reviewed before running a live sync.
-
-Before installing on the real store:
-
-```powershell
-cd shopify-app/joshs-mini-erp
-npm run config:link
-npm run env
-```
-
-Set `application_url` in the production Shopify app config to the hosted `SHOPIFY_APP_URL`, and set the auth redirect URL to the same host with the generated app's auth path. Then release the Shopify app config:
-
-```powershell
-npm run deploy
-```
-
-After the hosted Shopify app is deployed and the app config is released, install/open it from the real store's admin:
-
-```text
-https://admin.shopify.com/store/aqrqyf-uw/apps
-```
-
-If you do not see **Distribution** or **App distribution**, use the merchant/owned-store flow instead:
-
-1. Open the app in the Shopify Dev Dashboard.
-2. Go to **Home**.
-3. Click **Install app**.
-4. Select the real store and install it.
-5. Go to **Settings** and copy the Client ID and Client Secret into the root `.env`.
-
-For your own organization's stores, Shopify supports the client credentials grant. The inventory sync adapter can use `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` to request short-lived Admin API tokens automatically.
-
-After `npm run shopify:dev` installs the app on your store, export the offline session token:
-
-```powershell
-npm run shopify:export-session
-```
-
-If export says no offline session was found, keep `shopify:dev` running, open the Preview URL that Shopify printed, and let App Home load once. That triggers the generated app's OAuth/session storage path.
-
-Copy the printed `SHOPIFY_SHOP_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN` lines into the root `.env` file. You can also pass a shop explicitly:
-
-```powershell
-npm run shopify:export-session -- your-shop.myshopify.com
-```
-
-This repo pins Shopify CLI `3.92.1` for repeatable installs. Shopify's app template requires Node `>=20.19 <22` or `>=22.12`, so upgrade Node before running `shopify app init`.
-
-## Store Credentials
-
-Copy `.env.example` to `.env` and fill in credentials.
-
-Shopify:
-
-- `SHOPIFY_SHOP_DOMAIN`
-- `SHOPIFY_ADMIN_ACCESS_TOKEN`, or `SHOPIFY_CLIENT_ID` plus `SHOPIFY_CLIENT_SECRET`
-- `SHOPIFY_API_VERSION`
-- Per SKU: Shopify inventory item ID/GID and location ID/GID
-
-Use the permanent `myshopify.com` shop domain for `SHOPIFY_SHOP_DOMAIN`, not a storefront custom domain like `joshswidgets.com`. Required app scopes are `read_inventory`, `write_inventory`, `read_products`, and `read_locations`.
-
-After filling Shopify credentials in `.env`, test the real store connection before mapping inventory:
-
-```powershell
-npm run inv -- shopify-test
-npm run inv -- shopify-lookup NEON-MUG
-```
-
-`shopify-lookup` prints the Shopify inventory item GID, location GID/name, and current available quantity for matching variants. Use those IDs in the Shopify mapping command.
-`shopify-map` uses the same lookup and saves the Shopify mapping directly. If Shopify returns multiple locations, pass `--location` with the location name or ID.
-
-eBay:
-
-- `EBAY_ACCESS_TOKEN`, or the local token file created by the CLI OAuth helper
-- `EBAY_REFRESH_TOKEN` if you want to seed the OAuth helper manually
-- `EBAY_CLIENT_ID`
-- `EBAY_CLIENT_SECRET`
-- `EBAY_RUNAME` as the RuName redirect_uri value from eBay, not a normal HTTPS URL
-- `EBAY_ENVIRONMENT` as `production` or `sandbox`
-- `EBAY_MARKETPLACE_ID`
-- `EBAY_TOKEN_FILE`
-- Per SKU: eBay Custom label/SKU plus Item ID for legacy listings; offer ID is used only for Sell Inventory API-managed offers
-
-Etsy:
-
-- `ETSY_KEYSTRING`
-- `ETSY_SHARED_SECRET`
-- `ETSY_REDIRECT_URI` as the exact HTTPS redirect URI registered in Etsy
-- `ETSY_ACCESS_TOKEN`, `ETSY_REFRESH_TOKEN`, or the local token file created by the CLI OAuth helper
-- Per SKU: Etsy listing ID and SKU
-
-Etsy inventory updates require a unique product match and a single offering for the mapped SKU inside the listing inventory. If Etsy has multiple offerings for one SKU, give each sellable variation its own SKU before syncing.
-
-### Etsy OAuth
-
-New Etsy apps start as pending and cannot authenticate until Etsy approves the key. After the app status is active, add the keystring/shared secret and redirect URI to `.env`:
-
-```powershell
-ETSY_KEYSTRING=your-keystring
-ETSY_SHARED_SECRET=your-shared-secret
-ETSY_REDIRECT_URI=https://joshswidgets.com/etsy/callback
-```
-
-Then run:
-
-```powershell
-npm run inv -- etsy-auth-url
-```
-
-Open the printed URL, approve `listings_r listings_w`, then copy the full final redirect URL from your browser and run:
-
-```powershell
-npm run inv -- etsy-auth-callback "https://joshswidgets.com/etsy/callback?code=...&state=..."
-```
-
-The tool saves Etsy tokens to `data/etsy-auth.json`, which is ignored by git. Refresh manually any time with:
-
-```powershell
-npm run inv -- etsy-refresh
-```
-
-### eBay OAuth
-
-The eBay Sell Inventory API uses user access tokens for seller inventory. Add these values to `.env`:
-
-```powershell
-EBAY_ENVIRONMENT=production
-EBAY_CLIENT_ID=your-app-id
-EBAY_CLIENT_SECRET=your-cert-id
-EBAY_RUNAME=your-ru-name
-EBAY_MARKETPLACE_ID=EBAY_US
-```
-
-Then run:
-
-```powershell
-npm run inv -- ebay-auth-url
-```
-
-Open the printed URL, approve the seller account, then copy the full final redirect URL from your browser and run:
-
-```powershell
-npm run inv -- ebay-auth-callback "https://your-accept-url?code=...&state=..."
-```
-
-The tool saves eBay tokens to `data/ebay-auth.json`, which is ignored by git. Refresh manually any time with:
-
-```powershell
-npm run inv -- ebay-refresh
-```
-
-Useful eBay helpers:
-
-```powershell
-npm run inv -- ebay-test
-npm run inv -- ebay-lookup NEON-MUG
-npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
-npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
-npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
-npm run inv -- ebay-migrate NEON-MUG
-npm run inv -- ebay-migrate NEON-MUG --apply --confirm-listing-id 327075240793
-npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
-npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
-```
-
-Run `ebay-legacy-map` without `--apply` first. The apply mode saves only exact eligible SKU matches to local ERP mapping data and does not end, relist, migrate, or revise live eBay listings.
-
-Run `ebay-migrate` without `--apply` first. The apply mode calls eBay's Inventory API `POST /bulk_migrate_listing` for exactly one confirmed listing, so review Seller Hub and keep the generated preview/backup before using it.
-
-### eBay Marketplace Account Deletion
-
-Production eBay keysets must either subscribe to Marketplace Account Deletion notifications or receive an exemption. This repo includes a tiny Cloudflare Worker at `workers/ebay-account-deletion` for the subscription path. The Worker is public, but the local ERP remains private.
-
-For this deployment, use this endpoint in eBay Alerts & Notifications:
-
-```text
-https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
-```
-
-The Worker stores received notices in Cloudflare KV. Configure the local ERP to poll the protected notice feed:
-
-```env
-EBAY_DELETION_NOTICES_URL=https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
-EBAY_DELETION_NOTICES_TOKEN=<Cloudflare Worker admin token>
-```
-
-The local ERP processes deletion notices quietly in the background. If a notice matches saved eBay feedback usernames in `data/feedback.sqlite`, those usernames are replaced with generated `deleted-*` names and the notice is marked processed.
-
-## Windows Automation
-
-The built-in scheduler runs while the server is running:
-
-```powershell
-npm run inv -- schedule on 30
-npm start
-```
-
-To start the app automatically when you sign in to Windows:
-
-```powershell
-npm run inv -- schedule-windows startup
-npm run inv -- schedule-windows startup --install
-```
-
-To use Windows Task Scheduler to run a sync command directly every 30 minutes:
-
-```powershell
-npm run inv -- schedule-windows task 30
-npm run inv -- schedule-windows task 30 --install
-```
-
-Run without `--install` first to preview the startup script or `schtasks` command.
-
-## Platform API Notes
-
-- Shopify adapter uses Admin GraphQL `inventoryItem` reads and `inventorySetQuantities` writes.
-- eBay adapter uses OAuth user tokens with Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity` for Inventory API-managed offers, and checks the per-SKU response before treating a push as successful.
-- eBay migration helper uses Sell Inventory `POST /bulk_migrate_listing` only when `ebay-migrate` is run with one explicit `--confirm-listing-id`.
-- Legacy eBay listings are read through Trading API `GetMyeBaySelling`/`GetItem` by Custom label/SKU and Item ID. Quantity pushes for those legacy listings are intentionally disabled.
-- Etsy adapter reads and writes `GET/PUT /v3/application/listings/{listing_id}/inventory`, preserving the listing inventory payload and changing the matched SKU quantity.
-
-Relevant docs:
-
-- https://shopify.dev/docs/apps/build/cli-for-apps
-- https://shopify.dev/docs/apps/build/scaffold-app
-- https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/client-credentials-grant
-- https://shopify.dev/docs/api/admin-graphql/latest/mutations/inventorySetQuantities
-- https://shopify.dev/docs/api/admin-graphql/latest/objects/inventoryitem
-- https://shopify.dev/docs/api/admin-graphql/latest/queries/productVariants
-- https://developer.ebay.com/develop/guides-v2/authorization
-- https://developer.ebay.com/api-docs/static/oauth-token-types.html
-- https://developer.ebay.com/api-docs/sell/static/inventory/bulk-updates.html
-- https://developer.ebay.com/api-docs/sell/inventory/resources/listing/methods/bulkMigrateListing
-- https://developer.ebay.com/devzone/xml/docs/reference/ebay/getmyebayselling.html
-- https://developer.etsy.com/documentation/tutorials/listings
-
-## Data
-
-Inventory data should live in `data/inventory.sqlite` for normal personal use. SQLite is the default driver; change the file with `DATABASE_FILE` in `.env`.
-
-Applied CSV and Shopify imports also write batch summaries and row outcomes into the SQLite database for Review Center and CSV export workflows.
-
-Reconcile/dry-run results are saved as SQLite snapshots for later review and reporting.
-
-Instruction inventory, print settings, print events, and SKU-to-instruction matches also live in SQLite when `STORE_DRIVER=sqlite`. If `data/printing.json` already exists, SQLite seeds from it the first time printing data is opened.
-
-`data/inventory.json` remains the portable backup/export and migration format. Change its location with `DATA_FILE` in `.env`.
-
-Uploaded print assets live under `data/printing/`. The files stay on disk, and SQLite tracks asset metadata when assets are scanned or uploaded.
-
-The eBay Reviews scraper also stores local-only browser session data and feedback history under `data/`. Feedback rows and scan-run summaries live in `data/feedback.sqlite`; change that path with `FEEDBACK_DATA_FILE`. The `data/` directory is ignored by git, and the Vite dev server is configured not to watch it because Chromium session files can be locked while a scrape is running.
-
-The `backup` command captures these local operational files into one manifest-backed backup when they exist. [PLAN.md](PLAN.md) tracks future work, but SQLite-backed local operational data is already the default direction. PostgreSQL remains optional for a future hosted deployment.
+The entire `data/` directory is local-only and ignored by Git.

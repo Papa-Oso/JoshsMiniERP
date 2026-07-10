@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            shopify-app/joshs-mini-erp/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install Shopify app dependencies
+        working-directory: shopify-app/joshs-mini-erp
+        run: npm ci
+
+      - name: Run deterministic checks
+        run: npm run check
+
+      - name: Test account-deletion Worker
+        run: npm run check:worker
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start built local application
+        shell: bash
+        run: |
+          npm start > "$RUNNER_TEMP/erp-server.log" 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5174/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/erp-server.log"
+          exit 1
+
+      - name: Run UI smoke checks
+        run: npm run check:ui
+
+      - name: Upload UI smoke screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-screenshots
+          path: data/ui-smoke/
+          if-no-files-found: ignore

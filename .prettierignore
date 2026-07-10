@@ -1,0 +1,10 @@
+data/
+dist/
+node_modules/
+shopify-app/joshs-mini-erp/build/
+shopify-app/joshs-mini-erp/node_modules/
+shopify-app/joshs-mini-erp/.react-router/
+shopify-app/joshs-mini-erp/.shopify/
+package-lock.json
+shopify-app/joshs-mini-erp/package-lock.json
+*.log

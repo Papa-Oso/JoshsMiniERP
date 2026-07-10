@@ -1,9 +1,7 @@
 // @ts-nocheck
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(process.env.ERP_ROOT_DIR || process.cwd());
 const catalogPath = path.join(rootDir, 'data', 'Item_SKU_X_Ref.csv');
 let cachedCatalog;

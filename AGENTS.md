@@ -4,8 +4,10 @@ Use this file as the first-stop guide for AI-assisted coding in this repo.
 
 ## Required Reading
 
-- Read `README.md` for operator setup, commands, credentials, deployment, and data locations.
-- Read `PLAN.md` before roadmap, storage, marketplace, sync, backup, or safety work.
+- Read `README.md` for project orientation and the documentation map.
+- Read `docs/DEVELOPMENT.md` before changing code or developer tooling.
+- Read `docs/ARCHITECTURE.md` and `PLAN.md` before storage, marketplace, sync, backup, deployment, or safety work.
+- Read `docs/OPERATIONS.md` or `docs/MARKETPLACES.md` before changing operator commands or marketplace workflows.
 - Read `UI_STYLE_GUIDE.md` before changing local ERP screens, CSS, layout, buttons, panels, tables, modals, responsive behavior, workflow copy, or shared UI helpers.
 
 ## Product Direction
@@ -36,9 +38,11 @@ Use this file as the first-stop guide for AI-assisted coding in this repo.
 
 ## Verification Matrix
 
-- Docs-only changes: run `git diff --check`.
+- Docs-only changes: run `npm run format:check` and `git diff --check`.
 - Server/data behavior changes: run `npm test`, plus focused tests when available.
-- Frontend/UI changes: run `npm run build`; run `npm run smoke:ui` after broad layout, shell, page, or visual changes.
+- Frontend/UI changes: run `npm run build`; run `npm run check:ui` after broad layout, shell, page, or visual changes.
+- Shopify app changes: run `npm run shopify:typecheck` and `npm run shopify:lint`.
+- Account-deletion Worker changes: run `npm run check:worker`.
 - Full pre-commit confidence: run `npm run check`.
 - Optional Postgres tests require an existing `TEST_POSTGRES_DATABASE_URL`; do not create a database service just to run them.
 

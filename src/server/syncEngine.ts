@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { InventoryItem, Platform, StoreData, SyncMode, SyncRun, SyncSummary } from "../shared/types";
+import type { Platform, StoreData, SyncMode, SyncRun, SyncSummary } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
 import { adapterByPlatform, adapters } from "./adapters";
 import type { RemoteQuantity } from "./adapters/types";
