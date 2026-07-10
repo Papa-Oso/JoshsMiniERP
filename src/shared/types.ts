@@ -83,6 +83,32 @@ export interface SalesDashboardPayload {
   warnings: string[];
 }
 
+export type SalesIntegrityWarningCode = "duplicate_refund" | "unmatched_refund" | "unresolved_refund" | "mixed_currency" | "missing_breakdown" | "impossible_total" | "stale_pull" | "api_report_disagreement";
+export interface SalesReconciliationPayload {
+  generatedAt: string;
+  range: string;
+  platform: Platform;
+  currency: string | null;
+  rows: Array<{
+    currency: string;
+    importedOrders: number;
+    includedOrders: number;
+    canceledOrders: number;
+    refundedOrders: number;
+    unresolvedOrders: number;
+    productRevenue: number;
+    shippingRevenue: number;
+    discounts: number;
+    excludedTax: number;
+    refunds: number;
+    comparableNetSales: number;
+    fees: number | null;
+    shippingLabels: number | null;
+    netProceeds: number | null;
+  }>;
+  warnings: Array<{ code: SalesIntegrityWarningCode; count: number; message: string }>;
+}
+
 export type InventoryEventType =
   | "create"
   | "batch_add"

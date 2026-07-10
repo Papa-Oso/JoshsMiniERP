@@ -13,28 +13,9 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-02 — Build period reconciliation and integrity warnings
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Add a read-only sales reconciliation service for a selected marketplace, currency, and date range. Report imported, included, canceled, refunded, and unresolved orders; product revenue; buyer-paid shipping; discounts; excluded tax/VAT; refunds; comparable net sales; fees; shipping labels; and net proceeds. Detect unmatched or duplicate refunds, mixed currencies, missing breakdowns, impossible component totals, stale pulls, and API/report disagreements. Add focused tests for every invariant and expose the result through a typed API payload without redesigning the Sales page yet.
-
-**Acceptance:**
-
-- Reconciliation totals can explain the marketplace headline without order-level PII.
-- Tax never contributes to comparable sales and canceled orders contribute zero.
-- Mixed currencies are separated, never silently combined.
-- Warning counts link to an actionable category, not customer details.
-
-**Depends on:** SALES-01.
-
-## Next
-
 ### MAP-01 — Replace the decorative map with real geography
 
-**Epic:** Useful Geographic Reporting
+**Epic:** Comparable Sales Integrity
 
 **Prompt:**
 
@@ -49,11 +30,11 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 **Depends on:** SALES-02 for final comparable-sales tooltips; basemap work may begin independently.
 
-## Later
+## Next
 
 ### SALES-03 — Preview and verify historical financial backfill
 
-**Epic:** Comparable Sales Integrity
+**Epic:** Useful Geographic Reporting
 
 **Prompt:**
 
@@ -67,6 +48,8 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 - Aggregate reconciliation differences are documented before rollout.
 
 **Depends on:** SALES-02.
+
+## Later
 
 ### SALES-04 — Switch the dashboard to comparable net sales
 
@@ -116,6 +99,7 @@ None. Move a card here only when it needs user authority, unavailable credential
 
 ## Recently Completed
 
+- Added aggregate-only period reconciliation with separate currencies and categorized integrity warnings.
 - Added authoritative eBay refund and Etsy payment-adjustment ingestion with stable identities and unresolved-component safeguards.
 - Completed and verified the comparable-sales schema, ADR, normalization foundation, and idempotent refund ledger.
 - Added the required development task workflow to `AGENTS.md`.

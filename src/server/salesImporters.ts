@@ -118,9 +118,10 @@ export function ebayRefunds(order: EbayOrder): SalesRefund[] {
 export function toEbayOrder(order: EbayOrder): SalesOrder {
   const address = order.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo?.contactAddress;
   const total = order.pricingSummary?.total;
-  const productAmount = number(order.pricingSummary?.priceSubtotal?.value ?? total?.value);
+  const priceSubtotal = number(order.pricingSummary?.priceSubtotal?.value ?? total?.value);
   const shippingAmount = number(order.pricingSummary?.deliveryCost?.value) + number(order.pricingSummary?.deliveryDiscount?.value);
   const discountAmount = Math.abs(number(order.pricingSummary?.priceDiscount?.value));
+  const productAmount = Math.max(0, priceSubtotal - discountAmount);
   const taxAmount = number(order.pricingSummary?.tax?.value);
   const canceled = order.cancelStatus?.cancelState && order.cancelStatus.cancelState !== "NONE_REQUESTED" ? order.lastModifiedDate ?? order.creationDate : "";
   const lineItems = (order.lineItems ?? []).map((line) => ({
@@ -134,7 +135,7 @@ export function toEbayOrder(order: EbayOrder): SalesOrder {
     currency: total?.currency ?? "USD", grossAmount: number(total?.value),
     netAmount: number(order.pricingSummary?.priceSubtotal?.value ?? total?.value),
     productAmount, shippingAmount, discountAmount, taxAmount, refundedAmount: 0,
-    comparableSalesAmount: Math.max(0, productAmount + shippingAmount - discountAmount),
+    comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
     financialStatus: order.orderPaymentStatus ?? "", canceledAt: canceled,
     financialsComplete: Boolean(order.pricingSummary?.priceSubtotal && order.pricingSummary?.deliveryCost && order.pricingSummary?.tax),
     financialsSource: "order_api", financialsUpdatedAt: order.lastModifiedDate ?? order.creationDate,

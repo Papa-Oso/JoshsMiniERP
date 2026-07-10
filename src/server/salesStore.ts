@@ -106,7 +106,7 @@ export async function loadSalesPulls() {
 
 export async function loadEbayFinancialTransactions() {
   await ensureLegacySalesMigrated();
-  return database.read((db) => { ensureSchema(db); return queryRows(db, "SELECT transaction_date, type, fee_amount, gross_amount, net_amount FROM ebay_financial_transactions ORDER BY transaction_date DESC").map((row) => ({ transactionDate: String(row.transaction_date), type: String(row.type), feeAmount: Number(row.fee_amount ?? 0), grossAmount: Number(row.gross_amount ?? 0), netAmount: Number(row.net_amount ?? 0) })); });
+  return database.read((db) => { ensureSchema(db); return queryRows(db, "SELECT transaction_date, type, order_id, fee_amount, gross_amount, net_amount, currency FROM ebay_financial_transactions ORDER BY transaction_date DESC").map((row) => ({ transactionDate: String(row.transaction_date), type: String(row.type), orderId: String(row.order_id ?? ""), feeAmount: Number(row.fee_amount ?? 0), grossAmount: Number(row.gross_amount ?? 0), netAmount: Number(row.net_amount ?? 0), currency: String(row.currency ?? "USD") })); });
 }
 
 async function ensureLegacySalesMigrated() {

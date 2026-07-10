@@ -88,6 +88,8 @@ The local Sales page reads official order APIs and stores normalized reporting t
 
 Sales refresh also reads authoritative refund data. eBay supplies order- and line-level refund totals through Fulfillment order payment details. Etsy supplies payment adjustments through the shop payments endpoint. When a provider does not expose a provable product/shipping/tax split, the ERP stores the authoritative refund total as unresolved and does not guess a pre-tax comparable-sales deduction.
 
+`GET /api/sales/reconciliation` requires a marketplace and accepts the normal range plus an optional three-letter currency. It returns aggregate-only financial components and categorized integrity counts. Currencies remain separate, tax is excluded from comparable sales, and no order or refund identifiers are returned.
+
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 
 ## Legacy eBay Listings
