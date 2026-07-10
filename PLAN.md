@@ -78,12 +78,12 @@ product revenue after seller discounts
 
 ### Useful Geographic Map
 
-- [ ] Replace the hand-drawn world polygons with a locally bundled Natural Earth country map rendered as responsive SVG.
-- [ ] Keep the map offline and local-first; do not add live tile services, geocoding, or API keys.
-- [ ] Shade countries by order volume and overlay approximate regional centroid markers where country/region data supports them.
-- [ ] Provide keyboard-accessible tooltips with region, country, orders, units, and comparable net sales.
-- [ ] Show an unknown-geography count, a clear size/color legend, a ranked country list, and a reset control if zoom is enabled.
-- [ ] Retain only country and region geography; never store or plot customer street, city, postal, or exact coordinates.
+- [x] Replace the hand-drawn world polygons with a locally bundled Natural Earth country map rendered as responsive SVG.
+- [x] Keep the map offline and local-first; do not add live tile services, geocoding, or API keys.
+- [x] Shade countries by order volume and overlay approximate regional centroid markers where country/region data supports them.
+- [x] Provide keyboard-accessible tooltips with region, country, orders, units, and comparable net sales.
+- [x] Show an unknown-geography count, a clear size/color legend, and a ranked country list. No reset is needed because the map does not zoom.
+- [x] Retain only country and region geography; never store or plot customer street, city, postal, or exact coordinates.
 
 ### Verification and Rollout
 

@@ -13,25 +13,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### MAP-01 — Replace the decorative map with real geography
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Replace the hand-drawn Sales-page world polygons with a locally bundled Natural Earth 1:110m country map rendered as responsive SVG. Keep the feature offline and local-first with no tile service, geocoder, or API key. Shade countries by order volume, overlay approximate country/region centroid markers, and provide keyboard-accessible tooltips for region, country, orders, units, and comparable net sales. Include a clear legend, unknown-geography count, ranked country list, and reset control if zoom is added. Preserve the country/region-only privacy boundary and verify desktop and mobile layouts.
-
-**Acceptance:**
-
-- Countries and coastlines are geographically recognizable.
-- Every mapped marker has a keyboard-accessible text equivalent.
-- Unknown destinations remain visible as a count rather than disappearing.
-- No customer city, postal code, street address, or exact coordinates are stored or plotted.
-
-**Depends on:** SALES-02 for final comparable-sales tooltips; basemap work may begin independently.
-
-## Next
-
 ### SALES-03 — Preview and verify historical financial backfill
 
 **Epic:** Useful Geographic Reporting
@@ -48,6 +29,8 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 - Aggregate reconciliation differences are documented before rollout.
 
 **Depends on:** SALES-02.
+
+## Next
 
 ## Later
 
@@ -99,6 +82,7 @@ None. Move a card here only when it needs user authority, unavailable credential
 
 ## Recently Completed
 
+- Replaced the decorative Sales map with an offline Natural Earth map, country-volume shading, accessible regional markers, an explicit legend, and visible unknown-geography count.
 - Added aggregate-only period reconciliation with separate currencies and categorized integrity warnings.
 - Added authoritative eBay refund and Etsy payment-adjustment ingestion with stable identities and unresolved-component safeguards.
 - Completed and verified the comparable-sales schema, ADR, normalization foundation, and idempotent refund ledger.

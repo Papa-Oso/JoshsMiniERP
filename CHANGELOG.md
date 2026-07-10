@@ -1,5 +1,7 @@
 # Changelog
 
+- Replaced the decorative Sales map with a locally bundled Natural Earth world map, order-volume country shading, approximate regional pins with accessible sales details, a clear legend, and an always-visible unknown-geography count.
+
 Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` format.
 
 ## Unreleased

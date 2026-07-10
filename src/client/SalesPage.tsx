@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
+import { geoNaturalEarth1, geoPath } from "d3-geo";
+import { numericToAlpha2 } from "i18n-iso-countries";
 import { BarChart3, Globe2, PackageOpen, RefreshCw, ShoppingCart, TrendingUp } from "lucide-react";
+import { feature } from "topojson-client";
+import type { FeatureCollection, Geometry } from "geojson";
+import world from "world-atlas/countries-110m.json";
 import { api } from "./api";
 import { Metric, Panel } from "./ui";
 import type { Platform, SalesDashboardPayload } from "../shared/types";
@@ -65,7 +70,7 @@ export function SalesPage() {
       ) : null}
       <section className="sales-primary-grid">
         <Panel title="Sales trend" icon={<TrendingUp size={17} />}><TrendChart data={data.trend} money={money} /></Panel>
-        <Panel title="Sales around the world" icon={<Globe2 size={17} />}><WorldSalesMap locations={data.locations} money={money} /><CountryList countries={data.countries.slice(0, 6)} money={money} />{data.dataQuality.unknownGeographyOrders ? <p className="map-note">{data.dataQuality.unknownGeographyOrders} orders have no saved geography.</p> : null}</Panel>
+        <Panel title="Sales around the world" icon={<Globe2 size={17} />}><WorldSalesMap locations={data.locations} countries={data.countries} money={money} /><CountryList countries={data.countries.slice(0, 6)} money={money} /><p className="map-note">Unknown geography: {data.dataQuality.unknownGeographyOrders} {data.dataQuality.unknownGeographyOrders === 1 ? "order" : "orders"}.</p></Panel>
       </section>
       <section className="sales-secondary-grid">
         <Panel title="Marketplace mix" icon={<BarChart3 size={17} />}><PlatformMix rows={data.platforms} money={money} /></Panel>
@@ -87,16 +92,22 @@ function TrendChart({ data, money }: { data: SalesDashboardPayload["trend"]; mon
   return <div className="trend-chart" aria-label="Daily sales revenue chart">{values.map((row) => <div className="trend-bar" key={row.date} title={`${formatDate(row.date)} · ${money(row.revenue)} · ${row.orders} orders`}><span style={{ height: `${Math.max(3, row.revenue / max * 100)}%` }} /></div>)}</div>;
 }
 
-const countryPoints: Record<string, [number, number]> = { US:[108,80],CA:[102,53],MX:[92,103],BR:[143,142],AR:[137,174],GB:[184,56],FR:[190,70],DE:[198,62],ES:[183,79],IT:[202,80],NL:[193,58],SE:[204,43],NO:[195,40],PL:[211,62],UA:[226,65],TR:[226,83],ZA:[211,164],EG:[218,101],NG:[194,123],KE:[224,132],IN:[266,106],CN:[294,88],JP:[337,88],KR:[326,89],AU:[318,159],NZ:[353,176],SG:[288,135],PH:[318,125],ID:[303,143],TH:[289,122],AE:[245,104],SA:[235,107],IL:[225,96],RU:[257,48] };
-const usRegionOffsets: Record<string, [number, number]> = { CA:[-18,2],OR:[-17,-7],WA:[-16,-13],AZ:[-12,8],TX:[1,12],IL:[7,-2],MI:[10,-8],FL:[15,14],GA:[13,8],NC:[16,3],VA:[15,0],PA:[13,-5],NY:[15,-9],NJ:[16,-6],MA:[18,-11],CO:[-4,1],OH:[11,-3],TN:[9,6] };
-function locationPoint(countryCode: string, regionCode: string) { const base = countryPoints[countryCode]; if (!base) return null; const offset = countryCode === "US" ? usRegionOffsets[regionCode.toUpperCase()] : null; return offset ? [base[0] + offset[0], base[1] + offset[1]] as [number, number] : base; }
+const countryCentroids: Record<string, [number, number]> = { US:[-98,39],CA:[-106,57],MX:[-102,23],BR:[-52,-10],AR:[-64,-34],GB:[-3,55],FR:[2,46],DE:[10,51],ES:[-4,40],IT:[12,42],NL:[5,52],SE:[16,62],NO:[9,62],PL:[19,52],UA:[32,49],TR:[35,39],ZA:[24,-29],EG:[30,27],NG:[8,9],KE:[38,1],IN:[79,22],CN:[104,35],JP:[138,37],KR:[128,36],AU:[134,-25],NZ:[172,-41],SG:[104,1],PH:[122,12],ID:[118,-2],TH:[101,15],AE:[54,24],SA:[45,24],IL:[35,31],RU:[90,60] };
+const usRegionOffsets: Record<string, [number, number]> = { CA:[-21,-2],OR:[-22,5],WA:[-22,9],AZ:[-14,-6],TX:[-1,-8],IL:[9,1],MI:[12,5],FL:[17,-11],GA:[15,-6],NC:[18,-2],VA:[17,1],PA:[15,4],NY:[17,7],NJ:[17,3],MA:[20,8],CO:[-7,1],OH:[12,2],TN:[10,-4] };
+function locationCoordinates(countryCode: string, regionCode: string) { const base = countryCentroids[countryCode]; if (!base) return null; const offset = countryCode === "US" ? usRegionOffsets[regionCode.toUpperCase()] : null; return offset ? [base[0] + offset[0], base[1] + offset[1]] as [number, number] : base; }
 function placeName(countryCode:string, regionCode:string) { try { const countries = new Intl.DisplayNames(undefined,{type:"region"}); const country = countries.of(countryCode) || countryCode; return regionCode ? `${regionCode}, ${country}` : country; } catch { return [regionCode,countryCode].filter(Boolean).join(", "); } }
-function WorldSalesMap({ locations, money }: { locations: SalesDashboardPayload["locations"]; money:(value:number)=>string }) {
+const mapProjection = geoNaturalEarth1().fitExtent([[4, 4], [756, 386]], { type: "Sphere" });
+const mapPath = geoPath(mapProjection);
+const countryFeatures = (feature(world as never, (world as typeof world).objects.countries as never) as unknown as FeatureCollection<Geometry>).features;
+function WorldSalesMap({ locations, countries, money }: { locations: SalesDashboardPayload["locations"]; countries: SalesDashboardPayload["countries"]; money:(value:number)=>string }) {
   const max = Math.max(1, ...locations.map((row) => row.orders));
-  return <><svg className="world-map" viewBox="0 0 380 200" role="img" aria-label="Approximate regional sales destinations">
-    <g className="world-land"><path d="M20 48 48 25 92 22 126 39 122 68 99 77 87 112 61 103 48 76 24 69Z"/><path d="M103 111 139 105 156 126 146 181 128 190 118 153Z"/><path d="M169 45 205 35 232 52 229 76 245 92 229 112 215 104 205 86 183 87 170 69Z"/><path d="M188 92 222 91 245 117 231 177 205 181 190 140Z"/><path d="M228 51 286 33 350 54 358 91 329 110 317 139 281 139 255 111 242 83Z"/><path d="M298 148 340 143 359 166 343 190 307 184Z"/></g>
-    {locations.map((row) => { const point = locationPoint(row.countryCode,row.regionCode); if (!point) return null; const radius = 3 + Math.sqrt(row.orders / max) * 8; const label=`${placeName(row.countryCode,row.regionCode)}: ${row.orders} orders, ${money(row.revenue)}`; return <circle key={`${row.countryCode}:${row.regionCode}`} cx={point[0]} cy={point[1]} r={radius} tabIndex={0} role="listitem" aria-label={label}><title>{label}</title></circle>; })}
-  </svg><div className="map-legend"><span aria-hidden="true" /> Pin size represents orders · approximate region centroids</div></>;
+  const ordersByCountry = new Map(countries.map((row) => [row.countryCode, row.orders]));
+  const countryMax = Math.max(1, ...countries.map((row) => row.orders));
+  return <><svg className="world-map" viewBox="0 0 760 390" role="img" aria-label="Country and approximate regional sales destinations">
+    <path className="world-ocean" d={mapPath({ type: "Sphere" }) || undefined} />
+    <g className="world-land">{countryFeatures.map((country) => { const code = country.id ? numericToAlpha2(String(country.id).padStart(3,"0")) : undefined; const orders = code ? ordersByCountry.get(code) || 0 : 0; const intensity = orders ? .18 + .7 * Math.sqrt(orders / countryMax) : 0; return <path key={String(country.id || country.properties?.name)} d={mapPath(country) || undefined} style={orders ? { fill: `color-mix(in srgb, var(--color-primary) ${Math.round(intensity * 100)}%, var(--color-surface-raised))` } : undefined}><title>{code ? `${placeName(code,"")}: ${orders} orders` : String(country.properties?.name || "Country")}</title></path>; })}</g>
+    <g role="list" aria-label="Mapped sales regions">{locations.map((row) => { const coordinates = locationCoordinates(row.countryCode,row.regionCode); const point = coordinates ? mapProjection(coordinates) : null; if (!point) return null; const radius = 4 + Math.sqrt(row.orders / max) * 9; const label=`${placeName(row.countryCode,row.regionCode)}: ${row.orders} orders, ${row.units} units, ${money(row.revenue)} comparable net sales`; return <circle key={`${row.countryCode}:${row.regionCode}`} cx={point[0]} cy={point[1]} r={radius} tabIndex={0} role="listitem" aria-label={label}><title>{label}</title></circle>; })}</g>
+  </svg><div className="map-legend"><span className="map-shade" aria-hidden="true" /> Darker countries have more orders <span className="map-pin" aria-hidden="true" /> Larger pins have more regional orders · approximate centroids</div></>;
 }
 function CountryList({ countries, money }: { countries: SalesDashboardPayload["countries"]; money:(value:number)=>string }) { return <div className="country-list">{countries.map((row) => <div key={row.countryCode}><strong>{placeName(row.countryCode,"")}</strong><span>{row.orders} orders</span><span>{money(row.revenue)}</span></div>)}</div>; }
 function PlatformMix({ rows, money }: { rows: SalesDashboardPayload["platforms"]; money:(value:number)=>string }) { const max=Math.max(1,...rows.map(r=>r.revenue)); return <div className="platform-mix">{rows.map(row=><div key={row.platform}><div><strong>{platformLabels[row.platform]}</strong><span>{row.orders} orders · {money(row.revenue)}</span></div><progress max={max} value={row.revenue}/></div>)}</div>; }
