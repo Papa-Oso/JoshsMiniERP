@@ -10,10 +10,12 @@ const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-data-tools-
 const dataFile = path.join(tempDir, "inventory.json");
 const printingFile = path.join(tempDir, "printing.json");
 const feedbackFile = path.join(tempDir, "feedback.sqlite");
+const databaseFile = path.join(tempDir, "inventory.sqlite");
 
 process.env.DATA_FILE = dataFile;
 process.env.PRINTING_DATA_FILE = printingFile;
 process.env.FEEDBACK_DATA_FILE = feedbackFile;
+process.env.DATABASE_FILE = databaseFile;
 process.env.STORE_DRIVER = "json";
 process.env.SHOPIFY_SHOP_DOMAIN = "";
 process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "";

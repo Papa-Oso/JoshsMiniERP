@@ -16,10 +16,12 @@ import { runInventorySync } from "./syncEngine";
 import { printingRouter } from "./printingRoutes";
 import { getOperationsReport } from "./reportingService";
 import { getEbayDeletionNoticeStatus } from "./ebayDeletionNotices";
+import { salesRouter } from "./salesRoutes";
 
 export const router = express.Router();
 router.use("/ebay-reviews", ebayReviewsRouter);
 router.use("/printing", printingRouter);
+router.use("/sales", salesRouter);
 
 const createItemSchema = z.object({
   sku: z.string().min(1),

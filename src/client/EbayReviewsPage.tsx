@@ -5,12 +5,14 @@ import {
   Download,
   ExternalLink,
   FileSpreadsheet,
+  Image as ImageIcon,
   Loader2,
   RotateCcw
 } from "lucide-react";
 import { PanelFrame } from "./ui";
 
 const columns = [
+  "source_platform",
   "title",
   "body",
   "rating",
@@ -23,10 +25,10 @@ const columns = [
   "picture_urls"
 ];
 
-type ScanMode = "full" | "incremental";
 type ExportScope = "latest" | "all";
 
 type ReviewRow = {
+  platform?: "ebay" | "etsy";
   feedback_key?: string;
   source_item_id?: string;
   source_item_title?: string;
@@ -85,31 +87,26 @@ const emptyResult: ReviewResult = {
   }
 };
 
-function emptyExportMessage(scanMode: ScanMode) {
-  return scanMode === "incremental"
-    ? "No new feedback found. No CSV was created."
-    : "No feedback rows found. No CSV was created.";
-}
-
 export function EbayReviewsPage() {
-  const [url, setUrl] = useState("");
-  const [maxItems, setMaxItems] = useState(25);
-  const [maxPages, setMaxPages] = useState(100);
-  const [allowManualVerification, setAllowManualVerification] = useState(true);
-  const [loadingMode, setLoadingMode] = useState<ScanMode | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [resetLoading, setResetLoading] = useState(false);
+  const [etsyLoading, setEtsyLoading] = useState(false);
+  const [ebayApiLoading, setEbayApiLoading] = useState(false);
+  const [platformFilter, setPlatformFilter] = useState<"all" | "ebay" | "etsy">("all");
   const [result, setResult] = useState<ReviewResult>(emptyResult);
   const [error, setError] = useState("");
   const [log, setLog] = useState<string[]>([]);
 
-  const exactCount = useMemo(() => {
-    return (result.rows ?? []).filter((row) => row.match_type !== "seller-profile").length;
-  }, [result.rows]);
-  const latestCount = result.latestRows?.length ?? 0;
-  const allCount = result.rows?.length ?? 0;
-  const loading = loadingMode !== null;
-  const canExport = Boolean(url.trim()) && !loading && !historyLoading;
+  const visibleRows = useMemo(
+    () => (result.rows ?? []).filter((row) => platformFilter === "all" || (row.platform || "ebay") === platformFilter),
+    [platformFilter, result.rows]
+  );
+  const exactCount = visibleRows.filter((row) => row.match_type !== "seller-profile").length;
+  const latestCount = (result.latestRows ?? []).filter(
+    (row) => platformFilter === "all" || (row.platform || "ebay") === platformFilter
+  ).length;
+  const allCount = visibleRows.length;
+  const loading = etsyLoading || ebayApiLoading;
 
   useEffect(() => {
     void loadSavedReviews();
@@ -131,60 +128,58 @@ export function EbayReviewsPage() {
     }
   }
 
-  async function scrapeAndDownload(scanMode: ScanMode) {
-    if (!url.trim()) {
-      setError("Enter an eBay URL before exporting.");
-      return;
-    }
-
-    const scope: ExportScope = scanMode === "full" ? "all" : "latest";
-    setLoadingMode(scanMode);
+  async function importEtsyAndDownload() {
+    setEtsyLoading(true);
     setError("");
-    setResult(emptyResult);
-    setLog(["Starting saved eBay browser session", "Checking eBay login before scraping"]);
+    setLog(["Requesting Etsy reviews through the official Etsy API"]);
 
     try {
-      const payload = await request<ReviewResult>("/api/ebay-reviews/scrape", {
+      const payload = await request<ReviewResult>("/api/ebay-reviews/etsy-import", {
         method: "POST",
-        body: JSON.stringify({
-          url,
-          mode: "auto",
-          maxItems,
-          maxPages,
-          scanMode,
-          allowManualVerification,
-          useSavedSession: true
-        })
+        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 })
       });
       setResult(payload);
-      setLog((entries) =>
-        [
-          ...entries,
-          `Resolved ${payload.listings?.length ?? 0} listing${payload.listings?.length === 1 ? "" : "s"}`,
-          `Showing ${payload.rows?.length ?? 0} saved review${payload.rows?.length === 1 ? "" : "s"}`,
-          `Collected ${payload.latestRows?.length ?? 0} latest export row${payload.latestRows?.length === 1 ? "" : "s"}`,
-          payload.history
-            ? `${payload.history.new_rows ?? 0} new, ${payload.history.skipped_existing_rows ?? 0} already scanned`
-            : ""
-        ].filter(Boolean)
-      );
-
-      const rows = scope === "latest" ? payload.latestRows : payload.rows;
-      if (rows?.length) {
-        downloadCsv(rows, scope, payload);
-      } else {
-        setLog((entries) => [...entries, emptyExportMessage(scanMode)]);
-      }
+      setPlatformFilter("etsy");
+      setLog([
+        `Loaded ${payload.rows?.filter((row) => row.platform === "etsy").length ?? 0} saved Etsy reviews`,
+        `${payload.history?.new_rows ?? 0} new, ${payload.history?.skipped_existing_rows ?? 0} already imported`
+      ]);
+      if (payload.latestRows?.length) downloadCsv(payload.latestRows, "latest", payload);
+      else setLog((entries) => [...entries, "No new Etsy reviews found. No CSV was created."]);
     } catch (caught) {
       setError(errorMessage(caught));
-      setLog((entries) => [...entries, "Stopped before export"]);
     } finally {
-      setLoadingMode(null);
+      setEtsyLoading(false);
+    }
+  }
+
+  async function importEbayApiAndDownload() {
+    setEbayApiLoading(true);
+    setError("");
+    setLog(["Requesting eBay feedback through the official Feedback API"]);
+
+    try {
+      const payload = await request<ReviewResult>("/api/ebay-reviews/ebay-import", {
+        method: "POST",
+        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 })
+      });
+      setResult(payload);
+      setPlatformFilter("ebay");
+      setLog([
+        `Loaded ${payload.rows?.filter((row) => (row.platform || "ebay") === "ebay").length ?? 0} saved eBay reviews`,
+        `${payload.history?.new_rows ?? 0} new, ${payload.history?.skipped_existing_rows ?? 0} already imported`
+      ]);
+      if (payload.latestRows?.length) downloadCsv(payload.latestRows, "latest", payload);
+      else setLog((entries) => [...entries, "No new eBay reviews found. No CSV was created."]);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setEbayApiLoading(false);
     }
   }
 
   async function resetIncrementalHistory() {
-    const confirmed = window.confirm("Reset incremental scan history?");
+    const confirmed = window.confirm("Reset all saved eBay and Etsy review history?");
     if (!confirmed) return;
 
     setResetLoading(true);
@@ -236,61 +231,20 @@ export function EbayReviewsPage() {
             <FileSpreadsheet size={24} />
           </span>
           <div>
-            <h2>eBay Feedback Exporter</h2>
+            <h2>Marketplace Review Exporter</h2>
             <p>Judge.me CSV</p>
           </div>
         </header>
 
-        <form onSubmit={(event) => event.preventDefault()} className="review-form">
-          <label className="review-field review-url-field">
-            <span>eBay URL</span>
-            <input
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://www.ebay.com/itm/..."
-              required
-            />
-          </label>
-
-          <div className="review-options">
-            <label className="review-field">
-              <span>Max items</span>
-              <input
-                type="number"
-                min="1"
-                max="250"
-                value={maxItems}
-                onChange={(event) => setMaxItems(Number(event.target.value))}
-              />
-            </label>
-            <label className="review-field">
-              <span>Feedback pages</span>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={maxPages}
-                onChange={(event) => setMaxPages(Number(event.target.value))}
-              />
-            </label>
-            <label className="review-check">
-              <input
-                type="checkbox"
-                checked={allowManualVerification}
-                onChange={(event) => setAllowManualVerification(event.target.checked)}
-              />
-              <span>Manual verification</span>
-            </label>
-          </div>
-
+        <div className="review-form">
           <div className="review-action-row">
-            <button className="icon-button primary" type="button" disabled={!canExport} onClick={() => void scrapeAndDownload("incremental")}>
-              {loadingMode === "incremental" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {loadingMode === "incremental" ? "Exporting" : "Scan + Latest CSV"}
+            <button className="icon-button primary" type="button" disabled={loading || historyLoading} onClick={() => void importEbayApiAndDownload()}>
+              {ebayApiLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+              {ebayApiLoading ? "Importing eBay" : "Import eBay + Latest CSV"}
             </button>
-            <button className="icon-button" type="button" disabled={!canExport} onClick={() => void scrapeAndDownload("full")}>
-              {loadingMode === "full" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {loadingMode === "full" ? "Exporting" : "Scan + Full CSV"}
+            <button className="icon-button" type="button" disabled={loading || historyLoading} onClick={() => void importEtsyAndDownload()}>
+              {etsyLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+              {etsyLoading ? "Importing Etsy" : "Import Etsy + Latest CSV"}
             </button>
             <button
               type="button"
@@ -302,7 +256,7 @@ export function EbayReviewsPage() {
               Reset
             </button>
           </div>
-        </form>
+        </div>
 
         <div className="review-status-list">
           {log.map((entry) => (
@@ -321,6 +275,16 @@ export function EbayReviewsPage() {
       </PanelFrame>
 
       <PanelFrame className="review-results">
+        <div className="review-filter-row">
+          <label className="review-field">
+            <span>Platform</span>
+            <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value as "all" | "ebay" | "etsy")}>
+              <option value="all">eBay + Etsy</option>
+              <option value="ebay">eBay</option>
+              <option value="etsy">Etsy</option>
+            </select>
+          </label>
+        </div>
         <div className="review-summary-band">
           <ReviewMetric label="Rows" value={allCount} />
           <ReviewMetric label="Exact Matches" value={exactCount} />
@@ -341,11 +305,12 @@ export function EbayReviewsPage() {
               <Loader2 className="spin" size={38} />
               <p>Loading saved reviews.</p>
             </div>
-          ) : result.rows?.length ? (
+          ) : visibleRows.length ? (
             <table className="review-table">
               <thead>
                 <tr>
                   <th>Item</th>
+                  <th>Platform</th>
                   <th>Seller</th>
                   <th>Match</th>
                   <th>Rating</th>
@@ -356,12 +321,13 @@ export function EbayReviewsPage() {
                 </tr>
               </thead>
               <tbody>
-                {result.rows.map((row, index) => (
+                {visibleRows.map((row, index) => (
                   <tr className={row.is_latest ? "latest-row" : ""} key={row.feedback_key || `${row.seller_username}-${row.feedback_date}-${index}`}>
                     <td>
                       <strong>{row.matched_item_title || row.source_item_title || "Untitled item"}</strong>
                       <span>{row.matched_item_id || row.source_item_id}</span>
                     </td>
+                    <td>{row.platform === "etsy" ? "Etsy" : "eBay"}</td>
                     <td>{row.seller_username}</td>
                     <td>
                       <Badge value={row.match_type} />
@@ -373,8 +339,13 @@ export function EbayReviewsPage() {
                     <td>{row.feedback_text}</td>
                     <td>
                       {row.matched_item_url || row.feedback_profile_url ? (
-                        <a href={row.matched_item_url || row.feedback_profile_url} target="_blank" rel="noreferrer" title="Open source">
+                        <a href={row.matched_item_url || row.feedback_profile_url} target="_blank" rel="noreferrer" title="Open source review">
                           <ExternalLink size={17} />
+                        </a>
+                      ) : null}
+                      {row.feedback_image_urls ? (
+                        <a href={row.feedback_image_urls.split(",")[0]} target="_blank" rel="noreferrer" title="Open review photo">
+                          <ImageIcon size={17} />
                         </a>
                       ) : null}
                     </td>
@@ -424,23 +395,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function toCsv(rows: ReviewRow[]) {
+  const importableRows = rows.filter((row) => row.feedback_text?.trim());
   const escape = (value: unknown) => {
     const text = String(value ?? "");
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   };
   return [
     columns.join(","),
-    ...rows.map((row) => columns.map((column) => escape(directImportValue(row, column))).join(","))
+    ...importableRows.map((row) => columns.map((column) => escape(directImportValue(row, column))).join(","))
   ].join("\n");
 }
 
 function directImportValue(row: ReviewRow, column: string) {
   const values: Record<string, string | number> = {
+    source_platform: row.platform === "etsy" ? "Etsy" : "eBay",
     title: reviewTitle(row.feedback_text),
     body: row.feedback_text || "",
     rating: row.star_rating || "",
     review_date: reviewDate(row.feedback_date),
-    reviewer_name: row.buyer_username || "eBay buyer",
+    reviewer_name: marketplaceReviewerName(row),
     reviewer_email: "",
     product_id: "",
     product_handle: row.product_handle || row.product_sku || "",
@@ -451,9 +424,17 @@ function directImportValue(row: ReviewRow, column: string) {
   return values[column];
 }
 
+function marketplaceReviewerName(row: ReviewRow) {
+  const platform = row.platform === "etsy" ? "Etsy" : "eBay";
+  const identifier = String(row.buyer_username || "").trim();
+  if (!identifier) return `${platform} buyer`;
+  if (identifier.toLowerCase().startsWith(`${platform.toLowerCase()} buyer`)) return identifier;
+  return `${platform} buyer ${identifier}`;
+}
+
 function reviewTitle(text = "") {
   const firstSentence = String(text).split(/[.!?]/)[0]?.trim();
-  if (!firstSentence) return "eBay Review";
+  if (!firstSentence) return "Marketplace Review";
   return firstSentence.length > 80 ? `${firstSentence.slice(0, 77)}...` : firstSentence;
 }
 
@@ -477,7 +458,7 @@ function csvFilename(result: ReviewResult, scope: "latest" | "all") {
     ? firstListing.title || firstListing.itemId || firstRow.source_item_title || firstRow.source_item_id
     : firstListing.sellerUsername || firstRow.seller_username || "seller-feedback";
 
-  return `ebay-feedback-${slugForFilename(label)}-${scope}-${date}.csv`;
+  return `marketplace-reviews-${slugForFilename(label)}-${scope}-${date}.csv`;
 }
 
 function slugForFilename(value = "") {

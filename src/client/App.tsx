@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  ShoppingCart,
   Settings,
   SlidersHorizontal,
   X,
@@ -26,6 +27,7 @@ import { EbayReviewsPage } from "./EbayReviewsPage";
 import { ItemManagementPage } from "./ItemManagementPage";
 import { PrintingPage } from "./PrintingPage";
 import { ReviewPage } from "./ReviewPage";
+import { SalesPage } from "./SalesPage";
 import { Metric, MiniStat, Panel } from "./ui";
 import type {
   DashboardPayload,
@@ -52,7 +54,7 @@ const emptyDashboard: DashboardPayload = {
 };
 
 type AdjustMode = "add" | "subtract";
-type AppPage = "inventory" | "items" | "ebayReviews" | "printing" | "review";
+type AppPage = "inventory" | "items" | "ebayReviews" | "printing" | "review" | "sales";
 type SortField = "sku" | "name" | "quantity" | "lowAlert" | "status";
 type SortDirection = "asc" | "desc";
 type NotificationTone = "danger" | "warn" | "info";
@@ -75,8 +77,9 @@ const tools: Array<{
   { id: "inventory", label: "Inventory", group: "Core", icon: Box },
   { id: "items", label: "Item Management", group: "Core", icon: PackagePlus },
   { id: "review", label: "Review", group: "Operations", icon: BarChart3 },
+  { id: "sales", label: "Sales", group: "Operations", icon: ShoppingCart },
   { id: "printing", label: "Printing", group: "Fulfillment", icon: Printer },
-  { id: "ebayReviews", label: "eBay Reviews", group: "Marketplaces", icon: FileSpreadsheet }
+  { id: "ebayReviews", label: "Marketplace Reviews", group: "Marketplaces", icon: FileSpreadsheet }
 ];
 
 const notificationReadStorageKey = "joshs-mini-erp-read-notifications";
@@ -342,7 +345,9 @@ export function App() {
           ? "Printing"
           : page === "review"
             ? "Review"
-            : "eBay Reviews";
+            : page === "sales"
+              ? "Sales"
+            : "Marketplace Reviews";
   const visibleTools = useMemo(() => {
     const query = toolSearch.trim().toLowerCase();
     if (!query) return tools;
@@ -407,6 +412,8 @@ export function App() {
               <span>History + checks</span>
               <strong>Operations review</strong>
             </div>
+          ) : page === "sales" ? (
+            <div className="tool-summary"><span>Orders + geography</span><strong>Sales intelligence</strong></div>
           ) : (
             <div className="tool-summary">
               <span>Judge.me CSV</span>
@@ -829,6 +836,8 @@ export function App() {
         />
       ) : page === "review" ? (
         <ReviewPage />
+      ) : page === "sales" ? (
+        <SalesPage />
       ) : (
         <EbayReviewsPage />
       )}

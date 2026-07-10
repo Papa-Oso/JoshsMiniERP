@@ -169,11 +169,12 @@ function buildFeedbackConcerns(rows: Array<Record<string, unknown>>): FeedbackCo
   return rows
     .filter((row) => String(row.rating ?? "").toLowerCase() === "negative")
     .map((row) => ({
-      platform: "ebay",
+      platform: String(row.platform ?? "ebay") === "etsy" ? "etsy" : "ebay",
       rating: "negative",
       buyerUsername: String(row.buyer_username ?? ""),
       itemTitle: String(row.matched_item_title || row.source_item_title || row.source_item_id || "Unknown item"),
       feedbackText: String(row.feedback_text ?? ""),
+      photoUrl: String(row.feedback_image_urls ?? ""),
       feedbackDate: String(row.feedback_date ?? ""),
       lastSeenAt: String(row.last_seen_at ?? "")
     }));
@@ -182,6 +183,7 @@ function buildFeedbackConcerns(rows: Array<Record<string, unknown>>): FeedbackCo
 function normalizeFeedbackScanRuns(rows: Array<Record<string, unknown>>): FeedbackScanRunRecord[] {
   return rows.map((row) => ({
     id: String(row.id ?? ""),
+    platform: row.platform === "etsy" ? "etsy" : "ebay",
     scanMode: row.scan_mode === "incremental" ? "incremental" : "full",
     rowsSeen: Number(row.rows_seen ?? 0),
     rowsExported: Number(row.rows_exported ?? 0),

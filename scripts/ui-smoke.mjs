@@ -9,8 +9,9 @@ const toolPages = [
   { label: "Inventory", h1: "Inventory Sync", button: /^Inventory/ },
   { label: "Item Management", h1: "Item Management", button: /Item Management/ },
   { label: "Review", h1: "Review", button: /^Review/ },
+  { label: "Sales", h1: "Sales", button: /^Sales/ },
   { label: "Printing", h1: "Printing", button: /^Printing/ },
-  { label: "eBay Reviews", h1: "eBay Reviews", button: /eBay Reviews/ }
+  { label: "Marketplace Reviews", h1: "Marketplace Reviews", button: /Marketplace Reviews/ }
 ];
 
 await fs.mkdir(outputDir, { recursive: true });
@@ -41,6 +42,12 @@ try {
   await expectHeading(mobile, "Review");
   await expectPanels(mobile);
   await mobile.screenshot({ path: path.join(outputDir, "review-landing-mobile.png"), fullPage: true });
+  await mobile.getByRole("button", { name: /Tools/ }).click();
+  await mobile.getByRole("button", { name: /^Sales/ }).click();
+  await mobile.waitForTimeout(500);
+  await expectHeading(mobile, "Sales");
+  await expectPanels(mobile);
+  await mobile.screenshot({ path: path.join(outputDir, "sales-mobile.png"), fullPage: true });
 
   console.log(`UI smoke screenshots written to ${outputDir}`);
 } finally {

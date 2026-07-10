@@ -16,7 +16,9 @@ import type {
   UploadLabelInput,
   UploadLabelResult,
   UpdateItemInput,
-  UpdateScheduleInput
+  UpdateScheduleInput,
+  SalesDashboardPayload,
+  Platform
 } from "../shared/types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -47,6 +49,9 @@ export const api = {
     request("/api/schedule", { method: "PATCH", body: JSON.stringify(input) }),
   runSync: () => request("/api/sync", { method: "POST" }),
   operationsReport: () => request<OperationsReportPayload>("/api/reports/operations"),
+  sales: (range = "90d", platform: Platform | "all" = "all") =>
+    request<SalesDashboardPayload>(`/api/sales?range=${encodeURIComponent(range)}&platform=${encodeURIComponent(platform)}`),
+  refreshSales: () => request<{ results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }>; dashboard: SalesDashboardPayload }>("/api/sales/refresh", { method: "POST", body: "{}" }),
   printing: () => request<PrintingPayload>("/api/printing"),
   printers: () => request<PrinterInfo[]>("/api/printing/printers"),
   updatePrintSettings: (input: UpdatePrintSettingsInput) =>

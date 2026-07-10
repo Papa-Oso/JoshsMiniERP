@@ -16,12 +16,13 @@ SQLite at `data/inventory.sqlite` is the normal local working database because i
 
 JSON is used for portable exports, backup, and migration. It is not the preferred long-term working database.
 
-PostgreSQL is optional for hosted deployment. Root services use a shared store contract so local and hosted storage can preserve the same behavior.
+The root ERP has one supported working database: SQLite at `data/inventory.sqlite`. JSON remains a portability format. The embedded Shopify app's hosted OAuth session database is a separate deployment concern and is not part of the ERP's operational data model.
 
 Related local data:
 
 - Print files remain under `data/printing/`; SQLite tracks their metadata.
-- eBay feedback history is stored in `data/feedback.sqlite`.
+- eBay and Etsy review history uses normalized tables in `data/inventory.sqlite` with a platform field on every review and pull record.
+- Marketplace order reporting uses normalized tables in `data/inventory.sqlite`. It retains order totals, product lines, statuses, and country/region only; direct customer identifiers and street-level address data are discarded during import.
 - OAuth token files and browser state remain under `data/` and must never be committed.
 
 ## Inventory and Sync Model
@@ -33,6 +34,8 @@ New mappings establish a baseline first. The first read must not subtract invent
 After sales are detected, the ERP subtracts the combined sold quantity locally and may push the new canonical quantity to enabled, writable marketplace mappings. Failed pulls must not cause stale pushes, and failed pushes must not cause the same sale to be deducted twice.
 
 Instruction inventory is consumed from item sales through SKU-to-instruction mappings. Printing product labels adds manufactured sellable inventory; printing instruction pages adds instruction inventory.
+
+Sales reporting is deliberately separate from inventory reconciliation. Official order API pulls are read-only and idempotently update the reporting ledger; they never subtract inventory or push marketplace quantities. See [ADR 0001](adr/0001-local-sales-ledger.md).
 
 ## Marketplace Write Boundaries
 

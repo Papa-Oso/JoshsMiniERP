@@ -19,7 +19,7 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Inventory Sync</s-link>
-        <s-link href="/app/ebay-reviews">eBay Reviews</s-link>
+        <s-link href="/app/ebay-reviews">Marketplace Reviews</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>

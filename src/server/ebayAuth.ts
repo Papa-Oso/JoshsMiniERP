@@ -5,6 +5,9 @@ import { readJson } from "./adapters/types";
 import { config } from "./config";
 
 export const ebayInventoryScopes = ["https://api.ebay.com/oauth/api_scope/sell.inventory"];
+export const ebayFeedbackScope = "https://api.ebay.com/oauth/api_scope/commerce.feedback";
+export const ebayFulfillmentScope = "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
+export const ebayAuthorizationScopes = [...ebayInventoryScopes, ebayFeedbackScope, ebayFulfillmentScope];
 
 const refreshSkewMs = 5 * 60_000;
 
@@ -33,13 +36,13 @@ interface EbayPendingAuth {
   createdAt: string;
 }
 
-let tokenCache: { token: string; expiresAt: number } | null = null;
+let tokenCache: { token: string; expiresAt: number; scopes: string[] } | null = null;
 
 export async function createEbayAuthorization() {
   const clientId = ebayClientId();
   const redirectUri = ebayRedirectUri();
   const state = base64Url(randomBytes(32));
-  const scopes = ebayInventoryScopes;
+  const scopes = ebayAuthorizationScopes;
 
   await writeJson(pendingAuthFile(), {
     state,
@@ -79,15 +82,16 @@ export async function completeEbayAuthorization(callbackValue: string) {
     redirect_uri: pending.redirectUri
   });
 
-  await saveEbayToken(token);
+  await saveEbayToken(token, undefined, pending.scopes);
   await fs.rm(pendingAuthFile(), { force: true });
   return token;
 }
 
-export async function getEbayAccessToken() {
+export async function getEbayAccessToken(requiredScope?: string) {
   if (config.ebay.accessToken) return config.ebay.accessToken;
 
   if (tokenCache && tokenCache.expiresAt > Date.now() + refreshSkewMs) {
+    requireScope(tokenCache.scopes, requiredScope);
     return tokenCache.token;
   }
 
@@ -97,10 +101,12 @@ export async function getEbayAccessToken() {
     stored.environment === config.ebay.environment &&
     Date.parse(stored.expiresAt) > Date.now() + refreshSkewMs
   ) {
-    tokenCache = { token: stored.accessToken, expiresAt: Date.parse(stored.expiresAt) };
+    requireScope(stored.scopes, requiredScope);
+    tokenCache = { token: stored.accessToken, expiresAt: Date.parse(stored.expiresAt), scopes: stored.scopes };
     return tokenCache.token;
   }
 
+  requireScope(stored?.scopes, requiredScope);
   const refreshToken = stored?.refreshToken ?? config.ebay.refreshToken;
   if (!refreshToken) {
     throw new Error("eBay OAuth token is missing. Run npm run inv -- ebay-auth-url first.");
@@ -111,20 +117,23 @@ export async function getEbayAccessToken() {
 }
 
 export async function refreshEbayToken(refreshToken = config.ebay.refreshToken) {
+  let stored: EbayTokenFile | null = null;
   if (!refreshToken) {
-    const stored = await readStoredToken();
+    stored = await readStoredToken();
     refreshToken = stored?.refreshToken;
   }
   if (!refreshToken) {
     throw new Error("EBAY_REFRESH_TOKEN or local eBay token file is required.");
   }
 
+  stored ??= await readStoredToken();
+  const scopes = stored?.scopes?.length ? stored.scopes : ebayInventoryScopes;
   const token = await requestToken({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    scope: ebayInventoryScopes.join(" ")
+    scope: scopes.join(" ")
   });
-  await saveEbayToken(token, refreshToken);
+  await saveEbayToken(token, refreshToken, scopes);
   return token;
 }
 
@@ -162,10 +171,10 @@ async function requestToken(body: Record<string, string>) {
   );
 }
 
-async function saveEbayToken(token: EbayTokenResponse, fallbackRefreshToken?: string) {
+async function saveEbayToken(token: EbayTokenResponse, fallbackRefreshToken?: string, scopes = ebayInventoryScopes) {
   const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
   const refreshToken = token.refresh_token ?? fallbackRefreshToken;
-  tokenCache = { token: token.access_token, expiresAt: Date.parse(expiresAt) };
+  tokenCache = { token: token.access_token, expiresAt: Date.parse(expiresAt), scopes };
 
   await writeJson(config.ebay.tokenFile, {
     accessToken: token.access_token,
@@ -175,8 +184,13 @@ async function saveEbayToken(token: EbayTokenResponse, fallbackRefreshToken?: st
       ? new Date(Date.now() + token.refresh_token_expires_in * 1000).toISOString()
       : undefined,
     environment: config.ebay.environment,
-    scopes: ebayInventoryScopes
+    scopes
   } satisfies EbayTokenFile);
+}
+
+function requireScope(scopes: string[] | undefined, requiredScope?: string) {
+  if (!requiredScope || scopes?.includes(requiredScope)) return;
+  throw new Error(`The saved eBay authorization does not include ${requiredScope}. Run ebay-auth-url and ebay-auth-callback again.`);
 }
 
 async function readStoredToken() {

@@ -1,8 +1,8 @@
 # Josh's Mini ERP
 
-Local-first inventory, printing, review, and marketplace synchronization for a personal Etsy, eBay, and Shopify operation.
+Local-first inventory, printing, review, sales, and marketplace synchronization for a personal Etsy, eBay, and Shopify operation.
 
-The normal application runs on one computer with SQLite at `data/inventory.sqlite`. It does not require Docker, a database service, or a cloud account. JSON is reserved for backups, exports, and migrations; PostgreSQL is optional for hosted deployment.
+The application runs on one computer with SQLite at `data/inventory.sqlite`. It does not require Docker, a database service, or a cloud account. JSON is reserved for backups, exports, and migrations.
 
 ## Quick Start
 
@@ -34,6 +34,7 @@ See [Operations](docs/OPERATIONS.md) for the complete safe workflow and recovery
 ```powershell
 npm run dev                  # Local UI and API
 npm run inv -- doctor       # Non-destructive health check
+npm run inv -- db-status    # SQLite integrity and table counts
 npm run inv -- backup       # Operational backup
 npm run inv -- list         # List inventory
 npm run inv -- reconcile shopify
@@ -49,11 +50,13 @@ The complete CLI and marketplace setup references are in [Operations](docs/OPERA
 | ------------------------------------------ | ------------------------------------------------------------- |
 | [Development](docs/DEVELOPMENT.md)         | Setup, scripts, project layout, and change workflow           |
 | [Architecture](docs/ARCHITECTURE.md)       | Data ownership, storage, sync behavior, and system boundaries |
+| [Data model](docs/DATA_MODEL.md)           | Canonical SQLite tables, identities, practices, and queries   |
 | [Operations](docs/OPERATIONS.md)           | Daily commands, backup, restore, scheduler, and CSV workflows |
 | [Marketplaces](docs/MARKETPLACES.md)       | Shopify, Etsy, eBay, OAuth, mapping, and write-safety rules   |
 | [Deployment](docs/DEPLOYMENT.md)           | Cloud Run, Cloud SQL, secrets, and production checks          |
 | [Testing](docs/TESTING.md)                 | Test layers, required checks, and live-service boundaries     |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common startup, storage, credential, and sync problems        |
+| [Audit report](docs/AUDIT_REPORT.md)       | General assessment, completed changes, risks, and roadmap     |
 | [UI style guide](UI_STYLE_GUIDE.md)        | Local ERP visual and interaction standards                    |
 | [Plan](PLAN.md)                            | Active priorities and acceptance criteria                     |
 
@@ -69,14 +72,13 @@ npm run check:all
 npm run audit:all
 ```
 
-Optional PostgreSQL tests require an existing `TEST_POSTGRES_DATABASE_URL`. Do not create a local database service solely to run them.
-
 ## Data Locations
 
 - `data/inventory.sqlite`: normal local inventory and operational history
 - `data/inventory.json`: portable migration/export format
 - `data/printing/`: uploaded print assets
-- `data/feedback.sqlite`: local eBay feedback history
+- Review and sales tables live in `data/inventory.sqlite` alongside inventory and operational history.
+- Sales tables live in `data/inventory.sqlite` alongside the other operational tables.
 - `data/backups/`: operational backups
 
 The entire `data/` directory is local-only and ignored by Git.

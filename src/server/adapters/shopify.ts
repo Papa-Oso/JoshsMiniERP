@@ -184,6 +184,10 @@ export class ShopifyAdapter implements PlatformAdapter {
       .map(([key]) => key as string);
   }
 
+  async runGraphql<T>(query: string, variables: Record<string, unknown> = {}) {
+    return this.graphql<T>(query, variables);
+  }
+
   async pullQuantity(_item: InventoryItem, mapping: PlatformMapping): Promise<RemoteQuantity> {
     const payload = await this.graphql<InventoryLevelQuery>(
       `query InventoryLevel($inventoryItemId: ID!, $locationId: ID!) {

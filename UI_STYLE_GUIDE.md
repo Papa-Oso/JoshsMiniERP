@@ -21,7 +21,7 @@ Target qualities:
 - Dense: useful information visible without feeling cramped.
 - Durable: readable during repeated daily work, not just impressive in a screenshot.
 - Trustworthy: destructive, disabled, warning, and success states must be unmistakable.
-- Consistent: the same action should look and behave the same across Inventory, Item Management, Printing, eBay Reviews, and Review Center.
+- Consistent: the same action should look and behave the same across Inventory, Item Management, Printing, Marketplace Reviews, and Review Center.
 
 Visual direction:
 
@@ -92,7 +92,7 @@ Each main page should have a distinct lucide icon or small visual mark that matc
 - Inventory: stock, shelves, or package-style icon.
 - Item Management: tag, barcode, or item-library icon.
 - Printing: printer, file, or document icon.
-- eBay Reviews: review, star, or marketplace scan icon.
+- Marketplace Reviews: review, star, or marketplace scan icon.
 - Review Center: clipboard, activity, alert, or report icon.
 
 The icon should sit near the page title or primary page header. Do not rely on nav text alone for page identity.
@@ -112,8 +112,8 @@ The icon should sit near the page title or primary page header. Do not rely on n
 - Use `primary` only for the recommended or most common action in that group.
 - Keep less-preferred actions secondary.
 - Use danger styling only for destructive or risky actions.
-- Do not use separate scrape buttons when the CSV buttons are the scrape actions.
-- If there are full and incremental CSV actions, incremental should be visually preferred and full should be secondary.
+- Marketplace review imports should use official platform APIs and clearly identify the platform.
+- Incremental API import is the normal review workflow; avoid duplicate full/import actions unless they solve a demonstrated recovery need.
 
 ## Settings
 
@@ -191,4 +191,4 @@ Before considering UI work done:
 - Confirm buttons align, text fits, empty states are sane, and async actions show feedback in the right place.
 - Confirm keyboard focus is visible and dialogs can be closed without a mouse.
 - Confirm color alone is not the only signal for dangerous, warning, selected, or disabled states.
-- Capture screenshots for Inventory, Item Management, Printing, and eBay Reviews after broad visual changes.
+- Capture screenshots for Inventory, Item Management, Printing, and Marketplace Reviews after broad visual changes.

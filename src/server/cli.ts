@@ -12,6 +12,7 @@ import {
   inspectOperationalBackup
 } from "./dataTools";
 import { runDoctor } from "./diagnostics";
+import { getDatabaseStatus } from "./databaseStatus";
 import { completeEbayAuthorization, createEbayAuthorization, refreshEbayToken } from "./ebayAuth";
 import {
   applyEbayLegacyMappings,
@@ -22,7 +23,6 @@ import {
 import { migrateEbayLegacyListing, type EbayMigrationOutputFormat } from "./ebayMigration";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
-import { migrateJsonToPostgres } from "./postgresMigration";
 import { reconcileInventory } from "./reconcile";
 import { auditSkuPairings } from "./skuAudit";
 import { refreshShopifyDetails } from "./shopifyDetails";
@@ -84,6 +84,9 @@ try {
     case "doctor":
       await doctorFromCli();
       break;
+    case "db-status":
+      await databaseStatusFromCli();
+      break;
     case "export":
       await exportFromCli(args.slice(1));
       break;
@@ -101,9 +104,6 @@ try {
       break;
     case "restore-dry-run":
       await restoreDryRunFromCli(args.slice(1));
-      break;
-    case "migrate-postgres":
-      await migratePostgresFromCli(args.slice(1));
       break;
     case "migrate-sqlite":
       await migrateSQLiteFromCli(args.slice(1));
@@ -433,6 +433,14 @@ async function doctorFromCli() {
   if (result.status === "error") process.exitCode = 1;
 }
 
+async function databaseStatusFromCli() {
+  const status = await getDatabaseStatus();
+  console.log(`SQLite integrity: ${status.integrity}`);
+  console.log(`Database: ${status.databaseFile}`);
+  console.table(status.tables);
+  if (status.integrity !== "ok") process.exitCode = 1;
+}
+
 async function exportFromCli(input: string[]) {
   const [outputPath] = positionalArgs(input);
   const result = await exportInventoryData(outputPath);
@@ -501,28 +509,6 @@ async function restoreDryRunFromCli(input: string[]) {
   if (!result.restorable) process.exitCode = 1;
 }
 
-async function migratePostgresFromCli(input: string[]) {
-  const flags = parseFlags(input);
-  const result = await migrateJsonToPostgres({
-    dryRun: Boolean(flags["dry-run"]),
-    force: Boolean(flags.force)
-  });
-
-  console.log(`${result.dryRun ? "Dry run" : "Migrated"} JSON inventory to Postgres.`);
-  console.table([
-    {
-      database: result.databaseUrl,
-      items: result.items,
-      mappings: result.mappings,
-      events: result.events,
-      syncRuns: result.syncRuns,
-      syncMessages: result.syncMessages,
-      scheduleRows: result.scheduleRows,
-      force: result.force,
-      backup: result.backupPath ?? "-"
-    }
-  ]);
-}
 
 async function migrateSQLiteFromCli(input: string[]) {
   const flags = parseFlags(input);
@@ -998,6 +984,7 @@ Commands:
   npm run inv -- reconcile [etsy|ebay|shopify]
   npm run inv -- csv-import <file.csv> [--dry-run]
   npm run inv -- doctor
+  npm run inv -- db-status
   npm run inv -- export [output.json]
   npm run inv -- export-csv [output.csv]
   npm run inv -- export-events-csv [output.csv]
@@ -1005,7 +992,6 @@ Commands:
   npm run inv -- backup [backup-directory]
   npm run inv -- restore-dry-run [backup-manifest.json]
   npm run inv -- migrate-sqlite [--dry-run] [--force]
-  npm run inv -- migrate-postgres [--dry-run] [--force]
   npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output data/sku-audit.csv]
   npm run inv -- shopify-test
   npm run inv -- shopify-lookup <sku>

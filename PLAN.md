@@ -6,18 +6,21 @@ This file contains active and upcoming work only. Completed user-visible work be
 
 - Preserve the working inventory, printing, review, CSV, backup, scheduler, and marketplace workflows.
 - Keep SQLite as the normal local database and JSON as a portable backup/export format.
-- Keep PostgreSQL optional for hosted deployment.
+- Keep one canonical local SQLite database for operational modules.
 - Keep the local ERP calm, compact, and operational according to `UI_STYLE_GUIDE.md`.
 - Keep the embedded Shopify app on Shopify Admin components.
 - Keep legacy eBay listings read-only by default. Never enable live quantity writes without an explicitly reviewed safety plan.
 
 ## Current Baseline
 
-- Local SQLite storage, JSON portability, and optional Postgres support are implemented.
+- Local SQLite storage and JSON portability are implemented.
 - Inventory, printing, review, import, reconcile, sync, backup, restore dry-run, reporting, and scheduler workflows are implemented.
 - Root build and tests, Shopify typecheck, UI smoke coverage, and Worker smoke coverage exist.
 - Production API token enforcement and documented Cloud Run deployment exist.
 - Legacy eBay scan, local-only mapping, and guarded one-listing migration preview/apply exist. Legacy quantity writes remain disabled.
+- Etsy reviews import through the official paginated API into the shared platform-aware review history, including review photos and Review Center concerns.
+- eBay reviews use the official authenticated Feedback API with incremental pagination and image URL capture; browser scraping has been removed from the supported path.
+- A local sales ledger and Sales dashboard normalize read-only Shopify, eBay, and Etsy orders for revenue, product, platform, trend, and coarse geographic reporting.
 
 ## Active Work: Repository Maintainability
 

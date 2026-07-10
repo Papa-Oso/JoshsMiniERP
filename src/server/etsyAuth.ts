@@ -6,7 +6,7 @@ import { readJson } from "./adapters/types";
 
 const authorizationUrl = "https://www.etsy.com/oauth/connect";
 const tokenUrl = "https://api.etsy.com/v3/public/oauth/token";
-const scopes = ["listings_r", "listings_w"];
+const scopes = ["listings_r", "listings_w", "transactions_r"];
 const refreshSkewMs = 5 * 60_000;
 
 interface EtsyTokenResponse {

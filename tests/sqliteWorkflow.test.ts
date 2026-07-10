@@ -181,6 +181,29 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
     ],
     { scanMode: "full" }
   );
+  await applyFeedbackHistory(
+    [
+      {
+        platform: "etsy",
+        feedback_id: "etsy-transaction-1",
+        seller_username: "etsy-shop",
+        source_item_id: "etsy-listing-1",
+        source_item_title: "Etsy Item",
+        matched_item_id: "ETSY-SKU",
+        matched_item_title: "Etsy Item",
+        rating: "negative",
+        star_rating: 2,
+        buyer_username: "etsy-buyer",
+        feedback_date: "2026-01-03T00:00:00.000Z",
+        feedback_text: "Photo did not match",
+        feedback_image_urls: "https://images.example/etsy-review.jpg",
+        source_listing_url: "https://www.etsy.com/listing/1",
+        matched_item_url: "https://www.etsy.com/listing/1",
+        match_type: "listing-id"
+      }
+    ],
+    { scanMode: "incremental", platform: "etsy" }
+  );
 
   const report = await getOperationsReport();
   assert.equal(report.importBatches.length, 2);
@@ -196,8 +219,14 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   assert.equal(report.lowInventory.some((row) => row.sku === "CSV-SKU"), true);
   assert.equal(report.totals.inventoryLow >= 1, true);
   assert.equal(report.feedbackConcerns.some((row) => row.platform === "ebay" && row.feedbackText === "Arrived damaged"), true);
-  assert.equal(report.totals.negativeFeedback, 1);
-  assert.equal(report.feedbackScanRuns.length, 1);
+  assert.equal(
+    report.feedbackConcerns.some(
+      (row) => row.platform === "etsy" && row.feedbackText === "Photo did not match" && row.photoUrl.includes("etsy-review.jpg")
+    ),
+    true
+  );
+  assert.equal(report.totals.negativeFeedback, 2);
+  assert.equal(report.feedbackScanRuns.length, 2);
   assert.equal(report.mappingHealth.some((row) => row.sku === "LOCAL-SKU" && row.platform === "shopify"), true);
 
   const backup = await backupInventoryData(path.join(tempDir, "backups"));
@@ -209,13 +238,12 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
 
   assert.equal(backup.itemCount, 3);
   assert.ok(path.basename(backup.path).startsWith("operational-backup-"));
-  assert.equal(backupFiles.length, 6);
-  assert.equal(manifest.files.length, 5);
+  assert.equal(backupFiles.length, 5);
+  assert.equal(manifest.files.length, 4);
   assert.equal(manifest.missingSources.length, 0);
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("inventory-") && file.endsWith(".json")));
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("inventory-") && file.endsWith(".sqlite")));
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("printing-") && file.endsWith(".json")));
-  assert.ok(backupFiles.some((file) => path.basename(file).startsWith("feedback-") && file.endsWith(".sqlite")));
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("printing-assets-")));
   assert.equal(exported.itemCount, 3);
   assert.equal(exportedData.items.some((candidate) => candidate.sku === "SHOPIFY-NEW"), true);

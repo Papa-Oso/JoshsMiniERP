@@ -12,8 +12,7 @@ export interface AppConfig {
   apiToken?: string;
   dataFile: string;
   databaseFile: string;
-  databaseUrl?: string;
-  storeDriver: "json" | "sqlite" | "postgres";
+  storeDriver: "json" | "sqlite";
   shopify: {
     shopDomain?: string;
     accessToken?: string;
@@ -37,6 +36,7 @@ export interface AppConfig {
   };
   etsy: {
     apiKey?: string;
+    shopId?: string;
     accessToken?: string;
     refreshToken?: string;
     clientId?: string;
@@ -89,13 +89,7 @@ export const config: AppConfig = {
   apiToken: readConfigured("ERP_API_TOKEN"),
   dataFile: path.resolve(readConfigured("DATA_FILE") ?? "data/inventory.json"),
   databaseFile: path.resolve(readConfigured("DATABASE_FILE") ?? "data/inventory.sqlite"),
-  databaseUrl: readConfigured("DATABASE_URL"),
-  storeDriver:
-    readConfigured("STORE_DRIVER") === "postgres"
-      ? "postgres"
-      : readConfigured("STORE_DRIVER") === "json"
-        ? "json"
-        : "sqlite",
+  storeDriver: readConfigured("STORE_DRIVER") === "json" ? "json" : "sqlite",
   shopify: {
     shopDomain: readConfigured("SHOPIFY_SHOP_DOMAIN"),
     accessToken: readConfigured("SHOPIFY_ADMIN_ACCESS_TOKEN") ?? readConfigured("SHOPIFY_ACCESS_TOKEN"),
@@ -119,6 +113,7 @@ export const config: AppConfig = {
   },
   etsy: {
     apiKey: etsyApiKey,
+    shopId: readConfigured("ETSY_SHOP_ID"),
     accessToken: readConfigured("ETSY_ACCESS_TOKEN"),
     refreshToken: readConfigured("ETSY_REFRESH_TOKEN"),
     clientId: etsyKeystring ?? etsyApiKey?.split(":")[0],

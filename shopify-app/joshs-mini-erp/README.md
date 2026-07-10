@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 npm run setup
 ```
 
-The default local session database is SQLite. Production uses a dedicated Postgres database configured by `DATABASE_URL`.
+The embedded app uses its own Prisma-managed session database configured by `DATABASE_URL`. This database is separate from the root ERP's operational SQLite database.
 
 ## Development
 
@@ -43,7 +43,7 @@ Copy the exported shop domain and access token into the ignored root `.env`. Nev
 ## Required Scopes
 
 ```text
-read_inventory,write_inventory,read_products,read_locations
+read_inventory,write_inventory,read_products,read_locations,read_orders
 ```
 
 ## Checks

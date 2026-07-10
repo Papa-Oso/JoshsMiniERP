@@ -53,10 +53,6 @@ The Shopify app needs `read_products` in addition to inventory and location scop
 
 This is usually intentional. Legacy quantity writes are disabled by default. Use the read-only scan, local mapping preview, and reconcile workflow in `docs/MARKETPLACES.md`. Do not bypass the guard or recreate a listing to make synchronization work.
 
-## Optional Postgres tests skip
-
-This is expected without `TEST_POSTGRES_DATABASE_URL`. Do not install Docker or a database service just to remove the skip. Run the tests only against an intentionally provided disposable test database.
-
 ## UI smoke checks fail
 
 Start the local app first with `npm run dev`, ensure Playwright Chromium is installed, and rerun `npm run check:ui`. Screenshots are placed under ignored `data/ui-smoke/` for review.

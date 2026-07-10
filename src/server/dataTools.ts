@@ -292,7 +292,7 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
     },
     {
       fileName: "negative-feedback.csv",
-      headers: ["platform", "rating", "buyer_username", "item_title", "feedback_date", "last_seen_at", "feedback_text"],
+      headers: ["platform", "rating", "buyer_username", "item_title", "feedback_date", "last_seen_at", "feedback_text", "photo_url"],
       rows: report.feedbackConcerns.map((row) => ({
         platform: row.platform,
         rating: row.rating,
@@ -300,7 +300,8 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
         item_title: row.itemTitle,
         feedback_date: row.feedbackDate,
         last_seen_at: row.lastSeenAt,
-        feedback_text: row.feedbackText
+        feedback_text: row.feedbackText,
+        photo_url: row.photoUrl
       }))
     },
     {
@@ -316,10 +317,11 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
     },
     {
       fileName: "feedback-scans.csv",
-      headers: ["created_at", "id", "scan_mode", "rows_seen", "rows_exported", "new_rows", "skipped_existing_rows"],
+      headers: ["created_at", "id", "platform", "scan_mode", "rows_seen", "rows_exported", "new_rows", "skipped_existing_rows"],
       rows: report.feedbackScanRuns.map((run) => ({
         created_at: run.createdAt,
         id: run.id,
+        platform: run.platform,
         scan_mode: run.scanMode,
         rows_seen: run.rowsSeen,
         rows_exported: run.rowsExported,
@@ -361,7 +363,6 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
 
   await copyFileIfExists(config.databaseFile, path.join(backupDirectory, `inventory-${timestamp}.sqlite`), copiedFiles, missingSources);
   await copyFileIfExists(printingDataFile(), path.join(backupDirectory, `printing-${timestamp}.json`), copiedFiles, missingSources);
-  await copyFileIfExists(feedbackDataFile(), path.join(backupDirectory, `feedback-${timestamp}.sqlite`), copiedFiles, missingSources);
   await copyDirectoryIfExists(printingAssetDirectory(), path.join(backupDirectory, `printing-assets-${timestamp}`), copiedFiles, missingSources);
 
   await fs.writeFile(
@@ -497,10 +498,6 @@ function printingDataFile() {
 
 function printingAssetDirectory() {
   return path.resolve(process.env.PRINTING_ASSET_DIR ?? "data/printing");
-}
-
-function feedbackDataFile() {
-  return path.resolve(process.env.FEEDBACK_DATA_FILE ?? "data/feedback.sqlite");
 }
 
 function isMissingFileError(error: unknown) {

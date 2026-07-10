@@ -15,7 +15,7 @@ Use this file as the first-stop guide for AI-assisted coding in this repo.
 - Keep the working inventory, printing, sync, review, CSV, backup, and scheduler workflows stable.
 - Keep the app local and cheap by default. SQLite is the normal local database at `data/inventory.sqlite`.
 - Keep JSON as backup/export/migration format, not the long-term working database.
-- Keep Postgres optional for hosted deployment only.
+- Keep the root ERP on the canonical local SQLite database. Do not add another root database driver without an explicit architecture decision.
 - Keep the embedded Shopify app on Shopify Admin UI components. Do not apply the local ERP visual theme to the Shopify Admin app.
 
 ## Safety Rules
@@ -44,7 +44,6 @@ Use this file as the first-stop guide for AI-assisted coding in this repo.
 - Shopify app changes: run `npm run shopify:typecheck` and `npm run shopify:lint`.
 - Account-deletion Worker changes: run `npm run check:worker`.
 - Full pre-commit confidence: run `npm run check`.
-- Optional Postgres tests require an existing `TEST_POSTGRES_DATABASE_URL`; do not create a database service just to run them.
 
 ## Human Review Checklist
 

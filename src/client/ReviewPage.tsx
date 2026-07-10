@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertTriangle, ClipboardList, FileSpreadsheet, GitCompare, History, PackageCheck, RefreshCw, SearchCheck } from "lucide-react";
+import { Activity, AlertTriangle, ClipboardList, FileSpreadsheet, GitCompare, History, Image as ImageIcon, PackageCheck, RefreshCw, SearchCheck } from "lucide-react";
 import { api } from "./api";
 import { Metric, Panel } from "./ui";
 import type {
@@ -68,7 +68,7 @@ export function ReviewPage() {
         <Metric label="Low Instr" value={report.totals.instructionLow} tone={report.totals.instructionLow ? "warn" : "ok"} />
         <Metric label="Negative" value={report.totals.negativeFeedback} tone={report.totals.negativeFeedback ? "danger" : "ok"} />
         <Metric label="Sync Runs" value={report.totals.syncRuns} />
-        <Metric label="eBay Scans" value={report.totals.feedbackScanRuns} />
+        <Metric label="Review Pulls" value={report.totals.feedbackScanRuns} />
         <Metric label="Map Issues" value={report.totals.mappingIssues} tone={report.totals.mappingIssues ? "warn" : "ok"} />
         <button className="icon-button primary review-refresh" type="button" onClick={load} disabled={loading}>
           <RefreshCw className={loading ? "spin" : ""} size={18} />
@@ -143,7 +143,7 @@ function LowInstructionPanel({ rows }: { rows: InstructionTrendRow[] }) {
 function NegativeFeedbackPanel({ rows }: { rows: FeedbackConcernRow[] }) {
   return (
     <Panel title="Negative Feedback" icon={<ClipboardList size={18} />} className="review-priority-panel">
-      <AttentionList empty="No negative eBay feedback in history">
+      <AttentionList empty="No negative marketplace reviews in history">
         {rows.slice(0, 6).map((row) => (
           <article className="attention-row danger-row" key={`${row.platform}:${row.buyerUsername}:${row.feedbackDate}:${row.feedbackText}`}>
             <div>
@@ -152,9 +152,14 @@ function NegativeFeedbackPanel({ rows }: { rows: FeedbackConcernRow[] }) {
                 {row.buyerUsername || "Unknown buyer"} - {row.feedbackDate || formatDate(row.lastSeenAt)}
               </span>
               {row.feedbackText ? <p className="attention-note">{row.feedbackText}</p> : null}
+              {row.photoUrl ? (
+                <a href={row.photoUrl.split(",")[0]} target="_blank" rel="noreferrer" title="Open review photo">
+                  <ImageIcon size={16} /> Review photo
+                </a>
+              ) : null}
             </div>
             <span className="attention-count">
-              eBay
+              {row.platform === "etsy" ? "Etsy" : "eBay"}
               <small>{row.rating}</small>
             </span>
           </article>
@@ -336,7 +341,7 @@ function FeedbackScanPanel({ runs }: { runs: OperationsReportPayload["feedbackSc
         {runs.map((run) => (
           <tr key={run.id}>
             <td>
-              <strong>{run.scanMode}</strong>
+              <strong>{run.platform === "etsy" ? "Etsy" : "eBay"} · {run.scanMode}</strong>
               <span>{formatDate(run.createdAt)}</span>
             </td>
             <td>{run.rowsSeen}</td>

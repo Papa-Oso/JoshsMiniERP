@@ -16,8 +16,6 @@
 
 The normal suite uses temporary files, temporary SQLite databases, and fake marketplace adapters. It must not contact live Etsy, eBay, Shopify, Cloudflare, Cloud SQL, or other external services.
 
-PostgreSQL contract tests require an existing `TEST_POSTGRES_DATABASE_URL` and skip when it is absent. Do not start Docker or create a database service merely to satisfy the optional check.
-
 UI smoke tests expect the local app to be running at `http://127.0.0.1:5175` unless `UI_SMOKE_URL` is set. Screenshots are written under ignored `data/ui-smoke/`.
 
 ## Safety-Critical Coverage

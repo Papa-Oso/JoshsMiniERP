@@ -10,7 +10,7 @@
 
 ## Shopify
 
-Configure the permanent `myshopify.com` domain and either a fixed Admin token or client credentials. Required scopes are `read_inventory`, `write_inventory`, `read_products`, and `read_locations`.
+Configure the permanent `myshopify.com` domain and either a fixed Admin token or client credentials. Required scopes are `read_inventory`, `write_inventory`, `read_products`, `read_locations`, and `read_orders`.
 
 ```powershell
 npm run inv -- shopify-test
@@ -34,7 +34,7 @@ Exported session credentials belong only in the root `.env`.
 
 ## Etsy
 
-Configure `ETSY_KEYSTRING`, `ETSY_SHARED_SECRET`, and the exact registered HTTPS redirect URI.
+Configure `ETSY_KEYSTRING`, `ETSY_SHARED_SECRET`, and the exact registered HTTPS redirect URI. `ETSY_SHOP_ID` is optional when the saved OAuth token contains the numeric owner ID; set it explicitly if automatic shop lookup is unavailable.
 
 ```powershell
 npm run inv -- etsy-auth-url
@@ -43,6 +43,14 @@ npm run inv -- etsy-refresh
 ```
 
 Etsy inventory updates require a unique product match and a single offering for the mapped SKU. Give each sellable variation its own unique SKU before enabling sync.
+
+### Etsy reviews
+
+Marketplace Reviews imports Etsy reviews through the official `GET /v3/application/shops/{shop_id}/reviews` API. Etsy prohibits screen scraping, so this workflow must not be replaced with a browser scraper.
+
+The import is paginated and incremental by default. It stores Etsy reviews in the canonical local database alongside eBay reviews with `platform=etsy`, preserves exact star ratings and `image_url_fullxfull`, and matches reviews to local products through Etsy listing IDs when mappings exist.
+
+The combined review screen can filter eBay, Etsy, or both. Judge.me CSV exports include `source_platform` for operator reference and `picture_urls` for review photos. Exported reviewer names are prefixed as `eBay buyer <identifier>` or `Etsy buyer <buyer_user_id>` so imported Shopify reviews retain visible source context. Judge.me's import wizard can map or skip `source_platform`. Rating-only Etsy reviews remain visible locally but are omitted from the Judge.me CSV because Judge.me requires review text.
 
 ## eBay OAuth and Inspection
 
@@ -57,6 +65,22 @@ npm run inv -- ebay-lookup EXAMPLE-SKU-001
 ```
 
 The RuName is eBay's OAuth `redirect_uri` value, not an ordinary HTTPS callback URL.
+
+### eBay reviews
+
+Marketplace Reviews imports seller feedback through eBay's official `GET /commerce/feedback/v1/feedback` endpoint with `role:SELLER`. The authorization requires both inventory access and `https://api.ebay.com/oauth/api_scope/commerce.feedback`; existing tokens created before feedback support must be authorized again.
+
+The import is paginated and incremental. It stores stable feedback IDs, buyer public IDs, listing IDs/titles, rating type, comment text, dates, and `images[].url` values in the shared review history. Browser scraping is no longer part of the supported workflow.
+
+## Sales Reporting
+
+The local Sales page reads official order APIs and stores normalized reporting tables in `data/inventory.sqlite`. Pulling sales is read-only and does not change inventory or marketplace quantities.
+
+- Shopify requires `read_orders`. Without approved `read_all_orders`, Shopify normally limits order access to the most recent 60 days.
+- eBay requires `https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly`. Re-run the documented eBay authorization flow after adding this scope.
+- Etsy requires `transactions_r`. Re-run the Etsy authorization flow after adding this scope.
+
+The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 
 ## Legacy eBay Listings
 

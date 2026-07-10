@@ -80,4 +80,4 @@ STORE_DRIVER=sqlite
 DATABASE_FILE=data/inventory.sqlite
 ```
 
-Use `STORE_DRIVER=json` only as a compatibility bridge. Use Postgres only for an intentional hosted deployment with an existing database.
+Use `STORE_DRIVER=json` only as a compatibility bridge. SQLite is the only supported working database for the root ERP.

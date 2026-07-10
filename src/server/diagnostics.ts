@@ -50,7 +50,6 @@ function addStoreConfigChecks(checks: DoctorCheck[]) {
     return;
   }
 
-  checks.push(config.databaseUrl ? ok("Storage", "driver", "Using PostgreSQL.") : error("Storage", "driver", "STORE_DRIVER=postgres requires DATABASE_URL."));
 }
 
 function addProductionConfigCheck(checks: DoctorCheck[]) {

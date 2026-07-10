@@ -12,6 +12,7 @@ import { authenticate } from "../shopify.server";
 import { erpErrorMessage, erpRequest } from "../lib/erp.server";
 
 type ReviewRow = {
+  platform?: "ebay" | "etsy";
   feedback_key?: string;
   source_item_id?: string;
   source_item_title?: string;
@@ -73,6 +74,7 @@ type ActionData =
     };
 
 const columns = [
+  "source_platform",
   "title",
   "body",
   "rating",
@@ -136,22 +138,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } satisfies ActionData;
     }
 
-    if (intent === "scrape") {
-      const result = await erpRequest<ReviewResult>("/ebay-reviews/scrape", {
+    if (intent === "etsy-import") {
+      const result = await erpRequest<ReviewResult>("/ebay-reviews/etsy-import", {
         method: "POST",
-        body: JSON.stringify({
-          url: field(formData, "url"),
-          mode: "auto",
-          maxItems: numberField(formData, "maxItems", 25),
-          maxPages: numberField(formData, "maxPages", 100),
-          scanMode: field(formData, "scanMode") === "full" ? "full" : "incremental",
-          allowManualVerification: booleanField(formData, "allowManualVerification"),
-          useSavedSession: true,
-        }),
+        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 }),
       });
       return {
         ok: true,
-        message: "eBay reviews loaded.",
+        message: "Etsy reviews imported through the official API.",
+        result,
+      } satisfies ActionData;
+    }
+
+    if (intent === "ebay-import") {
+      const result = await erpRequest<ReviewResult>("/ebay-reviews/ebay-import", {
+        method: "POST",
+        body: JSON.stringify({ scanMode: "incremental", maxPages: 100 }),
+      });
+      return {
+        ok: true,
+        message: "eBay reviews imported through the official Feedback API.",
         result,
       } satisfies ActionData;
     }
@@ -190,7 +196,7 @@ export default function EbayReviews() {
   }, [fetcher.data, shopify]);
 
   return (
-    <s-page heading="eBay Reviews">
+    <s-page heading="Marketplace Reviews">
       <style>{styles}</style>
 
       {loaderData.error ? (
@@ -198,59 +204,6 @@ export default function EbayReviews() {
           <s-paragraph>{loaderData.error}</s-paragraph>
         </s-banner>
       ) : null}
-
-      <s-section heading="Scraper">
-        <fetcher.Form method="post" className="review-form">
-          <input type="hidden" name="intent" value="scrape" />
-          <s-text-field
-            label="eBay URL"
-            name="url"
-            icon="link"
-            placeholder="https://www.ebay.com/itm/..."
-            required
-          />
-          <s-number-field
-            label="Max items"
-            name="maxItems"
-            min={1}
-            max={250}
-            step={1}
-            defaultValue="25"
-            inputMode="numeric"
-            required
-          />
-          <s-number-field
-            label="Feedback pages"
-            name="maxPages"
-            min={1}
-            max={100}
-            step={1}
-            defaultValue="100"
-            inputMode="numeric"
-            required
-          />
-          <s-select label="Scan history" name="scanMode">
-            <s-option value="incremental">Incremental</s-option>
-            <s-option value="full">Full</s-option>
-          </s-select>
-          <input type="hidden" name="allowManualVerification" value="false" />
-          <s-switch
-            label="Manual verification"
-            name="allowManualVerification"
-            value="true"
-            defaultChecked
-          />
-          <s-button
-            type="submit"
-            variant="primary"
-            icon="search"
-            {...(pendingIntent === "scrape" ? { loading: true } : {})}
-            {...(busy ? { disabled: true } : {})}
-          >
-            Scrape
-          </s-button>
-        </fetcher.Form>
-      </s-section>
 
       <s-section heading="Export">
         <div className="metric-grid">
@@ -264,6 +217,30 @@ export default function EbayReviews() {
         </div>
 
         <div className="button-row">
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="ebay-import" />
+            <s-button
+              type="submit"
+              icon="import"
+              variant="primary"
+              {...(pendingIntent === "ebay-import" ? { loading: true } : {})}
+              {...(busy ? { disabled: true } : {})}
+            >
+              Import eBay reviews
+            </s-button>
+          </fetcher.Form>
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="etsy-import" />
+            <s-button
+              type="submit"
+              icon="import"
+              variant="secondary"
+              {...(pendingIntent === "etsy-import" ? { loading: true } : {})}
+              {...(busy ? { disabled: true } : {})}
+            >
+              Import Etsy reviews
+            </s-button>
+          </fetcher.Form>
           <s-button
             icon="export"
             variant="secondary"
@@ -307,6 +284,7 @@ export default function EbayReviews() {
           <s-table variant="auto">
             <s-table-header-row>
               <s-table-header listSlot="primary">Item</s-table-header>
+              <s-table-header>Platform</s-table-header>
               <s-table-header>Seller</s-table-header>
               <s-table-header>Match</s-table-header>
               <s-table-header>Rating</s-table-header>
@@ -332,6 +310,7 @@ export default function EbayReviews() {
                       <span>{row.matched_item_id || row.source_item_id}</span>
                     </div>
                   </s-table-cell>
+                  <s-table-cell>{row.platform === "etsy" ? "Etsy" : "eBay"}</s-table-cell>
                   <s-table-cell>{row.seller_username}</s-table-cell>
                   <s-table-cell>
                     <s-badge tone={row.is_latest ? "info" : "neutral"}>
@@ -397,13 +376,14 @@ function downloadCsv(
 }
 
 function toCsv(rows: ReviewRow[]) {
+  const importableRows = rows.filter((row) => row.feedback_text?.trim());
   const escape = (value: unknown) => {
     const text = String(value ?? "");
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   };
   return [
     columns.join(","),
-    ...rows.map((row) =>
+    ...importableRows.map((row) =>
       columns.map((column) => escape(directImportValue(row, column))).join(","),
     ),
   ].join("\n");
@@ -411,11 +391,12 @@ function toCsv(rows: ReviewRow[]) {
 
 function directImportValue(row: ReviewRow, column: string) {
   const values: Record<string, string | number> = {
+    source_platform: row.platform === "etsy" ? "Etsy" : "eBay",
     title: reviewTitle(row.feedback_text),
     body: row.feedback_text || "",
     rating: row.star_rating || "",
     review_date: reviewDate(row.feedback_date),
-    reviewer_name: row.buyer_username || "eBay buyer",
+    reviewer_name: marketplaceReviewerName(row),
     reviewer_email: "",
     product_id: "",
     product_handle: row.product_handle || row.product_sku || "",
@@ -426,9 +407,17 @@ function directImportValue(row: ReviewRow, column: string) {
   return values[column];
 }
 
+function marketplaceReviewerName(row: ReviewRow) {
+  const platform = row.platform === "etsy" ? "Etsy" : "eBay";
+  const identifier = String(row.buyer_username || "").trim();
+  if (!identifier) return `${platform} buyer`;
+  if (identifier.toLowerCase().startsWith(`${platform.toLowerCase()} buyer`)) return identifier;
+  return `${platform} buyer ${identifier}`;
+}
+
 function reviewTitle(text = "") {
   const firstSentence = String(text).split(/[.!?]/)[0]?.trim();
-  if (!firstSentence) return "eBay Review";
+  if (!firstSentence) return "Marketplace Review";
   return firstSentence.length > 80
     ? `${firstSentence.slice(0, 77)}...`
     : firstSentence;
@@ -459,7 +448,7 @@ function csvFilename(result: ReviewResult, scope: "latest" | "all") {
       firstRow.seller_username ||
       "seller-feedback";
 
-  return `ebay-feedback-${slugForFilename(label)}-${scope}-${date}.csv`;
+  return `marketplace-reviews-${slugForFilename(label)}-${scope}-${date}.csv`;
 }
 
 function slugForFilename(value = "") {
@@ -478,25 +467,7 @@ function field(formData: FormData | undefined, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function numberField(formData: FormData, key: string, fallback: number) {
-  const value = Number(field(formData, key));
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function booleanField(formData: FormData, key: string) {
-  return formData
-    .getAll(key)
-    .some((value) => value === "true" || value === "on");
-}
-
 const styles = `
-  .review-form {
-    align-items: end;
-    display: grid;
-    gap: 12px;
-    grid-template-columns: minmax(260px, 1fr) 120px 140px 160px 170px auto;
-  }
-
   .metric-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -530,11 +501,6 @@ const styles = `
     gap: 4px;
   }
 
-  @media (max-width: 960px) {
-    .review-form {
-      grid-template-columns: 1fr;
-    }
-  }
 `;
 
 export const headers: HeadersFunction = (headersArgs) => {

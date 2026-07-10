@@ -16,7 +16,7 @@ export async function enrichRowsWithProducts(rows) {
   const catalog = await loadProductCatalog();
   return rows.map((row) => {
     const title = row.matched_item_title || row.source_item_title || '';
-    const sku = findSkuForTitle(catalog, title);
+    const sku = row.product_sku || findSkuForTitle(catalog, title);
 
     return {
       ...row,

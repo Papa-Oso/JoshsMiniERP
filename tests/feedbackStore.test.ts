@@ -6,6 +6,8 @@ import test, { after } from "node:test";
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-feedback-"));
 const feedbackFile = path.join(tempDir, "feedback.sqlite");
+const databaseFile = path.join(tempDir, "inventory.sqlite");
+process.env.DATABASE_FILE = databaseFile;
 
 process.env.FEEDBACK_DATA_FILE = feedbackFile;
 
@@ -18,7 +20,7 @@ after(async () => {
 
 test("feedback store tracks rows and scan runs in the configured SQLite file", async () => {
   const full = await applyFeedbackHistory([feedbackRow("1"), feedbackRow("2")], { scanMode: "full" });
-  assert.equal(full.stats.database_path, feedbackFile);
+  assert.equal(full.stats.database_path, databaseFile);
   assert.equal(full.stats.rows_seen, 2);
   assert.equal(full.stats.rows_exported, 2);
   assert.equal(full.stats.new_rows, 2);
@@ -37,6 +39,14 @@ test("feedback store tracks rows and scan runs in the configured SQLite file", a
   assert.equal(scanRuns[0].scan_mode, "incremental");
   assert.equal(scanRuns[0].rows_exported, 1);
   assert.equal(scanRuns[1].scan_mode, "full");
+  assert.equal(scanRuns[1].platform, "ebay");
+
+  const etsy = await applyFeedbackHistory(
+    [{ ...feedbackRow("etsy-1"), platform: "etsy", star_rating: 2, rating: "negative" }],
+    { scanMode: "incremental", platform: "etsy" }
+  );
+  assert.equal(etsy.stats.platform, "etsy");
+  assert.equal((await loadFeedbackHistory()).find((row) => row.feedback_id === "etsy-1")?.platform, "etsy");
 
   const anonymized = await anonymizeFeedbackUsernames(["buyer-2"], {
     replacementFactory: () => "deleted-silver-river-test"
@@ -54,7 +64,7 @@ test("feedback store tracks rows and scan runs in the configured SQLite file", a
   assert.equal(noMatch.changedRows, 0);
 
   const reset = await resetFeedbackHistory();
-  assert.equal(reset.deleted_rows, 3);
+  assert.equal(reset.deleted_rows, 4);
   assert.equal((await loadFeedbackHistory()).length, 0);
   assert.equal((await loadFeedbackScanRuns()).length, 0);
 });

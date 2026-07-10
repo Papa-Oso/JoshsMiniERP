@@ -10,6 +10,48 @@ export const platformLabels: Record<Platform, string> = {
 
 export const defaultMaxInventory = 100;
 
+export interface SalesLineItem {
+  platform: Platform;
+  orderId: string;
+  lineId: string;
+  sku: string;
+  title: string;
+  quantity: number;
+  amount: number;
+}
+
+export interface SalesOrder {
+  platform: Platform;
+  orderId: string;
+  orderNumber: string;
+  createdAt: string;
+  updatedAt: string;
+  status: string;
+  currency: string;
+  grossAmount: number;
+  netAmount: number;
+  countryCode: string;
+  regionCode: string;
+  itemCount: number;
+  sourceUrl: string;
+  lineItems: SalesLineItem[];
+}
+
+export interface SalesDashboardPayload {
+  generatedAt: string;
+  lastPulledAt: string | null;
+  range: string;
+  platform: Platform | "all";
+  summary: { revenue: number; orders: number; units: number; averageOrderValue: number; currency: string };
+  trend: Array<{ date: string; revenue: number; orders: number; units: number }>;
+  platforms: Array<{ platform: Platform; revenue: number; orders: number; units: number }>;
+  countries: Array<{ countryCode: string; revenue: number; orders: number; units: number }>;
+  products: Array<{ sku: string; title: string; revenue: number; orders: number; units: number }>;
+  recentOrders: SalesOrder[];
+  coverage: Array<{ platform: Platform; orders: number; earliestAt: string | null; latestAt: string | null }>;
+  warnings: string[];
+}
+
 export type InventoryEventType =
   | "create"
   | "batch_add"
@@ -123,6 +165,7 @@ export interface ReconcileRunRecord extends ReconcileResult {
 
 export interface FeedbackScanRunRecord {
   id: string;
+  platform: "ebay" | "etsy";
   scanMode: "full" | "incremental";
   rowsSeen: number;
   rowsExported: number;
@@ -146,6 +189,7 @@ export interface FeedbackConcernRow {
   buyerUsername: string;
   itemTitle: string;
   feedbackText: string;
+  photoUrl: string;
   feedbackDate: string;
   lastSeenAt: string;
 }

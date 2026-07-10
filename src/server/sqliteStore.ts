@@ -2,9 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import initSqlJs from "sql.js";
-import type { Database, SqlJsStatic, SqlValue } from "sql.js";
+import type { Database, SqlValue } from "sql.js";
 import type {
   ImportBatchRecord,
   ImportBatchRow,
@@ -26,6 +24,7 @@ import { defaultMaxInventory, platforms } from "../shared/types";
 import { config } from "./config";
 import { defaultPrintingData, normalizePrintingData } from "./printingData";
 import type { InventoryStoreDriver } from "./store";
+import { sqliteDatabase } from "./sqliteDatabase";
 
 interface SqliteContext {
   db: Database;
@@ -33,15 +32,13 @@ interface SqliteContext {
 }
 
 const now = () => new Date().toISOString();
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-let SQL: SqlJsStatic | undefined;
-
 export class SQLiteInventoryStore implements InventoryStoreDriver {
   private readonly lockContext = new AsyncLocalStorage<SqliteContext>();
-  private queue = Promise.resolve();
+  private readonly database;
 
-  constructor(private readonly databaseFile = config.databaseFile) {}
+  constructor(private readonly databaseFile = config.databaseFile) {
+    this.database = sqliteDatabase(databaseFile);
+  }
 
   async read(): Promise<StoreData> {
     const active = this.lockContext.getStore();
@@ -75,28 +72,13 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
       return callback();
     }
 
-    const run = async () => {
-      const db = await this.openDatabase();
+    return this.database.write(async (db) => {
+      this.createSchema(db);
       const context: SqliteContext = { db, dirty: false };
-
       return this.lockContext.run(context, async () => {
-        try {
-          return await callback();
-        } finally {
-          if (context.dirty) {
-            await this.saveDatabase(db);
-          }
-          db.close();
-        }
+        return callback();
       });
-    };
-
-    const next = this.queue.then(run, run);
-    this.queue = next.then(
-      () => undefined,
-      () => undefined
-    );
-    return next;
+    });
   }
 
   async saveItem(item: InventoryItem) {
@@ -196,31 +178,6 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
       const context = this.requireContext();
       return this.readReconcileRuns(context.db, limit);
     });
-  }
-
-  private async openDatabase() {
-    SQL ??= await initSqlJs({
-      locateFile: (file) => path.join(rootDir, "node_modules", "sql.js", "dist", file)
-    });
-
-    await fs.mkdir(path.dirname(this.databaseFile), { recursive: true });
-
-    let db: Database;
-    try {
-      db = new SQL.Database(await fs.readFile(this.databaseFile));
-    } catch {
-      db = new SQL.Database();
-    }
-
-    this.createSchema(db);
-    return db;
-  }
-
-  private async saveDatabase(db: Database) {
-    const tempPath = `${this.databaseFile}.tmp`;
-    await fs.mkdir(path.dirname(this.databaseFile), { recursive: true });
-    await fs.writeFile(tempPath, Buffer.from(db.export()));
-    await fs.rename(tempPath, this.databaseFile);
   }
 
   private createSchema(db: Database) {

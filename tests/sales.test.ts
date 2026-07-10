@@ -1,0 +1,59 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import type { SalesOrder } from "../src/shared/types";
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), "joshs-erp-sales-"));
+process.env.DATABASE_FILE = path.join(directory, "inventory.sqlite");
+process.env.SALES_DATABASE_FILE = path.join(directory, "legacy-sales.sqlite");
+const { loadSalesOrders, upsertSalesOrders } = await import("../src/server/salesStore.ts");
+const { getSalesDashboard } = await import("../src/server/salesService.ts");
+const { SQLiteInventoryStore } = await import("../src/server/sqliteStore.ts");
+
+test.after(async () => { await fs.rm(directory, { recursive: true, force: true }); });
+
+test("sales ledger upserts stable marketplace orders without duplicates", async () => {
+  await upsertSalesOrders("shopify", [order({ grossAmount: 25, itemCount: 2 })]);
+  await upsertSalesOrders("shopify", [order({ grossAmount: 30, itemCount: 3 })]);
+  const rows = await loadSalesOrders();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].grossAmount, 30);
+  assert.equal(rows[0].itemCount, 3);
+  assert.equal(rows[0].countryCode, "US");
+});
+
+test("sales dashboard aggregates revenue, geography, products, and platform coverage", async () => {
+  const dashboard = await getSalesDashboard({ range: "all", platform: "all" });
+  assert.equal(dashboard.summary.orders, 1);
+  assert.equal(dashboard.summary.revenue, 30);
+  assert.equal(dashboard.countries[0].countryCode, "US");
+  assert.equal(dashboard.products[0].sku, "SKU-1");
+  assert.equal(dashboard.platforms.find((row) => row.platform === "shopify")?.orders, 1);
+});
+
+test("inventory and sales share one SQLite file without overwriting each other", async () => {
+  const inventory = new SQLiteInventoryStore(process.env.DATABASE_FILE);
+  await inventory.mutate((data) => {
+    data.items.push({
+      id: "item-1", sku: "SKU-1", name: "Product", description: "", quantity: 4,
+      safetyStock: 0, maxInventory: 20, active: true, mappings: {},
+      createdAt: "2026-07-10T00:00:00.000Z", updatedAt: "2026-07-10T00:00:00.000Z"
+    });
+  });
+  await upsertSalesOrders("etsy", [{ ...order(), platform: "etsy", orderId: "etsy-1", lineItems: [] }]);
+  assert.equal((await inventory.read()).items.some((item) => item.id === "item-1"), true);
+  assert.equal((await loadSalesOrders()).some((row) => row.orderId === "etsy-1"), true);
+});
+
+function order(overrides: Partial<SalesOrder> = {}): SalesOrder {
+  return {
+    platform: "shopify", orderId: "order-1", orderNumber: "#1001",
+    createdAt: "2026-07-10T12:00:00.000Z", updatedAt: "2026-07-10T12:00:00.000Z",
+    status: "PAID", currency: "USD", grossAmount: 25, netAmount: 22,
+    countryCode: "US", regionCode: "IL", itemCount: 2, sourceUrl: "",
+    lineItems: [{ platform: "shopify", orderId: "order-1", lineId: "line-1", sku: "SKU-1", title: "Product", quantity: 2, amount: 22 }],
+    ...overrides
+  };
+}

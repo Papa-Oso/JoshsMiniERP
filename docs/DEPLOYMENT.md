@@ -1,80 +1,30 @@
 # Deployment
 
-Production is optional. The normal personal-store installation remains local SQLite with no cloud services.
+The supported root ERP installation is local-first and uses `data/inventory.sqlite`. A hosted root ERP deployment is intentionally not supported because the current SQLite file requires durable single-machine storage and must not be placed on an ephemeral Cloud Run filesystem.
 
-## Target Architecture
+The embedded Shopify app is a separate deployable surface. Its hosted OAuth session storage may use the database configured by that app's Prisma schema. That session database contains Shopify app sessions; it is not an ERP inventory or reporting database.
 
-Hosted deployment uses:
-
-- One Cloud Run service for the root ERP API
-- One Cloud Run service for the embedded Shopify app
-- One Cloud SQL PostgreSQL instance with separate ERP and Shopify session databases
-- Secret Manager for database URLs, API tokens, Shopify credentials, and marketplace credentials
-
-Both services share the same `ERP_API_TOKEN`. The ERP service must use `NODE_ENV=production`, `STORE_DRIVER=postgres`, and a stable HTTPS URL.
-
-## Recommended Deployment
-
-Authenticate with Google Cloud, then use the reviewed helper:
-
-```powershell
-gcloud auth login
-.\scripts\deploy-personal-shopify-app.ps1 `
-  -ProjectId <project-id> `
-  -ShopifyClientId <client-id> `
-  -ShopifyClientSecret <client-secret>
-```
-
-The helper prompts for sensitive values, stores runtime secrets in Secret Manager, deploys both services, and aligns Shopify configuration. Review the script and its proposed cloud changes before running it. Use `-ReleaseShopifyConfig` only when intentionally releasing Shopify app configuration.
-
-Do not place production secrets directly in documentation, shell history, source files, container images, or `shopify.app.toml`.
-
-## Required ERP Environment
+## Local ERP
 
 ```text
-NODE_ENV=production
-HOST=0.0.0.0
-ERP_API_TOKEN=<secret reference>
-STORE_DRIVER=postgres
-DATABASE_URL=<Cloud SQL secret reference>
-SHOPIFY_SHOP_DOMAIN=<permanent myshopify domain>
-SHOPIFY_CLIENT_ID=<secret/reference>
-SHOPIFY_CLIENT_SECRET=<secret reference>
-SHOPIFY_API_VERSION=<supported version>
+NODE_ENV=
+HOST=127.0.0.1
+STORE_DRIVER=sqlite
+DATABASE_FILE=data/inventory.sqlite
 ```
 
-Add Etsy and eBay settings only when those integrations are enabled.
+Use `npm run dev` for normal operation. Keep `data/`, OAuth tokens, and `.env` out of source control. Run `npm run inv -- backup` before bulk imports, credential changes, or data migrations.
 
-## Required Shopify App Environment
+## Embedded Shopify App
+
+The embedded app still requires a stable HTTPS URL, durable session storage, Shopify credentials, and a route to the ERP API. Review the nested Shopify app documentation before deployment. Do not reuse its session database as the ERP database.
+
+Required scopes now include:
 
 ```text
-NODE_ENV=production
-SHOPIFY_API_KEY=<client id>
-SHOPIFY_API_SECRET=<secret reference>
-SHOPIFY_APP_URL=<stable HTTPS app URL>
-SCOPES=read_inventory,write_inventory,read_products,read_locations
-DATABASE_URL=<Shopify session database secret reference>
-ERP_API_BASE_URL=<ERP HTTPS URL>/api
-ERP_API_TOKEN=<same ERP token secret>
+read_inventory,write_inventory,read_products,read_locations,read_orders
 ```
-
-## Pre-Deployment Checklist
-
-- `npm run check:all` passes.
-- `npm run audit:all` passes or findings are reviewed and documented.
-- A current operational backup exists and its manifest passes `restore-dry-run`.
-- Database migration and rollback paths are reviewed.
-- Marketplace mappings and live-write behavior have not changed unexpectedly.
-- No local data or secrets appear in the Git diff.
-
-## Post-Deployment Smoke Checks
-
-1. An unauthenticated ERP `/api/health` request returns `401`.
-2. An authenticated health request returns `{ "ok": true }`.
-3. The embedded Shopify app loads without an ERP connection error.
-4. A known SKU count matches the expected ERP value.
-5. Run and review a reconcile or dry-run before any live sync.
 
 ## Recovery
 
-Restore the ERP database from the approved backup/export, restore print assets and feedback history, start the ERP API, and reconcile every enabled marketplace before allowing live writes. Record the date and outcome of restore rehearsals without recording secrets or customer data.
+Restore `data/inventory.sqlite` and print assets from an approved operational backup. Start the local ERP, inspect marketplace connections, and run reconcile or dry-run workflows before allowing live inventory writes.
