@@ -9,9 +9,8 @@ const feedbackFile = path.join(tempDir, "feedback.sqlite");
 
 process.env.FEEDBACK_DATA_FILE = feedbackFile;
 
-const { applyFeedbackHistory, loadFeedbackHistory, loadFeedbackScanRuns, resetFeedbackHistory } = await import(
-  "../src/server/ebayReviews/feedbackStore.ts"
-);
+const { anonymizeFeedbackUsernames, applyFeedbackHistory, loadFeedbackHistory, loadFeedbackScanRuns, resetFeedbackHistory } =
+  await import("../src/server/ebayReviews/feedbackStore.ts");
 
 after(async () => {
   await rm(tempDir, { recursive: true, force: true });
@@ -38,6 +37,21 @@ test("feedback store tracks rows and scan runs in the configured SQLite file", a
   assert.equal(scanRuns[0].scan_mode, "incremental");
   assert.equal(scanRuns[0].rows_exported, 1);
   assert.equal(scanRuns[1].scan_mode, "full");
+
+  const anonymized = await anonymizeFeedbackUsernames(["buyer-2"], {
+    replacementFactory: () => "deleted-silver-river-test"
+  });
+  assert.equal(anonymized.checkedUsernames, 1);
+  assert.equal(anonymized.matchedRows, 1);
+  assert.equal(anonymized.changedRows, 1);
+
+  const anonymizedHistory = await loadFeedbackHistory();
+  assert.equal(anonymizedHistory.find((row) => row.feedback_id === "2")?.buyer_username, "deleted-silver-river-test");
+  assert.equal(anonymizedHistory.find((row) => row.feedback_id === "1")?.buyer_username, "buyer-1");
+
+  const noMatch = await anonymizeFeedbackUsernames(["missing-buyer"]);
+  assert.equal(noMatch.matchedRows, 0);
+  assert.equal(noMatch.changedRows, 0);
 
   const reset = await resetFeedbackHistory();
   assert.equal(reset.deleted_rows, 3);

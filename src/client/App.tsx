@@ -27,7 +27,14 @@ import { ItemManagementPage } from "./ItemManagementPage";
 import { PrintingPage } from "./PrintingPage";
 import { ReviewPage } from "./ReviewPage";
 import { Metric, MiniStat, Panel } from "./ui";
-import type { DashboardPayload, InventoryItem, Platform, PlatformMapping, PrinterInfo, PrintingPayload } from "../shared/types";
+import type {
+  DashboardPayload,
+  InventoryItem,
+  Platform,
+  PlatformMapping,
+  PrinterInfo,
+  PrintingPayload
+} from "../shared/types";
 import { defaultMaxInventory, platformLabels, platforms } from "../shared/types";
 
 const emptyDashboard: DashboardPayload = {
@@ -935,10 +942,16 @@ function MappingFields({
           </label>
         ) : null}
         {platform === "ebay" ? (
-          <label>
-            Offer ID
-            <input value={mapping.offerId ?? ""} onChange={(event) => onChange({ offerId: event.target.value })} />
-          </label>
+          <>
+            <label>
+              Listing ID
+              <input value={mapping.listingId ?? ""} onChange={(event) => onChange({ listingId: event.target.value })} />
+            </label>
+            <label>
+              Offer ID
+              <input value={mapping.offerId ?? ""} onChange={(event) => onChange({ offerId: event.target.value })} />
+            </label>
+          </>
         ) : null}
         {platform === "shopify" ? (
           <>
@@ -964,7 +977,7 @@ function MappingFields({
 function mappingTarget(platform: Platform, mapping: PlatformMapping) {
   if (platform === "shopify") return shortId(mapping.inventoryItemId) ?? "Shopify item";
   if (platform === "etsy") return mapping.listingId || mapping.remoteSku || "Etsy listing";
-  if (platform === "ebay") return mapping.offerId || mapping.remoteSku || "eBay offer";
+  if (platform === "ebay") return mapping.listingId || mapping.offerId || mapping.remoteSku || "eBay listing";
   return mapping.remoteSku || "store item";
 }
 

@@ -192,6 +192,31 @@ export interface PlatformStatus {
   missing: string[];
 }
 
+export interface EbayDeletionNoticeRecord {
+  id: string;
+  receivedAt: string;
+  topic?: string;
+  schemaVersion?: string;
+  notificationId?: string;
+  eventDate?: string;
+  publishDate?: string;
+  publishAttemptCount?: number;
+  username?: string;
+  userId?: string;
+  eiasToken?: string;
+  processedAt?: string;
+}
+
+export interface EbayDeletionNoticeStatus {
+  configured: boolean;
+  endpoint?: string;
+  error?: string;
+  notices: EbayDeletionNoticeRecord[];
+  total: number;
+  unprocessedCount: number;
+  latestReceivedAt?: string;
+}
+
 export type MappingHealthStatus = "ok" | "disabled" | "missing_config" | "missing_mapping" | "warning";
 
 export interface MappingHealthRow {

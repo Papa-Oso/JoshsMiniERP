@@ -1,0 +1,46 @@
+# eBay Account Deletion Worker
+
+Tiny Cloudflare Worker used only for eBay Marketplace Account Deletion compliance.
+
+It supports:
+
+- `GET ?challenge_code=...` for eBay endpoint verification.
+- `POST` for Marketplace Account Deletion notifications.
+- `GET /notices` for the local ERP to poll stored notices with an admin bearer token.
+- `POST /notices/:id/processed` for marking a notice processed.
+
+The local ERP remains local. This endpoint does not expose the dashboard, inventory database, or API.
+
+## Local Test
+
+```powershell
+node workers/ebay-account-deletion/test-worker.mjs
+```
+
+## Deploy
+
+```powershell
+cd workers/ebay-account-deletion
+npx wrangler login
+npx wrangler kv namespace create EBAY_DELETION_NOTICES
+npx wrangler secret put EBAY_VERIFICATION_TOKEN
+npx wrangler secret put EBAY_NOTIFICATION_ADMIN_TOKEN
+npx wrangler deploy
+```
+
+Use the deployed `https://...workers.dev` URL as the eBay notification endpoint.
+
+The verification token must be the same value pasted into eBay's Alerts & Notifications page.
+
+Add the admin token and endpoint to the local ERP `.env` so app notifications can poll stored notices:
+
+```env
+EBAY_DELETION_NOTICES_URL=https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
+EBAY_DELETION_NOTICES_TOKEN=<same value as EBAY_NOTIFICATION_ADMIN_TOKEN>
+```
+
+For this deployment, the eBay notification endpoint is pinned in `wrangler.toml` as:
+
+```text
+https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
+```

@@ -119,6 +119,12 @@ The local UI includes a Review tool for operational history and daily exception 
 - Store sales are detected on sync by comparing each platform's current quantity to the last quantity this tool successfully pushed.
 - First sync for a newly mapped store captures a baseline only. It does not push that store until a later sync, so you can confirm the local count before anything writes to the marketplace.
 
+## eBay Legacy Listings
+
+Existing eBay listings are treated as protected business assets. Do not end, relist, recreate, migrate, or bulk revise them just to connect the ERP. Many existing listings are traditional eBay listings, not Sell Inventory API-managed SKUs, so the app reads them through eBay's Trading API using the listing's Custom label/SKU and Item ID.
+
+Legacy eBay listing quantity writes are intentionally disabled until the write path is reviewed. The next safe eBay phase is read-only listing scan, mapping preview, local-only mapping apply, and baseline capture. See [PLAN.md](PLAN.md#ebay-legacy-listing-safety-plan).
+
 That last-synced baseline lets simultaneous sales subtract correctly. If Etsy drops from 15 to 14 and eBay drops from 15 to 13 before the next sync, the tool subtracts 3 total units from the master inventory, then pushes the new count to every mapped store.
 
 ## CLI
@@ -562,8 +568,28 @@ Useful eBay helpers:
 ```powershell
 npm run inv -- ebay-test
 npm run inv -- ebay-lookup NEON-MUG
+npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
 ```
+
+### eBay Marketplace Account Deletion
+
+Production eBay keysets must either subscribe to Marketplace Account Deletion notifications or receive an exemption. This repo includes a tiny Cloudflare Worker at `workers/ebay-account-deletion` for the subscription path. The Worker is public, but the local ERP remains private.
+
+For this deployment, use this endpoint in eBay Alerts & Notifications:
+
+```text
+https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
+```
+
+The Worker stores received notices in Cloudflare KV. Configure the local ERP to poll the protected notice feed:
+
+```env
+EBAY_DELETION_NOTICES_URL=https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev
+EBAY_DELETION_NOTICES_TOKEN=<Cloudflare Worker admin token>
+```
+
+The local ERP processes deletion notices quietly in the background. If a notice matches saved eBay feedback usernames in `data/feedback.sqlite`, those usernames are replaced with generated `deleted-*` names and the notice is marked processed.
 
 ## Windows Automation
 

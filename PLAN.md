@@ -75,6 +75,77 @@ Status legend:
 | eBay reviews controls | Done | CSV buttons own the scrape/export actions, incremental is preferred, and early feedback prevents empty CSV creation. |
 | UI consistency guide | Done | `UI_STYLE_GUIDE.md` captures page identity, settings, buttons, panels, feedback, inventory visuals, and verification rules. |
 | Notification framework | Done | Topbar bell shows unread active alerts for inventory state, sync issues, and printer status problems. Stock state alerts are not dismissible; operational alerts can be dismissed locally. |
+| eBay legacy listing safety | In progress | eBay OAuth is connected and legacy active listings can be read through Trading API by Custom label/SKU and Item ID. Existing listings must not be ended, relisted, migrated, or quantity-pushed until the legacy write path is deliberately reviewed. |
+
+## eBay Legacy Listing Safety Plan
+
+Current state:
+
+- eBay production OAuth is connected and `data/ebay-auth.json` exists locally.
+- The Sell Inventory API is reachable, but it reports zero Inventory API-managed SKUs for the seller account.
+- Existing live listings are traditional/legacy eBay listings. They are visible through the Trading API.
+- eBay's seller-facing **Custom label (SKU)** maps to the app's local SKU.
+- `JW-HJC-BOLD-001` is locally mapped to existing eBay Item ID `327075240793`.
+- Legacy eBay listing reads are allowed; legacy eBay quantity writes are intentionally disabled until reviewed.
+
+Safety rules:
+
+- Do not end, delete, relist, or recreate existing eBay listings to make this app work.
+- Do not migrate listings into the Sell Inventory API unless there is a separate, explicit plan and backup.
+- Do not bulk revise listings without a preview, backup, and a one-SKU test.
+- Treat existing eBay Item IDs, sales history, watchers, ranking, and listing age as business assets.
+- Use read-only discovery and baseline capture before any write behavior.
+
+Implementation sequence:
+
+1. Keep eBay writes frozen for legacy listings.
+   - Legacy mappings may read by Item ID and Custom label/SKU.
+   - `ReviseInventoryStatus` or other Trading API write calls stay disabled until explicitly enabled.
+
+2. Build a read-only eBay listing scanner.
+   - Pull active listings with Trading API `GetMyeBaySelling`.
+   - Capture Custom label/SKU, Item ID, title, available quantity, total quantity, sold count, watch count, and URL.
+   - Save or export the scan for review without changing local inventory or eBay.
+
+3. Add a preview/apply mapping workflow.
+   - Match local SKUs to eBay Custom label/SKU.
+   - Preview exact matches, missing local SKUs, missing eBay listings, duplicate SKUs, and title mismatches.
+   - Apply only exact trusted mappings: `enabled=true`, `remoteSku=<Custom label>`, `listingId=<Item ID>`.
+
+4. Baseline all newly mapped eBay listings.
+   - First sync/reconcile reads the eBay available quantity and records it as `lastRemoteQuantity` / `lastSyncedQuantity`.
+   - The baseline run must not subtract local stock or push quantity back to eBay.
+   - Review differences between local, Shopify, Etsy, and eBay before enabling sale detection.
+
+5. Decide eBay quantity policy.
+   - Option A: read-only eBay, use it only for visibility.
+   - Option B: detect eBay sales and subtract local inventory, but do not push eBay quantities.
+   - Option C: push canonical local quantity to eBay after manual review.
+   - Option C requires a separate write-safety checklist.
+
+6. Add legacy eBay write support only if needed.
+   - Use Trading API `ReviseInventoryStatus` for existing fixed-price listings.
+   - Require Item ID and SKU for mapped listings.
+   - Add a feature flag or explicit setting before any live eBay write.
+   - Test one low-risk SKU manually, verify in eBay Seller Hub, then expand cautiously.
+
+7. Add a safer eBay tools view.
+   - Show scan results, mapping preview, applied mappings, mismatches, and read-only reconcile output.
+   - Keep write actions visually separate and disabled by default.
+
+8. Back up before bulk changes.
+   - Run `npm run inv -- backup`.
+   - Keep a CSV/JSON export of the eBay listing scan.
+   - Confirm the backup manifest before applying bulk mappings or enabling writes.
+
+Acceptance for the next eBay phase:
+
+- A read-only scan lists all active legacy eBay listings.
+- Exact SKU matches can be previewed before applying mappings.
+- Applying mappings changes only local ERP data, never live eBay listings.
+- Newly mapped eBay listings show as linked in the Inventory page.
+- First eBay baseline run performs no live eBay writes.
+- `npm run build` and `npm test` pass.
 
 ## Recent UI and Fulfillment Work
 
@@ -179,6 +250,7 @@ npm run inv -- ebay-auth-callback "https://your-accept-url?code=...&state=..."
 npm run inv -- ebay-refresh
 npm run inv -- ebay-test
 npm run inv -- ebay-lookup NEON-MUG
+npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
 ```
 

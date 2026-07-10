@@ -1,0 +1,15 @@
+name = "joshsminierp-ebay-account-deletion"
+main = "worker.js"
+compatibility_date = "2026-07-09"
+workers_dev = true
+preview_urls = false
+
+[vars]
+EBAY_NOTIFICATION_ENDPOINT = "https://joshsminierp-ebay-account-deletion.joshswidgets.workers.dev"
+
+[[kv_namespaces]]
+binding = "EBAY_DELETION_NOTICES"
+id = "97441e1484eb4f80a04a9f55b36bc87d"
+
+[observability]
+enabled = true

@@ -625,7 +625,7 @@ async function ebayLookupFromCli(input: string[]) {
 async function ebayMapFromCli(input: string[]) {
   const [localSku, maybeEbaySku, ...rest] = input;
   if (!localSku) {
-    throw new Error("Usage: npm run inv -- ebay-map <local-sku> [ebay-sku] [--offer-id <id>] [--disable]");
+    throw new Error("Usage: npm run inv -- ebay-map <local-sku> [ebay-sku] [--listing-id <id>] [--offer-id <id>] [--disable]");
   }
 
   const ebaySku = maybeEbaySku && !maybeEbaySku.startsWith("--") ? maybeEbaySku : localSku;
@@ -647,6 +647,7 @@ async function ebayMapFromCli(input: string[]) {
         ...current,
         enabled: !flags.disable,
         remoteSku: ebaySku,
+        listingId: stringFlag(flags["listing-id"]) ?? result.listingId ?? current.listingId,
         offerId: stringFlag(flags["offer-id"]) ?? current.offerId,
         lastRemoteQuantity: typeof quantity === "number" ? quantity : current.lastRemoteQuantity
       }
@@ -655,6 +656,7 @@ async function ebayMapFromCli(input: string[]) {
 
   console.log(`${item.sku}: eBay mapping saved.`);
   console.log(`  eBay SKU: ${ebaySku}`);
+  if (result.listingId || flags["listing-id"]) console.log(`  Listing ID: ${stringFlag(flags["listing-id"]) ?? result.listingId}`);
   console.log(`  Quantity: ${typeof quantity === "number" ? quantity : "-"}`);
 }
 

@@ -31,6 +31,10 @@ export interface AppConfig {
     marketplaceId: string;
     tokenFile: string;
   };
+  ebayDeletionNotices: {
+    endpoint?: string;
+    adminToken?: string;
+  };
   etsy: {
     apiKey?: string;
     accessToken?: string;
@@ -108,6 +112,10 @@ export const config: AppConfig = {
     environment: readConfigured("EBAY_ENVIRONMENT") === "sandbox" ? "sandbox" : "production",
     marketplaceId: readConfigured("EBAY_MARKETPLACE_ID") ?? "EBAY_US",
     tokenFile: path.resolve(readConfigured("EBAY_TOKEN_FILE") ?? "data/ebay-auth.json")
+  },
+  ebayDeletionNotices: {
+    endpoint: readConfigured("EBAY_DELETION_NOTICES_URL"),
+    adminToken: readConfigured("EBAY_DELETION_NOTICES_TOKEN")
   },
   etsy: {
     apiKey: etsyApiKey,

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import express from "express";
 import { config, requireProductionApiToken } from "./config";
+import { startEbayDeletionNoticeProcessor } from "./ebayDeletionNotices";
 import { router } from "./routes";
 import { startScheduler } from "./scheduler";
 
@@ -45,6 +46,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 });
 
 await startScheduler();
+startEbayDeletionNoticeProcessor();
 
 app.listen(config.port, config.host, () => {
   console.log(`Inventory API listening at http://${config.host}:${config.port}`);

@@ -1,3 +1,5 @@
+import * as cheerio from "cheerio";
+import type { AnyNode } from "domhandler";
 import { platformLabels } from "../../shared/types";
 import type { InventoryItem, PlatformMapping } from "../../shared/types";
 import { config, ebayMissingEnv, ebayReadyForSync } from "../config";
@@ -26,6 +28,7 @@ export interface EbayInventoryItemSummary {
   sku: string;
   availability?: { shipToLocationAvailability?: { quantity?: number } };
   product?: { title?: string };
+  listingId?: string;
 }
 
 interface InventoryItemsResponse {
@@ -59,6 +62,14 @@ export class EbayAdapter implements PlatformAdapter {
 
   async pullQuantity(item: InventoryItem, mapping: PlatformMapping): Promise<RemoteQuantity> {
     const sku = mappingSku(item, mapping);
+    if (mapping.listingId) {
+      const listing = await this.getLegacyListing(mapping.listingId);
+      if (listing.sku && listing.sku !== sku) {
+        throw new Error(`eBay listing ${mapping.listingId} uses custom label ${listing.sku}, not ${sku}.`);
+      }
+      return { platform: this.platform, quantity: listing.quantityAvailable, raw: listing };
+    }
+
     const payload = await readJson<{
       availability?: { shipToLocationAvailability?: { quantity?: number } };
     }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
@@ -75,6 +86,10 @@ export class EbayAdapter implements PlatformAdapter {
     quantity: number
   ): Promise<PushResult> {
     const sku = mappingSku(item, mapping);
+    if (mapping.listingId) {
+      throw new Error("Legacy eBay listing quantity pushes are disabled until this listing path is reviewed.");
+    }
+
     const request: Record<string, unknown> = {
       sku,
       shipToLocationAvailability: { quantity }
@@ -100,11 +115,56 @@ export class EbayAdapter implements PlatformAdapter {
   }
 
   async lookupSku(sku: string) {
-    return readJson<{
-      sku?: string;
-      availability?: { shipToLocationAvailability?: { quantity?: number } };
-      product?: { title?: string };
-    }>(await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() }));
+    try {
+      return await readJson<EbayInventoryItemSummary>(
+        await fetch(`${this.baseUrl()}/inventory_item/${encodeURIComponent(sku)}`, { headers: await this.headers() })
+      );
+    } catch (error) {
+      const legacy = await this.lookupLegacyListingBySku(sku);
+      if (legacy) {
+        return {
+          sku: legacy.sku,
+          listingId: legacy.itemId,
+          availability: { shipToLocationAvailability: { quantity: legacy.quantityAvailable } },
+          product: { title: legacy.title }
+        };
+      }
+      throw error;
+    }
+  }
+
+  async listLegacyActiveListings() {
+    const listings: EbayLegacyListing[] = [];
+    let pageNumber = 1;
+    let totalPages = 1;
+
+    do {
+      const $ = await this.tradingCall(
+        "GetMyeBaySelling",
+        `
+          <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+            <Version>1209</Version>
+            <DetailLevel>ReturnAll</DetailLevel>
+            <ActiveList>
+              <Include>true</Include>
+              <Pagination>
+                <EntriesPerPage>200</EntriesPerPage>
+                <PageNumber>${pageNumber}</PageNumber>
+              </Pagination>
+            </ActiveList>
+          </GetMyeBaySellingRequest>
+        `
+      );
+
+      $("ActiveList > ItemArray > Item").each((_, element) => {
+        listings.push(legacyListingFromNode($, $(element)));
+      });
+
+      totalPages = numberValue($("ActiveList > PaginationResult > TotalNumberOfPages").first().text(), 1);
+      pageNumber += 1;
+    } while (pageNumber <= totalPages);
+
+    return listings;
   }
 
   async listInventoryItems() {
@@ -157,18 +217,129 @@ export class EbayAdapter implements PlatformAdapter {
     return `https://${host}/sell/inventory/v1`;
   }
 
+  private tradingUrl() {
+    const host = config.ebay.environment === "sandbox" ? "api.sandbox.ebay.com" : "api.ebay.com";
+    return `https://${host}/ws/api.dll`;
+  }
+
   private async headers() {
     return {
       Authorization: `Bearer ${await getEbayAccessToken()}`,
+      "Accept-Language": "en-US",
       "Content-Type": "application/json",
       "Content-Language": "en-US",
       "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId
     };
   }
+
+  private async tradingHeaders(callName: string) {
+    return {
+      "Content-Type": "text/xml;charset=UTF-8",
+      "X-EBAY-API-CALL-NAME": callName,
+      "X-EBAY-API-SITEID": "0",
+      "X-EBAY-API-COMPATIBILITY-LEVEL": "1209",
+      "X-EBAY-API-IAF-TOKEN": await getEbayAccessToken()
+    };
+  }
+
+  private async tradingCall(callName: string, requestBody: string) {
+    const response = await fetch(this.tradingUrl(), {
+      method: "POST",
+      headers: await this.tradingHeaders(callName),
+      body: xmlDocument(requestBody)
+    });
+    const text = await response.text();
+    const $ = cheerio.load(text, { xmlMode: true });
+    const ack = $("Ack").first().text();
+
+    if (!response.ok || (ack !== "Success" && ack !== "Warning")) {
+      throw new Error(`${response.status} ${response.statusText}: ${formatTradingErrors($)}`);
+    }
+
+    return $;
+  }
+
+  private async getLegacyListing(itemId: string) {
+    const $ = await this.tradingCall(
+      "GetItem",
+      `
+        <GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+          <Version>1209</Version>
+          <DetailLevel>ReturnAll</DetailLevel>
+          <ItemID>${escapeXml(itemId)}</ItemID>
+        </GetItemRequest>
+      `
+    );
+    const item = $("Item").first();
+    if (!item.length) throw new Error(`eBay listing ${itemId} was not found.`);
+    return legacyListingFromNode($, item);
+  }
+
+  private async lookupLegacyListingBySku(sku: string) {
+    const normalizedSku = sku.trim().toUpperCase();
+    const listings = await this.listLegacyActiveListings();
+    return listings.find((listing) => listing.sku.trim().toUpperCase() === normalizedSku);
+  }
+}
+
+interface EbayLegacyListing {
+  itemId: string;
+  sku: string;
+  title: string;
+  quantity: number;
+  quantitySold: number;
+  quantityAvailable: number;
+  url?: string;
 }
 
 function formatEbayErrors(errors: EbayErrorDetail[]) {
   return errors
     .map((error) => error.longMessage ?? error.message ?? `eBay error ${error.errorId ?? "unknown"}`)
     .join("; ");
+}
+
+function formatTradingErrors($: cheerio.CheerioAPI) {
+  const messages = $("Errors")
+    .map((_, element) => {
+      const error = $(element);
+      return error.children("LongMessage").first().text() || error.children("ShortMessage").first().text();
+    })
+    .get()
+    .filter(Boolean);
+  return messages.join("; ") || "eBay Trading API request failed.";
+}
+
+function legacyListingFromNode($: cheerio.CheerioAPI, item: cheerio.Cheerio<AnyNode>): EbayLegacyListing {
+  const quantity = numberValue(item.children("Quantity").first().text());
+  const quantitySold = numberValue(item.find("SellingStatus > QuantitySold").first().text());
+  const explicitAvailable = item.children("QuantityAvailable").first().text();
+  const quantityAvailable = explicitAvailable ? numberValue(explicitAvailable) : Math.max(0, quantity - quantitySold);
+
+  return {
+    itemId: item.children("ItemID").first().text(),
+    sku: item.children("SKU").first().text(),
+    title: item.children("Title").first().text(),
+    quantity,
+    quantitySold,
+    quantityAvailable,
+    url: item.find("ListingDetails > ViewItemURL").first().text() || undefined
+  };
+}
+
+function xmlDocument(body: string) {
+  return `<?xml version="1.0" encoding="utf-8"?>${body.trim()}`;
+}
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function numberValue(value: string, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }

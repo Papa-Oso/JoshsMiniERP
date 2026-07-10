@@ -15,6 +15,7 @@ import { refreshScheduler } from "./scheduler";
 import { runInventorySync } from "./syncEngine";
 import { printingRouter } from "./printingRoutes";
 import { getOperationsReport } from "./reportingService";
+import { getEbayDeletionNoticeStatus } from "./ebayDeletionNotices";
 
 export const router = express.Router();
 router.use("/ebay-reviews", ebayReviewsRouter);
@@ -115,6 +116,10 @@ router.post("/sync", asyncHandler(async (_req, res) => {
 
 router.get("/reports/operations", asyncHandler(async (_req, res) => {
   res.json(await getOperationsReport());
+}));
+
+router.get("/ebay/deletion-notices", asyncHandler(async (_req, res) => {
+  res.json(await getEbayDeletionNoticeStatus());
 }));
 
 function asyncHandler(

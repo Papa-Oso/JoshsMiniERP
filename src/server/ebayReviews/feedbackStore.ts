@@ -125,6 +125,73 @@ export async function resetFeedbackHistory() {
   }
 }
 
+export async function anonymizeFeedbackUsernames(usernames, { replacementFactory = randomDeletedUsername } = {}) {
+  const candidates = uniqueNormalizedUsernames(usernames);
+  if (!candidates.length) {
+    return {
+      checkedUsernames: 0,
+      matchedRows: 0,
+      changedRows: 0,
+      replacements: []
+    };
+  }
+
+  const db = await openDatabase();
+  const now = new Date().toISOString();
+  let matchedRows = 0;
+  let changedRows = 0;
+  const replacements = [];
+
+  try {
+    db.run('BEGIN TRANSACTION');
+
+    for (const username of candidates) {
+      const rows = matchingFeedbackRows(db, username);
+      if (!rows.length) continue;
+
+      const replacement = uniqueDeletedUsername(db, replacementFactory);
+      replacements.push({ rows: rows.length, replacement });
+      matchedRows += rows.length;
+
+      for (const row of rows) {
+        const buyerUsername = normalizedUsername(row.buyer_username) === username ? replacement : row.buyer_username || '';
+        const sellerUsername = normalizedUsername(row.seller_username) === username ? replacement : row.seller_username || '';
+        db.run(
+          `
+            UPDATE scanned_feedback
+            SET feedback_key = ?,
+                buyer_username = ?,
+                seller_username = ?,
+                last_seen_at = ?
+            WHERE feedback_key = ?
+          `,
+          [anonymizedFeedbackKey(row.feedback_key), buyerUsername, sellerUsername, now, row.feedback_key]
+        );
+        changedRows += typeof db.getRowsModified === 'function' ? db.getRowsModified() : 1;
+      }
+    }
+
+    db.run('COMMIT');
+    if (changedRows > 0) await saveDatabase(db);
+
+    return {
+      checkedUsernames: candidates.length,
+      matchedRows,
+      changedRows,
+      replacements
+    };
+  } catch (error) {
+    try {
+      db.run('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and report the original error.
+    }
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
 export async function loadFeedbackScanRuns(limit = 50) {
   const db = await openDatabase();
 
@@ -279,6 +346,37 @@ function hasFeedback(db, feedbackKey) {
   }
 }
 
+function matchingFeedbackRows(db, username) {
+  const statement = db.prepare(`
+    SELECT feedback_key, buyer_username, seller_username
+    FROM scanned_feedback
+    WHERE lower(buyer_username) = lower(?) OR lower(seller_username) = lower(?)
+  `);
+  try {
+    statement.bind([username, username]);
+    const rows = [];
+    while (statement.step()) rows.push(statement.getAsObject());
+    return rows;
+  } finally {
+    statement.free();
+  }
+}
+
+function usernameExists(db, username) {
+  const statement = db.prepare(`
+    SELECT 1
+    FROM scanned_feedback
+    WHERE lower(buyer_username) = lower(?) OR lower(seller_username) = lower(?)
+    LIMIT 1
+  `);
+  try {
+    statement.bind([username, username]);
+    return statement.step();
+  } finally {
+    statement.free();
+  }
+}
+
 function touchFeedback(db, feedbackKey, now) {
   db.run('UPDATE scanned_feedback SET last_seen_at = ? WHERE feedback_key = ?', [now, feedbackKey]);
 }
@@ -366,6 +464,34 @@ function insertFeedbackScanRun(db, stats, now) {
       now
     ]
   );
+}
+
+function uniqueNormalizedUsernames(usernames) {
+  return [...new Set((Array.isArray(usernames) ? usernames : [usernames]).map(normalizedUsername).filter(Boolean))];
+}
+
+function normalizedUsername(username) {
+  return String(username || '').trim().toLowerCase();
+}
+
+function uniqueDeletedUsername(db, replacementFactory) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const replacement = replacementFactory();
+    if (!usernameExists(db, replacement)) return replacement;
+  }
+  return `deleted-user-${crypto.randomUUID()}`;
+}
+
+function randomDeletedUsername() {
+  const adjectives = ['quiet', 'silver', 'cedar', 'amber', 'north', 'hidden', 'clear', 'bright'];
+  const nouns = ['river', 'stone', 'harbor', 'meadow', 'signal', 'canvas', 'orbit', 'field'];
+  const adjective = adjectives[crypto.randomInt(adjectives.length)];
+  const noun = nouns[crypto.randomInt(nouns.length)];
+  return `deleted-${adjective}-${noun}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+function anonymizedFeedbackKey(feedbackKey) {
+  return crypto.createHash('sha256').update(`${feedbackKey}|${crypto.randomUUID()}`).digest('hex');
 }
 
 async function saveDatabase(db) {
