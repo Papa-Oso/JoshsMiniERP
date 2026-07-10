@@ -53,12 +53,12 @@ The complete CLI and marketplace setup references are in [Operations](docs/OPERA
 | [Data model](docs/DATA_MODEL.md)           | Canonical SQLite tables, identities, practices, and queries   |
 | [Operations](docs/OPERATIONS.md)           | Daily commands, backup, restore, scheduler, and CSV workflows |
 | [Marketplaces](docs/MARKETPLACES.md)       | Shopify, Etsy, eBay, OAuth, mapping, and write-safety rules   |
-| [Deployment](docs/DEPLOYMENT.md)           | Cloud Run, Cloud SQL, secrets, and production checks          |
+| [Deployment](docs/DEPLOYMENT.md)           | Local ERP and embedded-app deployment boundaries              |
 | [Testing](docs/TESTING.md)                 | Test layers, required checks, and live-service boundaries     |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common startup, storage, credential, and sync problems        |
-| [Audit report](docs/AUDIT_REPORT.md)       | General assessment, completed changes, risks, and roadmap     |
 | [UI style guide](UI_STYLE_GUIDE.md)        | Local ERP visual and interaction standards                    |
 | [Plan](PLAN.md)                            | Active priorities and acceptance criteria                     |
+| [Near-term kanban](KANBAN.md)              | Current executable work queue derived from the plan           |
 
 AI coding agents must also follow [AGENTS.md](AGENTS.md).
 
@@ -78,7 +78,6 @@ npm run audit:all
 - `data/inventory.json`: portable migration/export format
 - `data/printing/`: uploaded print assets
 - Review and sales tables live in `data/inventory.sqlite` alongside inventory and operational history.
-- Sales tables live in `data/inventory.sqlite` alongside the other operational tables.
 - `data/backups/`: operational backups
 
 The entire `data/` directory is local-only and ignored by Git.

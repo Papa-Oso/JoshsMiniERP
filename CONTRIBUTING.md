@@ -8,12 +8,7 @@ Never commit or share `.env`, OAuth tokens, database credentials, files under `d
 
 ## Workflow
 
-1. Start from a clean understanding of `git status`.
-2. Keep changes focused and avoid unrelated refactors.
-3. Add focused tests for behavior changes.
-4. Update the canonical documentation when a command, workflow, safety boundary, or architectural decision changes.
-5. Run the verification matrix in `docs/TESTING.md`.
-6. Review the final diff for secrets, generated files, destructive marketplace behavior, and accidental changes to local-first assumptions.
+Follow the complete task sequence in `AGENTS.md`. Select near-term work from `KANBAN.md`, keep changes focused, update the canonical documentation when behavior changes, and run the matrix in `docs/TESTING.md`.
 
 ## Commit and Review Guidance
 
@@ -31,6 +26,7 @@ Never commit or share `.env`, OAuth tokens, database credentials, files under `d
 - `docs/MARKETPLACES.md`: marketplace setup and safety
 - `docs/ARCHITECTURE.md`: durable system design
 - `PLAN.md`: active and upcoming work only
+- `KANBAN.md`: current executable work derived from plan epics
 - `CHANGELOG.md`: completed user-visible changes
 
 Prefer linking to one canonical explanation over copying long instructions into multiple files.

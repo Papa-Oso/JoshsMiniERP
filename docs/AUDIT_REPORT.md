@@ -1,4 +1,6 @@
-# Application Audit Report
+# Historical Application Audit Report
+
+> This completed audit is retained for historical context. For current architecture, operations, marketplace safety, and active work, use `ARCHITECTURE.md`, `OPERATIONS.md`, `MARKETPLACES.md`, and `../PLAN.md`. Statements below describe the repository at the audit date and may no longer represent current behavior.
 
 **Project:** Josh's Mini ERP  
 **Audit date:** 2026-07-10  
