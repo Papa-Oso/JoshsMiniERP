@@ -6,7 +6,7 @@ The application runs on one computer with SQLite at `data/inventory.sqlite`. It 
 
 ## Quick Start
 
-Requires Node `>=20.19 <22` or `>=22.12`.
+Requires Node `>=20.19 <22` for the root ERP, or Node `>=22.18` for the complete ERP and embedded Shopify app toolchain.
 
 ```powershell
 npm install
