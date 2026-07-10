@@ -104,6 +104,11 @@ export async function loadSalesPulls() {
   return database.read((db) => { ensureSchema(db); return queryRows(db, "SELECT platform, pulled_at, orders_seen, status, message FROM sales_pulls ORDER BY pulled_at DESC"); });
 }
 
+export async function loadCanonicalProductNames() {
+  await ensureLegacySalesMigrated();
+  return database.read((db) => { ensureSchema(db); const exists=queryRows(db, "SELECT 1 AS found FROM sqlite_master WHERE type='table' AND name='inventory_items'").length>0; return exists ? new Map(queryRows(db, "SELECT sku, name FROM inventory_items WHERE active = 1").map((row) => [String(row.sku).toLowerCase(), String(row.name)])) : new Map<string,string>(); });
+}
+
 export async function loadEbayFinancialTransactions() {
   await ensureLegacySalesMigrated();
   return database.read((db) => { ensureSchema(db); return queryRows(db, "SELECT transaction_date, type, order_id, fee_amount, gross_amount, net_amount, currency FROM ebay_financial_transactions ORDER BY transaction_date DESC").map((row) => ({ transactionDate: String(row.transaction_date), type: String(row.type), orderId: String(row.order_id ?? ""), feeAmount: Number(row.fee_amount ?? 0), grossAmount: Number(row.gross_amount ?? 0), netAmount: Number(row.net_amount ?? 0), currency: String(row.currency ?? "USD") })); });

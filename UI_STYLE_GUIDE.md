@@ -140,6 +140,12 @@ The icon should sit near the page title or primary page header. Do not rely on n
 - Prefer selects for known choices, toggles for boolean choices, and number inputs for quantities.
 - For print quantities, ask for the business input the user thinks in. Example: instruction pages printed, then convert to instruction count using per-page quantity.
 
+## Product Names
+
+- Use the short canonical name from Inventory wherever a marketplace record resolves to a local SKU or item.
+- Keep long marketplace listing titles in storage and reporting/export data, not as the primary operational UI label.
+- Use a marketplace title in the UI only when no canonical inventory match exists.
+
 ## Feedback
 
 - Success messages should appear in the relevant pane.
