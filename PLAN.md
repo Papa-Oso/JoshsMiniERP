@@ -128,7 +128,7 @@ Status legend:
 | eBay reviews controls | Done | CSV buttons own the scrape/export actions, incremental is preferred, and early feedback prevents empty CSV creation. |
 | UI consistency guide | Done | `UI_STYLE_GUIDE.md` captures page identity, settings, buttons, panels, feedback, inventory visuals, and verification rules. |
 | Notification framework | Done | Topbar bell shows unread active alerts for inventory state, sync issues, and printer status problems. Stock state alerts are not dismissible; operational alerts can be dismissed locally. |
-| eBay legacy listing safety | In progress | Read-only legacy scan and exact-match local mapping apply are in place. Existing listings must not be ended, relisted, migrated, or quantity-pushed until the legacy write path is deliberately reviewed. |
+| eBay legacy listing safety | In progress | Read-only legacy scan, exact-match local mapping apply, and one-listing Inventory API migration preview/apply are in place. Existing listings must not be ended, relisted, bulk migrated, bulk revised, or quantity-pushed without deliberate review. |
 
 ## eBay Legacy Listing Safety Plan
 
@@ -140,13 +140,14 @@ Current state:
 - eBay's seller-facing **Custom label (SKU)** maps to the app's local SKU.
 - `JW-HJC-BOLD-001` is locally mapped to existing eBay Item ID `327075240793`.
 - Legacy eBay listing reads are allowed; legacy eBay quantity writes are intentionally disabled until reviewed.
-- `ebay-legacy-scan` exports active legacy listings with Custom label/SKU, Item ID, title, quantity, sold count, watch count, and URL.
+- `ebay-legacy-scan` exports active legacy listings with Custom label/SKU, Item ID, title, quantity, sold count, watch count, business policy fields, listing type, immediate-payment state, location, variation SKUs, obvious legacy-only features, and URL.
 - `ebay-legacy-map` previews exact SKU matches, missing local SKUs, missing eBay listings, duplicates, title mismatches, and mapping conflicts. With `--apply`, it saves only exact eligible matches locally and leaves sync baselines empty for the next reconcile/sync.
+- `ebay-migrate <sku-or-listing-id>` previews a one-listing Inventory API migration path. With `--apply --confirm-listing-id <id>`, it calls eBay's Inventory API migration endpoint for that single listing, then rewrites the local mapping from legacy `listingId` to Inventory API `offerId` only after eBay returns a successful matching SKU/offer response.
 
 Safety rules:
 
 - Do not end, delete, relist, or recreate existing eBay listings to make this app work.
-- Do not migrate listings into the Sell Inventory API unless there is a separate, explicit plan and backup.
+- Do not migrate listings into the Sell Inventory API in bulk. Use only the guarded one-listing `ebay-migrate` workflow after preview, Seller Hub review, and backup.
 - Do not bulk revise listings without a preview, backup, and a one-SKU test.
 - Treat existing eBay Item IDs, sales history, watchers, ranking, and listing age as business assets.
 - Use read-only discovery and baseline capture before any write behavior.
@@ -159,7 +160,7 @@ Implementation sequence:
 
 2. Build a read-only eBay listing scanner.
    - Pull active listings with Trading API `GetMyeBaySelling`.
-   - Capture Custom label/SKU, Item ID, title, available quantity, total quantity, sold count, watch count, and URL.
+   - Capture Custom label/SKU, Item ID, title, available quantity, total quantity, sold count, watch count, listing type, business policy fields, immediate-payment state, inventory location, variation SKUs, obvious legacy-only features, and URL.
    - Save or export the scan for review without changing local inventory or eBay.
    - Implemented as `npm run inv -- ebay-legacy-scan [--output data/ebay-legacy-listings.csv]`.
 
@@ -174,32 +175,42 @@ Implementation sequence:
    - The baseline run must not subtract local stock or push quantity back to eBay.
    - Review differences between local, Shopify, Etsy, and eBay before enabling sale detection.
 
-5. Decide eBay quantity policy.
+5. Add guarded Inventory API migration for one listing at a time.
+   - Preview by local SKU or eBay Item ID.
+   - Check local SKU, eBay Custom label/SKU, Item ID, fixed-price listing type, business policies, immediate payment, inventory location, duplicate SKUs, and obvious legacy-only features.
+   - Apply only with `--apply --confirm-listing-id <id>`.
+   - Call eBay's Inventory API `POST /bulk_migrate_listing` for one listing, not a bulk batch.
+   - After a successful matching response, save local `remoteSku` and `offerId`, remove legacy `listingId`, and reset sync baselines for the next read.
+   - Implemented as `npm run inv -- ebay-migrate <sku-or-listing-id> [--apply --confirm-listing-id <id>]`.
+
+6. Decide eBay quantity policy.
    - Option A: read-only eBay, use it only for visibility.
    - Option B: detect eBay sales and subtract local inventory, but do not push eBay quantities.
    - Option C: push canonical local quantity to eBay after manual review.
    - Option C requires a separate write-safety checklist.
 
-6. Add legacy eBay write support only if needed.
+7. Add legacy eBay write support only if needed.
    - Use Trading API `ReviseInventoryStatus` for existing fixed-price listings.
    - Require Item ID and SKU for mapped listings.
    - Add a feature flag or explicit setting before any live eBay write.
    - Test one low-risk SKU manually, verify in eBay Seller Hub, then expand cautiously.
 
-7. Add a safer eBay tools view.
+8. Add a safer eBay tools view.
    - Show scan results, mapping preview, applied mappings, mismatches, and read-only reconcile output.
    - Keep write actions visually separate and disabled by default.
 
-8. Back up before bulk changes.
+9. Back up before bulk changes.
    - Run `npm run inv -- backup`.
    - Keep a CSV/JSON export of the eBay listing scan.
-   - Confirm the backup manifest before applying bulk mappings or enabling writes.
+   - Confirm the backup manifest before applying bulk mappings, migrating a listing, or enabling writes.
 
 Acceptance for the current eBay phase:
 
 - A read-only scan lists all active legacy eBay listings.
 - Exact SKU matches can be previewed before applying mappings.
 - Applying mappings changes only local ERP data, never live eBay listings.
+- Migration preview changes no local or eBay data.
+- Migration apply requires one explicit confirmed eBay Item ID and rewrites local mapping only after a successful matching eBay response.
 - Newly mapped eBay listings show as linked in the Inventory page.
 - First eBay baseline run performs no live eBay writes.
 - `npm run build` and `npm test` pass.
@@ -321,6 +332,8 @@ npm run inv -- ebay-lookup NEON-MUG
 npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
 npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
 npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
+npm run inv -- ebay-migrate NEON-MUG
+npm run inv -- ebay-migrate NEON-MUG --apply --confirm-listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
 ```
@@ -361,27 +374,36 @@ Apply eBay legacy mappings only after reviewing the preview. The apply step chan
 npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
 ```
 
-3. Import batch spreadsheet changes with a dry run first.
+3. Migrate an eBay listing only after a one-listing preview and Seller Hub review.
+
+```powershell
+npm run inv -- ebay-migrate JW-HJC-BOLD-001 --output data/ebay-migration-preview.csv
+npm run inv -- ebay-migrate JW-HJC-BOLD-001 --apply --confirm-listing-id 327075240793
+```
+
+The apply command is a live eBay migration. It should remain one listing at a time and should be followed by a reconcile/sync baseline review before quantity pushes are trusted.
+
+4. Import batch spreadsheet changes with a dry run first.
 
 ```powershell
 npm run inv -- csv-import inventory-batch.csv --dry-run
 npm run inv -- csv-import inventory-batch.csv
 ```
 
-4. Reconcile before any push.
+5. Reconcile before any push.
 
 ```powershell
 npm run inv -- reconcile shopify
 npm run inv -- sync --dry-run --platform shopify
 ```
 
-5. Push only after the review looks correct.
+6. Push only after the review looks correct.
 
 ```powershell
 npm run inv -- sync
 ```
 
-6. Keep automated sync running only after credentials and mappings are trusted.
+7. Keep automated sync running only after credentials and mappings are trusted.
 
 ```powershell
 npm run inv -- schedule on 30

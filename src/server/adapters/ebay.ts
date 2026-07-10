@@ -24,6 +24,23 @@ interface BulkPriceQuantityResponse {
   errors?: EbayErrorDetail[];
 }
 
+export interface EbayBulkMigrateListingResponse {
+  responses?: EbayMigrateListingResponse[];
+}
+
+export interface EbayMigrateListingResponse {
+  listingId?: string;
+  marketplaceId?: string;
+  statusCode?: number;
+  inventoryItemGroupKey?: string;
+  inventoryItems?: Array<{
+    sku?: string;
+    offerId?: string;
+  }>;
+  errors?: EbayErrorDetail[];
+  warnings?: EbayErrorDetail[];
+}
+
 export interface EbayInventoryItemSummary {
   sku: string;
   availability?: { shipToLocationAvailability?: { quantity?: number } };
@@ -40,6 +57,20 @@ export interface EbayLegacyListing {
   quantityAvailable: number;
   watchCount?: number;
   url?: string;
+  listingType?: string;
+  autoPay?: boolean;
+  location?: string;
+  postalCode?: string;
+  country?: string;
+  paymentProfileId?: string;
+  paymentProfileName?: string;
+  returnProfileId?: string;
+  returnProfileName?: string;
+  shippingProfileId?: string;
+  shippingProfileName?: string;
+  listingEnhancements?: string[];
+  hasBuyerRequirements?: boolean;
+  variationSkus?: string[];
 }
 
 interface InventoryItemsResponse {
@@ -204,6 +235,26 @@ export class EbayAdapter implements PlatformAdapter {
     return items;
   }
 
+  async bulkMigrateListings(listingIds: string[]) {
+    const uniqueListingIds = [...new Set(listingIds.map((listingId) => listingId.trim()).filter(Boolean))];
+    if (uniqueListingIds.length === 0) {
+      throw new Error("At least one eBay listing ID is required for migration.");
+    }
+    if (uniqueListingIds.length > 5) {
+      throw new Error("eBay bulk migration accepts at most five listing IDs per request.");
+    }
+
+    return readJson<EbayBulkMigrateListingResponse>(
+      await fetch(`${this.baseUrl()}/bulk_migrate_listing`, {
+        method: "POST",
+        headers: await this.headers(),
+        body: JSON.stringify({
+          requests: uniqueListingIds.map((listingId) => ({ listingId }))
+        })
+      })
+    );
+  }
+
   private assertBulkUpdateSucceeded(payload: BulkPriceQuantityResponse, sku: string) {
     const topLevelErrors = payload.errors ?? [];
     if (topLevelErrors.length) {
@@ -271,7 +322,7 @@ export class EbayAdapter implements PlatformAdapter {
     return $;
   }
 
-  private async getLegacyListing(itemId: string) {
+  async getLegacyListing(itemId: string) {
     const $ = await this.tradingCall(
       "GetItem",
       `
@@ -316,6 +367,15 @@ function legacyListingFromNode($: cheerio.CheerioAPI, item: cheerio.Cheerio<AnyN
   const quantitySold = numberValue(item.find("SellingStatus > QuantitySold").first().text());
   const explicitAvailable = item.children("QuantityAvailable").first().text();
   const quantityAvailable = explicitAvailable ? numberValue(explicitAvailable) : Math.max(0, quantity - quantitySold);
+  const sellerProfiles = item.children("SellerProfiles").first();
+  const listingEnhancements = item.children("ListingEnhancement")
+    .map((_, element) => $(element).text().trim())
+    .get()
+    .filter(Boolean);
+  const variationSkus = item.find("Variations > Variation > SKU")
+    .map((_, element) => $(element).text().trim())
+    .get()
+    .filter(Boolean);
 
   return {
     itemId: item.children("ItemID").first().text(),
@@ -325,7 +385,21 @@ function legacyListingFromNode($: cheerio.CheerioAPI, item: cheerio.Cheerio<AnyN
     quantitySold,
     quantityAvailable,
     watchCount: optionalNumber(item.children("WatchCount").first().text()),
-    url: item.find("ListingDetails > ViewItemURL").first().text() || undefined
+    url: item.find("ListingDetails > ViewItemURL").first().text() || undefined,
+    listingType: optionalString(item.children("ListingType").first().text()),
+    autoPay: optionalBoolean(item.children("AutoPay").first().text()),
+    location: optionalString(item.children("Location").first().text()),
+    postalCode: optionalString(item.children("PostalCode").first().text()),
+    country: optionalString(item.children("Country").first().text()),
+    paymentProfileId: optionalString(sellerProfiles.find("SellerPaymentProfile > PaymentProfileID").first().text()),
+    paymentProfileName: optionalString(sellerProfiles.find("SellerPaymentProfile > PaymentProfileName").first().text()),
+    returnProfileId: optionalString(sellerProfiles.find("SellerReturnProfile > ReturnProfileID").first().text()),
+    returnProfileName: optionalString(sellerProfiles.find("SellerReturnProfile > ReturnProfileName").first().text()),
+    shippingProfileId: optionalString(sellerProfiles.find("SellerShippingProfile > ShippingProfileID").first().text()),
+    shippingProfileName: optionalString(sellerProfiles.find("SellerShippingProfile > ShippingProfileName").first().text()),
+    listingEnhancements,
+    hasBuyerRequirements: item.children("BuyerRequirementDetails").children().length > 0,
+    variationSkus
   };
 }
 
@@ -350,4 +424,15 @@ function numberValue(value: string, fallback = 0) {
 function optionalNumber(value: string) {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function optionalBoolean(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  return undefined;
+}
+
+function optionalString(value: string) {
+  return value.trim() || undefined;
 }

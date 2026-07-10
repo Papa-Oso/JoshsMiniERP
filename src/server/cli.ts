@@ -19,6 +19,7 @@ import {
   scanEbayLegacyListings,
   type EbayLegacyOutputFormat
 } from "./ebayLegacyListings";
+import { migrateEbayLegacyListing, type EbayMigrationOutputFormat } from "./ebayMigration";
 import { completeEtsyAuthorization, createEtsyAuthorization, refreshEtsyToken } from "./etsyAuth";
 import { createItem, adjustInventory, listData, updateItem, updateSchedule } from "./inventoryService";
 import { migrateJsonToPostgres } from "./postgresMigration";
@@ -130,6 +131,9 @@ try {
       break;
     case "ebay-legacy-map":
       await ebayLegacyMapFromCli(args.slice(1));
+      break;
+    case "ebay-migrate":
+      await ebayMigrateFromCli(args.slice(1));
       break;
     case "ebay-map":
       await ebayMapFromCli(args.slice(1));
@@ -694,6 +698,46 @@ async function ebayLegacyMapFromCli(input: string[]) {
   }
 }
 
+async function ebayMigrateFromCli(input: string[]) {
+  const flags = parseFlags(input);
+  const [target] = positionalArgs(input);
+  if (!target) {
+    throw new Error("Usage: npm run inv -- ebay-migrate <local-sku-or-listing-id> [--apply --confirm-listing-id <id>] [--output file]");
+  }
+
+  const apply = Boolean(flags.apply);
+  const result = await migrateEbayLegacyListing({
+    target,
+    apply,
+    confirmListingId: stringFlag(flags["confirm-listing-id"]),
+    outputPath: stringFlag(flags.output),
+    format: migrationOutputFormat(stringFlag(flags.format))
+  });
+
+  console.log(
+    `${apply ? "eBay migration" : "eBay migration preview"}: ${result.status}${result.listingId ? ` for listing ${result.listingId}` : ""}${result.localSku ? ` / ${result.localSku}` : ""}.`
+  );
+  if (result.offerId) {
+    console.log(`  Inventory API offer ID: ${result.offerId}`);
+  }
+  console.table(
+    result.checks.map((check) => ({
+      status: check.status,
+      check: check.check,
+      message: check.message
+    }))
+  );
+  for (const message of result.messages) {
+    console.log(`- ${message}`);
+  }
+  if (result.outputPath) {
+    console.log(`Wrote eBay migration ${apply ? "result" : "preview"} to ${result.outputPath}.`);
+  }
+  if (apply && result.status !== "migrated") {
+    process.exitCode = 1;
+  }
+}
+
 async function ebayMapFromCli(input: string[]) {
   const [localSku, maybeEbaySku, ...rest] = input;
   if (!localSku) {
@@ -874,6 +918,12 @@ function outputFormat(value: string | undefined): EbayLegacyOutputFormat | undef
   throw new Error("Output format must be csv or json.");
 }
 
+function migrationOutputFormat(value: string | undefined): EbayMigrationOutputFormat | undefined {
+  if (value === undefined) return undefined;
+  if (value === "csv" || value === "json") return value;
+  throw new Error("Output format must be csv or json.");
+}
+
 function chooseShopifyLocation(levels: ShopifyInventoryLevel[], filter?: string) {
   if (levels.length === 0) {
     throw new Error("Shopify returned no inventory locations for this SKU.");
@@ -969,6 +1019,7 @@ Commands:
   npm run inv -- ebay-lookup <sku>
   npm run inv -- ebay-legacy-scan [--output data/ebay-legacy-listings.csv]
   npm run inv -- ebay-legacy-map [--apply] [--output data/ebay-legacy-mapping.csv]
+  npm run inv -- ebay-migrate <local-sku-or-listing-id> [--apply --confirm-listing-id <id>]
   npm run inv -- ebay-map <local-sku> [ebay-sku] [--listing-id <id>] [--offer-id <id>]
   npm run inv -- etsy-auth-url
   npm run inv -- etsy-auth-callback "https://..."

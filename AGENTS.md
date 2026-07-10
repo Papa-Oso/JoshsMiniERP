@@ -20,8 +20,9 @@ Use this file as the first-stop guide for AI-assisted coding in this repo.
 
 - Do not print, copy, commit, or expose `.env`, OAuth tokens, marketplace credentials, database passwords, or files under `data/`.
 - Do not install or start Docker, local database services, cloud services, or extra background daemons unless Josh explicitly asks in the current task.
-- Do not end, relist, recreate, migrate, bulk revise, or quantity-push legacy eBay listings unless Josh explicitly approves a reviewed write-safety plan.
-- For eBay legacy listings, read-only scan and local-only mapping apply are allowed; live listing writes remain disabled by default.
+- Do not end, relist, recreate, bulk migrate, bulk revise, or quantity-push legacy eBay listings unless Josh explicitly approves a reviewed write-safety plan.
+- For eBay legacy listings, read-only scan and local-only mapping apply are allowed; live quantity writes remain disabled by default.
+- `ebay-migrate` preview is allowed; `ebay-migrate --apply` is a live eBay Inventory API migration and must stay one listing at a time with an exact `--confirm-listing-id`.
 - Back up before bulk imports, migrations, credential changes, or marketplace mapping changes that affect many SKUs.
 
 ## UI Work Rules

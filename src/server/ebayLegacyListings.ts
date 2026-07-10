@@ -477,6 +477,17 @@ function legacyListingsToCsv(listings: EbayLegacyListing[]) {
     "quantity",
     "quantitySold",
     "watchCount",
+    "listingType",
+    "autoPay",
+    "location",
+    "postalCode",
+    "country",
+    "paymentProfileId",
+    "returnProfileId",
+    "shippingProfileId",
+    "listingEnhancements",
+    "hasBuyerRequirements",
+    "variationSkus",
     "url"
   ];
   return csvRows(headers, listings.map((listing) => ({
@@ -487,6 +498,17 @@ function legacyListingsToCsv(listings: EbayLegacyListing[]) {
     quantity: listing.quantity,
     quantitySold: listing.quantitySold,
     watchCount: listing.watchCount,
+    listingType: listing.listingType,
+    autoPay: listing.autoPay,
+    location: listing.location,
+    postalCode: listing.postalCode,
+    country: listing.country,
+    paymentProfileId: listing.paymentProfileId,
+    returnProfileId: listing.returnProfileId,
+    shippingProfileId: listing.shippingProfileId,
+    listingEnhancements: listing.listingEnhancements?.join("|"),
+    hasBuyerRequirements: listing.hasBuyerRequirements,
+    variationSkus: listing.variationSkus?.join("|"),
     url: listing.url
   })));
 }

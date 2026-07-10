@@ -124,7 +124,9 @@ The local UI includes a Review tool for operational history and daily exception 
 
 Existing eBay listings are treated as protected business assets. Do not end, relist, recreate, migrate, or bulk revise them just to connect the ERP. Many existing listings are traditional eBay listings, not Sell Inventory API-managed SKUs, so the app reads them through eBay's Trading API using the listing's Custom label/SKU and Item ID.
 
-Legacy eBay listing quantity writes are intentionally disabled until the write path is reviewed. Use `ebay-legacy-scan` to export active listings and `ebay-legacy-map` to preview exact SKU mappings before saving them locally with `--apply`. The apply step changes only local ERP mapping data and leaves sync baselines empty so the next reconcile/sync captures a read-only baseline first. See [PLAN.md](PLAN.md#ebay-legacy-listing-safety-plan).
+Legacy eBay listing quantity writes are intentionally disabled until the write path is reviewed. Use `ebay-legacy-scan` to export active listings and `ebay-legacy-map` to preview exact SKU mappings before saving them locally with `--apply`. The apply step changes only local ERP mapping data and leaves sync baselines empty so the next reconcile/sync captures a read-only baseline first.
+
+If a listing should become Sell Inventory API-managed, use `ebay-migrate <sku-or-listing-id>` first. Preview mode checks the local SKU, eBay Custom label, Item ID, fixed-price listing type, business policies, immediate payment, inventory location, variation shape, and obvious legacy-only features without changing live eBay data. The live migration path is one listing at a time and requires `--apply --confirm-listing-id <id>`; after a successful eBay response, the local mapping switches from legacy `listingId` to Inventory API `offerId` and resets baselines for the next sync. See [PLAN.md](PLAN.md#ebay-legacy-listing-safety-plan).
 
 That last-synced baseline lets simultaneous sales subtract correctly. If Etsy drops from 15 to 14 and eBay drops from 15 to 13 before the next sync, the tool subtracts 3 total units from the master inventory, then pushes the new count to every mapped store.
 
@@ -151,6 +153,7 @@ npm run inv -- sku-audit --location "Main" --output data/sku-audit.csv
 npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
 npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
 npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
+npm run inv -- ebay-migrate NEON-MUG --output data/ebay-migration-preview.csv
 npm run inv -- migrate-sqlite --dry-run
 npm run inv -- migrate-sqlite
 npm run inv -- migrate-postgres --dry-run
@@ -575,11 +578,15 @@ npm run inv -- ebay-lookup NEON-MUG
 npm run inv -- ebay-legacy-scan --output data/ebay-legacy-listings.csv
 npm run inv -- ebay-legacy-map --output data/ebay-legacy-mapping-preview.csv
 npm run inv -- ebay-legacy-map --apply --output data/ebay-legacy-mapping-applied.csv
+npm run inv -- ebay-migrate NEON-MUG
+npm run inv -- ebay-migrate NEON-MUG --apply --confirm-listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --listing-id 327075240793
 npm run inv -- ebay-map NEON-MUG --offer-id 9876543210
 ```
 
 Run `ebay-legacy-map` without `--apply` first. The apply mode saves only exact eligible SKU matches to local ERP mapping data and does not end, relist, migrate, or revise live eBay listings.
+
+Run `ebay-migrate` without `--apply` first. The apply mode calls eBay's Inventory API `POST /bulk_migrate_listing` for exactly one confirmed listing, so review Seller Hub and keep the generated preview/backup before using it.
 
 ### eBay Marketplace Account Deletion
 
@@ -629,6 +636,7 @@ Run without `--install` first to preview the startup script or `schtasks` comman
 
 - Shopify adapter uses Admin GraphQL `inventoryItem` reads and `inventorySetQuantities` writes.
 - eBay adapter uses OAuth user tokens with Sell Inventory `GET /inventory_item/{sku}` and `POST /bulk_update_price_quantity` for Inventory API-managed offers, and checks the per-SKU response before treating a push as successful.
+- eBay migration helper uses Sell Inventory `POST /bulk_migrate_listing` only when `ebay-migrate` is run with one explicit `--confirm-listing-id`.
 - Legacy eBay listings are read through Trading API `GetMyeBaySelling`/`GetItem` by Custom label/SKU and Item ID. Quantity pushes for those legacy listings are intentionally disabled.
 - Etsy adapter reads and writes `GET/PUT /v3/application/listings/{listing_id}/inventory`, preserving the listing inventory payload and changing the matched SKU quantity.
 
@@ -643,6 +651,7 @@ Relevant docs:
 - https://developer.ebay.com/develop/guides-v2/authorization
 - https://developer.ebay.com/api-docs/static/oauth-token-types.html
 - https://developer.ebay.com/api-docs/sell/static/inventory/bulk-updates.html
+- https://developer.ebay.com/api-docs/sell/inventory/resources/listing/methods/bulkMigrateListing
 - https://developer.ebay.com/devzone/xml/docs/reference/ebay/getmyebayselling.html
 - https://developer.etsy.com/documentation/tutorials/listings
 
