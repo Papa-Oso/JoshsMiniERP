@@ -22,31 +22,75 @@ This file contains active and upcoming work only. Completed user-visible work be
 - eBay reviews use the official authenticated Feedback API with incremental pagination and image URL capture; browser scraping has been removed from the supported path.
 - A local sales ledger and Sales dashboard normalize read-only Shopify, eBay, and Etsy orders for revenue, product, platform, trend, and coarse geographic reporting.
 
-## Active Work: Repository Maintainability
+## Upcoming Repository Follow-ups
 
-Goal: make the project easier to understand, safer to change, and independently verifiable.
-
-### Documentation
-
-- [x] Separate development, architecture, operations, marketplace, deployment, testing, and troubleshooting guidance.
-- [x] Keep the root README focused on orientation and quick start.
-- [x] Remove live operational state and real listing identifiers from examples.
-- [x] Add contribution, security, license, and changelog files.
-- [ ] Add architecture decision records when a new durable decision is made.
-
-### Automated Quality
-
-- [x] Add root linting and formatting checks.
-- [x] Add focused Worker and UI check commands.
-- [x] Add a comprehensive local `check:all` command.
-- [x] Add pull-request CI without live marketplace credentials.
-- [ ] Add test coverage reporting as an informational signal, then identify safety-critical gaps.
-
-### Operations
-
+- [ ] Add an architecture decision record whenever a new durable storage, marketplace, deployment, or safety decision is made.
+- [ ] Add informational test coverage reporting, then identify safety-critical gaps.
 - [ ] Perform and record a dated restore rehearsal using a non-production copy.
 - [ ] Add a credential-rotation runbook after the next marketplace credential rotation.
-- [ ] Define a small release checklist once the first tagged release is prepared.
+- [ ] Define a small release checklist before the first tagged release.
+
+## Active Work: Comparable Sales Integrity and Geographic Reporting
+
+Goal: make marketplace sales totals explainable, auditable, and comparable across eBay and Etsy while preserving the local-only privacy boundary.
+
+### Canonical Sales Measure
+
+The primary dashboard measure is comparable net sales:
+
+```text
+product revenue after seller discounts
++ shipping charged to the buyer
+- refunded pre-tax product and shipping revenue
+= comparable net sales
+```
+
+- [ ] Exclude canceled orders entirely.
+- [ ] Exclude marketplace-collected sales tax and VAT.
+- [ ] Include buyer-paid shipping, including dynamic eBay and fixed Etsy international shipping.
+- [ ] Apply full and partial refunds exactly once.
+- [ ] Keep marketplace fees and purchased shipping labels separate from sales; use them only in expense and net-proceeds reporting.
+- [ ] Group totals by currency until a reviewed exchange-rate policy exists; never silently combine currencies.
+
+### Normalized Financial Model
+
+- [ ] Add order-level product, shipping, discount, tax, refund, and comparable-sales amounts to the canonical SQLite sales ledger.
+- [ ] Add normalized, idempotent refund records keyed by platform, order, and refund identity.
+- [ ] Record financial completeness, source, source update time, and reconciliation state without retaining additional customer information.
+- [ ] Preserve existing gross and subtotal values during migration for audit and rollback comparison.
+- [ ] Document the durable financial model in `docs/DATA_MODEL.md` and an ADR before switching the headline metric.
+
+### Marketplace Ingestion
+
+- [ ] Extend eBay order imports to retain price subtotal, delivery cost and discounts, product discounts, tax, cancellation state, and API refunds.
+- [ ] Reconcile eBay order API values with imported financial transactions for fees, refunds, shipping labels, and net proceeds.
+- [ ] Extend Etsy receipt imports to retain subtotal, shipping cost, discounts, tax, VAT, paid/canceled state, and payment/refund details.
+- [ ] Use source precedence: official financial/payment API, official order API, transaction report, order report, then legacy approximation.
+- [ ] Allow lower-priority sources to fill missing fields without overwriting newer authoritative values.
+
+### Reconciliation and Integrity
+
+- [ ] Report imported, included, canceled, refunded, and unresolved order counts for each platform and period.
+- [ ] Reconcile buyer charges into product, shipping, discounts, tax, refunds, comparable net sales, fees, labels, and net proceeds.
+- [ ] Warn on duplicate refunds, unmatched refunds, mixed currencies, missing financial breakdowns, impossible totals, stale pulls, and API/report disagreement.
+- [ ] Add a dashboard calculation explanation so operators can reproduce each headline value.
+- [ ] Back up before schema migration or bulk financial backfill; mark incomplete historical rows instead of guessing.
+
+### Useful Geographic Map
+
+- [ ] Replace the hand-drawn world polygons with a locally bundled Natural Earth country map rendered as responsive SVG.
+- [ ] Keep the map offline and local-first; do not add live tile services, geocoding, or API keys.
+- [ ] Shade countries by order volume and overlay approximate regional centroid markers where country/region data supports them.
+- [ ] Provide keyboard-accessible tooltips with region, country, orders, units, and comparable net sales.
+- [ ] Show an unknown-geography count, a clear size/color legend, a ranked country list, and a reset control if zoom is enabled.
+- [ ] Retain only country and region geography; never store or plot customer street, city, postal, or exact coordinates.
+
+### Verification and Rollout
+
+- [ ] Cover domestic free shipping, international paid shipping, discounts, cancellations, full and partial refunds, refunded shipping/tax, duplicate imports, mixed currencies, and date boundaries.
+- [ ] Assert that tax never contributes to comparable sales, canceled orders contribute zero, and refunds are applied exactly once.
+- [ ] Backfill on a verified backup, compare new results against marketplace dashboards, and review unresolved differences before switching the headline metric.
+- [ ] Run `npm test`, `npm run build`, `npm run lint`, and `npm run check:ui`; inspect Sales at desktop and mobile widths.
 
 ## Protected eBay Work
 

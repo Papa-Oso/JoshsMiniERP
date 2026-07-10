@@ -43,12 +43,7 @@ data/                               Ignored local operational data
 
 ## Change Workflow
 
-1. Read `AGENTS.md` and the task-specific documentation.
-2. Check `git status` and preserve unrelated work.
-3. Make the smallest change that solves the problem.
-4. Add or update focused tests.
-5. Run the checks appropriate to the change.
-6. Review the diff for secrets, local data, generated artifacts, and accidental marketplace writes.
+Follow the required Directions → Split → Augment → Execute → QA → Test → Commit → Push → Merge sequence in `AGENTS.md`. Use `KANBAN.md` for the current executable queue and `PLAN.md` for larger product epics.
 
 Do not combine a visual redesign with inventory, printing, or sync behavior changes unless the behavior change is required to fix the same issue.
 
