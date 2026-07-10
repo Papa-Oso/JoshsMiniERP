@@ -89,6 +89,17 @@ test("atomic sales imports apply only complete pre-tax refund components to orde
   assert.equal(saved?.reconciliationState, "unresolved");
 });
 
+test("Top Products treats marketplace placeholder SKUs as missing instead of merging unrelated titles", async () => {
+  await upsertSalesOrders("ebay", [{ ...order(), platform: "ebay", orderId: "placeholder-products", lineItems: [
+    { platform: "ebay", orderId: "placeholder-products", lineId: "one", sku: "--", title: "First resale item", quantity: 1, amount: 20 },
+    { platform: "ebay", orderId: "placeholder-products", lineId: "two", sku: "--", title: "Second resale item", quantity: 1, amount: 15 }
+  ] }]);
+  const dashboard = await getSalesDashboard({ range: "all", platform: "ebay" });
+  assert.equal(dashboard.products.some((row) => row.sku === "--"), false);
+  assert.ok(dashboard.products.some((row) => row.title === "First resale item"));
+  assert.ok(dashboard.products.some((row) => row.title === "Second resale item"));
+});
+
 function order(overrides: Partial<SalesOrder> = {}): SalesOrder {
   return {
     platform: "shopify", orderId: "order-1", orderNumber: "#1001",

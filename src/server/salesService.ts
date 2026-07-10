@@ -178,8 +178,9 @@ function aggregateLocations(orders: SalesOrder[]) {
 function aggregateProducts(orders: SalesOrder[]) {
   const groups = new Map<string, { sku: string; title: string; revenue: number; orders: Set<string>; units: number }>();
   for (const order of orders) for (const line of order.lineItems) {
-    const key = line.sku || line.title || "Unknown product";
-    const group = groups.get(key) ?? { sku: line.sku, title: line.title, revenue: 0, orders: new Set(), units: 0 };
+    const sku = line.sku.trim() === "--" ? "" : line.sku.trim();
+    const key = sku || line.title || "Unknown product";
+    const group = groups.get(key) ?? { sku, title: line.title, revenue: 0, orders: new Set(), units: 0 };
     group.revenue += line.amount; group.orders.add(`${order.platform}:${order.orderId}`); group.units += line.quantity;
     groups.set(key, group);
   }
