@@ -2675,6 +2675,31 @@ tbody tr.selected,
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
+.sales-calculation {
+  padding: 10px 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  font-size: var(--font-size-sm, 13px);
+}
+.sales-calculation summary {
+  width: fit-content;
+  color: var(--color-text);
+  font-weight: 650;
+  cursor: pointer;
+}
+.sales-calculation div {
+  max-width: 82ch;
+  padding-top: 8px;
+}
+.sales-calculation p {
+  margin: 0 0 7px;
+  line-height: 1.5;
+}
+.sales-calculation p:last-child {
+  margin-bottom: 0;
+}
 .sales-primary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.85fr);

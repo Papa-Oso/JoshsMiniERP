@@ -73,7 +73,7 @@ product revenue after seller discounts
 - [x] Report imported, included, canceled, refunded, and unresolved order counts for each platform and period.
 - [x] Reconcile buyer charges into product, shipping, discounts, tax, refunds, comparable net sales, fees, labels, and net proceeds.
 - [x] Warn on duplicate refunds, unmatched refunds, mixed currencies, missing financial breakdowns, impossible totals, stale pulls, and API/report disagreement.
-- [ ] Add a dashboard calculation explanation so operators can reproduce each headline value.
+- [x] Add a dashboard calculation explanation so operators can reproduce each headline value.
 - [ ] Back up before schema migration or bulk financial backfill; mark incomplete historical rows instead of guessing.
 
 ### Useful Geographic Map

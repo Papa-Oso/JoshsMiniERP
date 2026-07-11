@@ -47,6 +47,8 @@ try {
   await mobile.waitForTimeout(500);
   await expectHeading(mobile, "Sales");
   await expectPanels(mobile);
+  await mobile.getByText("How these totals are calculated").click();
+  await expectVisible(mobile.getByText(/Comparable net sales will replace Revenue/));
   await mobile.screenshot({ path: path.join(outputDir, "sales-mobile.png"), fullPage: true });
 
   console.log(`UI smoke screenshots written to ${outputDir}`);
@@ -64,6 +66,10 @@ async function expectHeading(page, expected) {
 async function expectPanels(page) {
   const panels = await page.locator(".panel").count();
   if (panels < 1) throw new Error("Expected at least one panel to render.");
+}
+
+async function expectVisible(locator) {
+  if (!(await locator.isVisible())) throw new Error("Expected content to be visible.");
 }
 
 function slug(value) {

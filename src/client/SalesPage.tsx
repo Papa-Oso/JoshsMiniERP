@@ -108,6 +108,25 @@ export function SalesPage() {
         <Metric label="Units sold" value={data.summary.units} />
         <Metric label="Average order" value={money(data.summary.averageOrderValue)} />
       </section>
+      <details className="sales-calculation">
+        <summary>How these totals are calculated</summary>
+        <div>
+          <p>
+            <strong>Revenue</strong> currently adds saved Shopify and eBay gross order totals plus Etsy merchandise
+            subtotal after seller discounts. Canceled Etsy receipts are excluded. This legacy headline does not yet
+            subtract refunds or consistently include shipping, and taxes may remain in marketplace gross totals.
+          </p>
+          <p>
+            <strong>Orders</strong> counts the included saved orders in the selected period and platform.{" "}
+            <strong>Units sold</strong> adds their item quantities. <strong>Average order</strong> is Revenue divided by
+            Orders. Currencies are displayed separately and are never converted or silently combined.
+          </p>
+          <p>
+            Comparable net sales will replace Revenue only after the financial backfill and marketplace reconciliation
+            are reviewed and approved.
+          </p>
+        </div>
+      </details>
       {data.ebayFinancials ? (
         <Panel title="eBay financials" icon={<BarChart3 size={17} />}>
           <section className="sales-metrics ebay-financial-metrics">

@@ -1,5 +1,6 @@
 # Changelog
 
+- Added an in-app Sales calculation disclosure that explains the current headline measures and clearly distinguishes legacy Revenue from the pending comparable-net-sales rollout.
 - Ensured duplicate refund identities affect comparable net sales exactly once while still producing an integrity warning, with focused reporting date-boundary coverage.
 - Added the first release checklist covering focused scope, verification and dependency audit, backup and migration review, secret boundaries, deployment health, protected eBay behavior, and rollback.
 - Completed a dated disposable restore rehearsal covering manifest and SQLite integrity, operational table groups, captured asset trees, API startup, and read-only marketplace reconciliation, and documented the repeatable recovery procedure.
