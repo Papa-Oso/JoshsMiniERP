@@ -18,16 +18,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Next
 
-### SALES-05 — Reconcile eBay orders with financial transactions
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Complete the repository-side reconciliation between eBay order API values and imported eBay financial transactions. Match order-linked transactions without guessing ambiguous identities; report fees, refunds, purchased shipping labels, and net proceeds separately from comparable net sales; preserve currency separation; and surface unmatched or conflicting records as aggregate integrity warnings. Add focused tests for matched, unmatched, duplicate, mixed-currency, and date-boundary cases. Do not perform a live backfill or marketplace write.
-
-**Depends on:** Existing normalized sales ledger and read-only eBay transaction import. No production data or external approval is required for repository implementation and synthetic tests.
-
 ### SALES-06 — Audit canonical comparable-sales invariants
 
 **Epic:** Comparable Sales Integrity
@@ -37,6 +27,16 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 > Audit the canonical comparable-sales calculation against the six unchecked measure requirements in `PLAN.md`: canceled-order exclusion, tax/VAT exclusion, buyer-paid shipping inclusion, exactly-once refunds, separate fees and shipping-label costs, and currency separation. Close any repository behavior or focused-test gaps without switching the Sales dashboard headline or running a historical backfill. Check off only requirements proven by implementation and tests, and document any remaining external-data dependency as a smaller follow-up.
 
 **Depends on:** Normalized financial model and reconciliation service. SALES-03 and SALES-04 remain out of scope.
+
+### SALES-07 — Audit financial backfill safety gates
+
+**Epic:** Comparable Sales Integrity
+
+**Prompt:**
+
+> Audit repository commands and documentation that can perform schema migration or bulk financial backfill. Ensure every apply path requires or creates a verified backup before mutation, keeps a dry-run or preview path, and marks incomplete historical financial rows instead of inventing component values. Add focused tests for any missing repository guard. Do not run a real backfill, inspect production data, or change marketplace state. Check off the corresponding `PLAN.md` requirement only when every repository-controlled path is proven safe; document external operational steps separately.
+
+**Depends on:** Existing backup, migration, and financial import workflows. No live credentials or production data are required.
 
 ## Later
 

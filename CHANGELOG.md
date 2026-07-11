@@ -1,5 +1,6 @@
 # Changelog
 
+- Reconciled eBay financial-report rows to saved API orders by exact order ID and currency, counting duplicate transaction keys once and excluding unmatched or conflicting rows with aggregate integrity warnings.
 - Added durable sales financial provenance and field-presence tracking with enforced source precedence, allowing lower-priority imports to fill missing components without replacing authoritative values or mistaking legitimate zeroes for missing data.
 - Added an in-app Sales calculation disclosure that explains the current headline measures and clearly distinguishes legacy Revenue from the pending comparable-net-sales rollout.
 - Ensured duplicate refund identities affect comparable net sales exactly once while still producing an integrity warning, with focused reporting date-boundary coverage.

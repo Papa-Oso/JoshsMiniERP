@@ -90,14 +90,22 @@ test("separates currencies and reports unresolved integrity categories without i
   assert.equal("refundId" in payload.warnings[0], false);
 });
 
-test("reports eBay fees, labels, net proceeds, and API/report disagreement", () => {
+test("reconciles only exact eBay financial matches and reports unresolved records", () => {
   const payload = reconcileSales({ orders: [order({ platform: "ebay", orderId: "api-order" })], refunds: [], pulls: [{ platform: "ebay", pulled_at: "2026-07-10T11:00:00.000Z" }], financials: [
-    { transactionDate: "2026-07-10T10:00:00.000Z", type: "Order", orderId: "report-order", feeAmount: -3, grossAmount: 30, netAmount: 27, currency: "USD" },
-    { transactionDate: "2026-07-10T10:00:00.000Z", type: "Shipping label", orderId: "api-order", feeAmount: 0, grossAmount: -4, netAmount: -4, currency: "USD" }
+    financial({ transactionKey: "order", type: "Order", orderId: "api-order", feeAmount: -3, grossAmount: 30, netAmount: 27 }),
+    financial({ transactionKey: "label", type: "Shipping label", orderId: "api-order", grossAmount: -4, netAmount: -4 }),
+    financial({ transactionKey: "label", type: "Shipping label", orderId: "api-order", grossAmount: -4, netAmount: -4 }),
+    financial({ transactionKey: "unmatched", type: "Order", orderId: "report-order", grossAmount: 50, netAmount: 45 }),
+    financial({ transactionKey: "no-order", type: "Other fee", orderId: "", feeAmount: -2, netAmount: -2 }),
+    financial({ transactionKey: "currency-conflict", type: "Order", orderId: "api-order", currency: "EUR", netAmount: 100 }),
+    financial({ transactionKey: "before-range", type: "Order", orderId: "api-order", transactionDate: "2026-06-09T11:59:59.999Z", netAmount: 100 })
   ], range: "30d", platform: "ebay", currency: "USD", now });
   assert.equal(payload.rows[0].fees, 3);
   assert.equal(payload.rows[0].shippingLabels, 4);
   assert.equal(payload.rows[0].netProceeds, 23);
+  assert.equal(payload.warnings.find((warning) => warning.code === "duplicate_financial_transaction")?.count, 1);
+  assert.equal(payload.warnings.find((warning) => warning.code === "unmatched_financial_transaction")?.count, 2);
+  assert.equal(payload.warnings.find((warning) => warning.code === "financial_currency_conflict")?.count, 1);
   assert.ok(payload.warnings.some((warning) => warning.code === "api_report_disagreement"));
 });
 
@@ -106,4 +114,8 @@ function order(overrides: Partial<SalesOrder> = {}): SalesOrder {
 }
 function refund(overrides: Partial<SalesRefund> = {}): SalesRefund {
   return { platform: "etsy", orderId: "order", refundId: "refund", refundedAt: "2026-07-10T10:00:00.000Z", productAmount: 0, shippingAmount: 0, taxAmount: 0, totalAmount: 0, status: "completed", currency: "USD", componentsComplete: true, source: "payment_api", sourceUpdatedAt: "2026-07-10T10:00:00.000Z", ...overrides };
+}
+
+function financial(overrides: Partial<{ transactionKey: string; transactionDate: string; type: string; orderId: string; feeAmount: number; grossAmount: number; netAmount: number; currency: string }> = {}) {
+  return { transactionKey: "financial", transactionDate: "2026-07-10T10:00:00.000Z", type: "Order", orderId: "api-order", feeAmount: 0, grossAmount: 0, netAmount: 0, currency: "USD", ...overrides };
 }

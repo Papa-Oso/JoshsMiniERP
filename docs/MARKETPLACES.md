@@ -90,6 +90,8 @@ Sales refresh also reads authoritative refund data. eBay supplies order- and lin
 
 `GET /api/sales/reconciliation` requires a marketplace and accepts the normal range plus an optional three-letter currency. It returns aggregate-only financial components and categorized integrity counts. Currencies remain separate, tax is excluded from comparable sales, and no order or refund identifiers are returned.
 
+For eBay, fees, purchased shipping labels, and net proceeds are included only from financial-report rows whose order ID and currency exactly match a saved order in the selected period. Exact duplicate transaction keys are counted once. Unmatched rows and currency conflicts are excluded rather than guessed and appear only as aggregate warnings.
+
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 
 ## Legacy eBay Listings

@@ -63,7 +63,7 @@ product revenue after seller discounts
 ### Marketplace Ingestion
 
 - [x] Extend eBay order imports to retain price subtotal, delivery cost and discounts, product discounts, tax, cancellation state, and API refunds.
-- [ ] Reconcile eBay order API values with imported financial transactions for fees, refunds, shipping labels, and net proceeds.
+- [x] Reconcile eBay order API values with imported financial transactions for fees, refunds, shipping labels, and net proceeds.
 - [x] Extend Etsy receipt imports to retain subtotal, shipping cost, discounts, tax, VAT, paid/canceled state, and payment/refund details.
 - [x] Use source precedence: official financial/payment API, official order API, transaction report, order report, then legacy approximation.
 - [x] Allow lower-priority sources to fill missing fields without overwriting newer authoritative values.

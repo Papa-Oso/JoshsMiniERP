@@ -147,13 +147,22 @@ export function reconcileSales({
   );
   const matchingRefunds = uniqueRefunds(matchingRefundRows);
   const currencies = [...new Set(imported.map((order) => order.currency || "USD"))].sort();
+  const windowFinancials =
+    platform === "ebay"
+      ? financials.filter((row) => !start || Date.parse(row.transactionDate) >= start)
+      : [];
+  const uniqueFinancialRows = uniqueFinancials(windowFinancials);
+  const importedById = new Map(imported.map((order) => [order.orderId, order]));
+  const matchingFinancials = uniqueFinancialRows.filter(
+    (row) => row.orderId && importedById.get(row.orderId)?.currency === row.currency
+  );
   const rows = currencies.map((code) =>
     reconciliationRow(
       code,
       imported.filter((order) => (order.currency || "USD") === code),
       matchingRefunds.filter((refund) => refund.currency === code),
       platform === "ebay"
-        ? financials.filter((row) => row.currency === code && (!start || Date.parse(row.transactionDate) >= start))
+        ? matchingFinancials.filter((row) => row.currency === code)
         : []
     )
   );
@@ -203,20 +212,54 @@ export function reconcileSales({
     "The latest marketplace pull is missing or older than 48 hours."
   );
   if (platform === "ebay") {
+    addWarning(
+      warnings,
+      "duplicate_financial_transaction",
+      windowFinancials.length - uniqueFinancialRows.length,
+      "Duplicate imported financial transactions were counted once and require review."
+    );
+    const currencyConflicts = uniqueFinancialRows.filter(
+      (row) => row.orderId && importedById.has(row.orderId) && importedById.get(row.orderId)?.currency !== row.currency
+    );
+    addWarning(
+      warnings,
+      "financial_currency_conflict",
+      currencyConflicts.length,
+      "Order-linked financial transactions with conflicting currencies were excluded."
+    );
+    const unmatchedFinancials = uniqueFinancialRows.filter(
+      (row) => !row.orderId || (!importedById.has(row.orderId) && !currencyConflicts.includes(row))
+    );
+    addWarning(
+      warnings,
+      "unmatched_financial_transaction",
+      unmatchedFinancials.length,
+      "Financial transactions without an exact saved-order match were excluded."
+    );
     const financialOrderIds = new Set(
-      financials
-        .filter((row) => row.type.toLowerCase() === "order" && (!start || Date.parse(row.transactionDate) >= start))
+      uniqueFinancialRows
+        .filter((row) => row.type.toLowerCase() === "order")
         .map((row) => row.orderId)
         .filter(Boolean)
     );
     addWarning(
       warnings,
       "api_report_disagreement",
-      imported.filter((order) => financialOrderIds.size && !financialOrderIds.has(order.orderId)).length,
+      imported.filter((order) => financialOrderIds.size && !financialOrderIds.has(order.orderId)).length +
+        [...financialOrderIds].filter((orderId) => !importedById.has(orderId)).length,
       "Saved API orders and imported financial-report orders do not fully overlap."
     );
   }
   return { generatedAt: new Date(now).toISOString(), range, platform, currency: currency ?? null, rows, warnings };
+}
+
+function uniqueFinancials(financials: FinancialRow[]) {
+  const unique = new Map<string, FinancialRow>();
+  for (const row of financials) {
+    const key = row.transactionKey;
+    if (!key || !unique.has(key)) unique.set(key || `row:${unique.size}`, row);
+  }
+  return [...unique.values()];
 }
 
 function uniqueRefunds(refunds: SalesRefund[]) {

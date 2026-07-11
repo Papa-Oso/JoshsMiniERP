@@ -100,6 +100,9 @@ export type SalesIntegrityWarningCode =
   | "missing_breakdown"
   | "impossible_total"
   | "stale_pull"
+  | "duplicate_financial_transaction"
+  | "unmatched_financial_transaction"
+  | "financial_currency_conflict"
   | "api_report_disagreement";
 export interface SalesReconciliationPayload {
   generatedAt: string;

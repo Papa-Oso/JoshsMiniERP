@@ -235,8 +235,9 @@ export async function loadEbayFinancialTransactions() {
     ensureSchema(db);
     return queryRows(
       db,
-      "SELECT transaction_date, type, order_id, fee_amount, gross_amount, net_amount, currency FROM ebay_financial_transactions ORDER BY transaction_date DESC"
+      "SELECT transaction_key, transaction_date, type, order_id, fee_amount, gross_amount, net_amount, currency FROM ebay_financial_transactions ORDER BY transaction_date DESC"
     ).map((row) => ({
+      transactionKey: String(row.transaction_key),
       transactionDate: String(row.transaction_date),
       type: String(row.type),
       orderId: String(row.order_id ?? ""),
