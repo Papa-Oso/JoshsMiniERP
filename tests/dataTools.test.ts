@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
@@ -22,9 +22,14 @@ process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "";
 process.env.SHOPIFY_CLIENT_ID = "";
 process.env.SHOPIFY_CLIENT_SECRET = "";
 
-const { exportInventoryCsv, exportInventoryEventsCsv, exportOperationsReportCsv, inspectOperationalBackup } = await import(
-  "../src/server/dataTools.ts"
-);
+const {
+  backupInventoryData,
+  exportInventoryCsv,
+  exportInventoryEventsCsv,
+  exportOperationsReportCsv,
+  inspectOperationalBackup,
+  pruneOperationalBackups
+} = await import("../src/server/dataTools.ts");
 
 after(async () => {
   await rm(tempDir, { recursive: true, force: true });
@@ -117,6 +122,97 @@ test("backup inspection checks manifest files without restoring", async () => {
   const missingFile = await inspectOperationalBackup(manifestPath);
   assert.equal(missingFile.restorable, false);
   assert.equal(missingFile.files.some((file) => !file.exists && file.path === sqliteBackup), true);
+});
+
+test("backup cleanup keeps the newest five operational backup sets", async () => {
+  const backupDirectory = path.join(tempDir, "prune-backups");
+  await mkdir(backupDirectory, { recursive: true });
+  const artifacts: string[] = [];
+  const manifests: string[] = [];
+
+  for (let index = 1; index <= 7; index += 1) {
+    const suffix = `2026010${index}T000000Z`;
+    const artifact = path.join(backupDirectory, `inventory-${suffix}.sqlite`);
+    const manifest = path.join(backupDirectory, `operational-backup-${suffix}.json`);
+    await writeFile(artifact, "sqlite", "utf8");
+    await writeFile(
+      manifest,
+      `${JSON.stringify({ createdAt: timestamp, itemCount: 1, files: [artifact], missingSources: [] })}\n`,
+      "utf8"
+    );
+    artifacts.push(artifact);
+    manifests.push(manifest);
+  }
+  const looseFile = path.join(backupDirectory, "keep-me.txt");
+  await writeFile(looseFile, "unrelated", "utf8");
+
+  const preview = await pruneOperationalBackups({ outputDirectory: backupDirectory });
+  assert.equal(preview.applied, false);
+  assert.equal(preview.keptManifests.length, 5);
+  assert.deepEqual(preview.removedManifests, [manifests[1], manifests[0]]);
+  assert.equal(preview.reclaimedBytes > 0, true);
+  assert.equal(await readFile(artifacts[0], "utf8"), "sqlite");
+
+  const applied = await pruneOperationalBackups({ outputDirectory: backupDirectory, apply: true });
+  assert.equal(applied.removedManifests.length, 2);
+  await assert.rejects(readFile(artifacts[0], "utf8"), { code: "ENOENT" });
+  await assert.rejects(readFile(manifests[0], "utf8"), { code: "ENOENT" });
+  assert.equal(await readFile(artifacts[6], "utf8"), "sqlite");
+  assert.equal(await readFile(looseFile, "utf8"), "unrelated");
+});
+
+test("successful operational backups automatically rotate to five sets", async () => {
+  const backupDirectory = path.join(tempDir, "automatic-prune-backups");
+  await mkdir(backupDirectory, { recursive: true });
+  await writeStore(seedStore());
+
+  for (let index = 1; index <= 5; index += 1) {
+    const suffix = `2026030${index}T000000Z`;
+    const artifact = path.join(backupDirectory, `inventory-${suffix}.sqlite`);
+    const manifest = path.join(backupDirectory, `operational-backup-${suffix}.json`);
+    await writeFile(artifact, "sqlite", "utf8");
+    await writeFile(
+      manifest,
+      `${JSON.stringify({ createdAt: timestamp, itemCount: 1, files: [artifact], missingSources: [] })}\n`,
+      "utf8"
+    );
+  }
+
+  const backup = await backupInventoryData(backupDirectory);
+  const manifests = (await readdir(backupDirectory)).filter((file) => file.startsWith("operational-backup-"));
+  assert.equal(backup.prunedBackupSets, 1);
+  assert.equal(manifests.length, 5);
+  assert.equal(
+    manifests.some((file) => file === path.basename(backup.path)),
+    true
+  );
+  assert.equal(manifests.includes("operational-backup-20260301T000000Z.json"), false);
+});
+
+test("backup cleanup refuses paths outside the backup directory", async () => {
+  const backupDirectory = path.join(tempDir, "unsafe-prune-backups");
+  await mkdir(backupDirectory, { recursive: true });
+  const outsideFile = path.join(tempDir, "outside-backup.txt");
+  await writeFile(outsideFile, "keep", "utf8");
+
+  for (let index = 1; index <= 6; index += 1) {
+    const suffix = `2026020${index}T000000Z`;
+    const artifact = path.join(backupDirectory, `inventory-${suffix}.sqlite`);
+    const manifest = path.join(backupDirectory, `operational-backup-${suffix}.json`);
+    const files = index === 1 ? [outsideFile] : [artifact];
+    if (index !== 1) await writeFile(artifact, "sqlite", "utf8");
+    await writeFile(
+      manifest,
+      `${JSON.stringify({ createdAt: timestamp, itemCount: 1, files, missingSources: [] })}\n`,
+      "utf8"
+    );
+  }
+
+  await assert.rejects(
+    pruneOperationalBackups({ outputDirectory: backupDirectory, apply: true }),
+    /unsafe path outside the backup directory/
+  );
+  assert.equal(await readFile(outsideFile, "utf8"), "keep");
 });
 
 function seedStore(): StoreData {

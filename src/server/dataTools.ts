@@ -9,6 +9,7 @@ export interface DataFileResult {
   path: string;
   itemCount: number;
   files?: string[];
+  prunedBackupSets?: number;
 }
 
 export interface BackupInspectionFile {
@@ -25,6 +26,18 @@ export interface BackupInspectionResult {
   missingSources: string[];
   restorable: boolean;
 }
+
+export interface BackupPruneResult {
+  directory: string;
+  applied: boolean;
+  manifestsFound: number;
+  keptManifests: string[];
+  removedManifests: string[];
+  removedFiles: string[];
+  reclaimedBytes: number;
+}
+
+const operationalBackupRetention = 5;
 
 export async function exportInventoryData(outputPath?: string): Promise<DataFileResult & { json?: string }> {
   const data = await store.withLock(() => store.read());
@@ -440,10 +453,78 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
   );
   copiedFiles.push(manifestPath);
 
+  const pruneResult = await pruneOperationalBackups({
+    outputDirectory: backupDirectory,
+    apply: true
+  });
+
   return {
     path: manifestPath,
     itemCount: data.items.length,
-    files: copiedFiles
+    files: copiedFiles,
+    prunedBackupSets: pruneResult.removedManifests.length
+  };
+}
+
+export async function pruneOperationalBackups({
+  outputDirectory,
+  apply = false
+}: {
+  outputDirectory?: string;
+  apply?: boolean;
+} = {}): Promise<BackupPruneResult> {
+  const backupDirectory = path.resolve(outputDirectory ?? path.join(path.dirname(config.dataFile), "backups"));
+  const entries = await fs.readdir(backupDirectory, { withFileTypes: true });
+  const manifests = entries
+    .filter((entry) => entry.isFile() && entry.name.startsWith("operational-backup-") && entry.name.endsWith(".json"))
+    .map((entry) => ({ path: path.join(backupDirectory, entry.name) }));
+  manifests.sort((left, right) => right.path.localeCompare(left.path));
+
+  const kept = manifests.slice(0, operationalBackupRetention);
+  const removable = manifests.slice(operationalBackupRetention);
+  const keptInspections = await Promise.all(kept.map((manifest) => inspectOperationalBackup(manifest.path)));
+  if (apply && keptInspections.some((inspection) => !inspection.restorable)) {
+    throw new Error("Backup cleanup refused because one of the newest five operational backups is not restorable.");
+  }
+
+  const protectedPaths = new Set(
+    keptInspections
+      .flatMap((inspection) => [inspection.path, ...inspection.files.map((file) => file.path)])
+      .map(normalizePath)
+  );
+  const removedFiles: string[] = [];
+  let reclaimedBytes = 0;
+
+  for (const manifest of removable) {
+    const inspection = await inspectOperationalBackup(manifest.path);
+    const candidates = [...inspection.files.map((file) => file.path), manifest.path];
+    for (const candidate of candidates) {
+      const resolved = path.resolve(candidate);
+      if (!isPathInside(backupDirectory, resolved)) {
+        throw new Error(`Backup cleanup refused unsafe path outside the backup directory: ${resolved}`);
+      }
+      if (
+        protectedPaths.has(normalizePath(resolved)) ||
+        removedFiles.some((file) => normalizePath(file) === normalizePath(resolved))
+      ) {
+        continue;
+      }
+      const size = await pathSize(resolved);
+      if (size === undefined) continue;
+      reclaimedBytes += size;
+      removedFiles.push(resolved);
+      if (apply) await fs.rm(resolved, { recursive: true });
+    }
+  }
+
+  return {
+    directory: backupDirectory,
+    applied: apply,
+    manifestsFound: manifests.length,
+    keptManifests: kept.map((manifest) => manifest.path),
+    removedManifests: removable.map((manifest) => manifest.path),
+    removedFiles,
+    reclaimedBytes
   };
 }
 
@@ -521,6 +602,28 @@ function backupTimestamp() {
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z");
+}
+
+function normalizePath(value: string) {
+  return process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+}
+
+function isPathInside(parent: string, candidate: string) {
+  const relative = path.relative(parent, candidate);
+  return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
+}
+
+async function pathSize(target: string): Promise<number | undefined> {
+  try {
+    const stats = await fs.lstat(target);
+    if (!stats.isDirectory()) return stats.size;
+    const entries = await fs.readdir(target);
+    const sizes = await Promise.all(entries.map((entry) => pathSize(path.join(target, entry))));
+    return sizes.reduce<number>((total, size) => total + (size ?? 0), 0);
+  } catch (cause) {
+    if (isMissingFileError(cause)) return undefined;
+    throw cause;
+  }
 }
 
 async function copyFileIfExists(source: string, destination: string, copiedFiles: string[], missingSources: string[]) {

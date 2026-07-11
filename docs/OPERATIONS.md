@@ -67,11 +67,15 @@ CSV files used for imports are transient staging files. Preview, back up, import
 ```powershell
 npm run inv -- backup
 npm run inv -- backup D:\InventoryBackups
+npm run inv -- backup-prune
+npm run inv -- backup-prune --apply
 npm run inv -- restore-dry-run
 npm run inv -- restore-dry-run data/backups/operational-backup-EXAMPLE.json
 ```
 
-Keep at least the latest ten operational backups and one monthly copy outside the repo. Backups include the canonical database, printing assets, and local product photos. Before deleting an older backup, verify a newer manifest and open its captured files.
+The app keeps the latest five manifest-backed operational backups. After a successful backup, it verifies those five retained backup sets and removes older sets. Backups include the canonical database, printing assets, and local product photos. Loose files and one-time migration safety copies are not removed automatically.
+
+Use `backup-prune` to preview cleanup of existing backups, including the space it would reclaim. Add `--apply` only after reviewing the preview. Cleanup refuses to run if one of the five retained manifests is not restorable or if a manifest points outside the selected backup directory.
 
 `restore-dry-run` verifies a manifest without overwriting anything. A real recovery should restore the canonical operational database and print assets together, then start the API and reconcile before any live sync.
 

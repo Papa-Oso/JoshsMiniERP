@@ -9,7 +9,8 @@ import {
   exportInventoryData,
   exportInventoryEventsCsv,
   exportOperationsReportCsv,
-  inspectOperationalBackup
+  inspectOperationalBackup,
+  pruneOperationalBackups
 } from "./dataTools";
 import { runDoctor } from "./diagnostics";
 import { getDatabaseStatus } from "./databaseStatus";
@@ -104,6 +105,9 @@ try {
       break;
     case "backup":
       await backupFromCli(args.slice(1));
+      break;
+    case "backup-prune":
+      await backupPruneFromCli(args.slice(1));
       break;
     case "restore-dry-run":
       await restoreDryRunFromCli(args.slice(1));
@@ -519,6 +523,21 @@ async function backupFromCli(input: string[]) {
   if (result.files?.length) {
     console.log(`Captured ${result.files.length} file${result.files.length === 1 ? "" : "s"}.`);
   }
+  if (result.prunedBackupSets) {
+    console.log(`Removed ${result.prunedBackupSets} older backup set${result.prunedBackupSets === 1 ? "" : "s"}.`);
+  }
+}
+
+async function backupPruneFromCli(input: string[]) {
+  const [outputDirectory] = positionalArgs(input);
+  const flags = parseFlags(input);
+  const result = await pruneOperationalBackups({ outputDirectory, apply: flags.apply === true });
+  console.log(`${result.applied ? "Backup cleanup applied" : "Backup cleanup preview"}:`);
+  console.log(`Keeping ${result.keptManifests.length} of ${result.manifestsFound} operational backup sets.`);
+  console.log(`${result.applied ? "Reclaimed" : "Would reclaim"} ${formatBytes(result.reclaimedBytes)}.`);
+  if (!result.applied && result.removedManifests.length) {
+    console.log("Rerun with --apply to remove the older backup sets.");
+  }
 }
 
 async function restoreDryRunFromCli(input: string[]) {
@@ -930,6 +949,13 @@ function stringFlag(value: string | boolean | undefined) {
   return typeof value === "string" ? value : undefined;
 }
 
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} bytes`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 function outputFormat(value: string | undefined): EbayLegacyOutputFormat | undefined {
   if (value === undefined) return undefined;
   if (value === "csv" || value === "json") return value;
@@ -1022,6 +1048,7 @@ Commands:
   npm run inv -- export-events-csv [output.csv]
   npm run inv -- export-review-csv [output-directory]
   npm run inv -- backup [backup-directory]
+  npm run inv -- backup-prune [backup-directory] [--apply]
   npm run inv -- restore-dry-run [backup-manifest.json]
   npm run inv -- migrate-sqlite [--dry-run] [--force]
   npm run inv -- sku-audit [--platform shopify|ebay|all] [--location <name>] [--output data/sku-audit.csv]
