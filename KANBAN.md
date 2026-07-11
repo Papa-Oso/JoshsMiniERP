@@ -13,24 +13,24 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-03A — Capture backfill safety and comparison inputs
+### SALES-03B — Repair Etsy payment retrieval for reconciliation
 
 **Epic:** Comparable Sales Integrity
 
 **Prompt:**
 
-> Prepare the operator evidence needed to unblock SALES-03 without applying a backfill. Create a fresh operational backup with `npm run inv -- backup`, verify its latest manifest with `npm run inv -- restore-dry-run`, and record pre-change SQLite integrity and aggregate table counts with `npm run inv -- db-status`. Refresh the read-only Sales data, then capture aggregate-only reconciliation results for Etsy over 30 days and eBay over 90 days, separated by currency. Manually record the matching sales totals displayed in the Etsy and eBay dashboards for the same date boundaries and business definition. Store only dates, currencies, aggregate amounts, categorized warning counts, and differences in a dated document under `docs/reconciliation/`; do not record credentials, order/listing identifiers, customer data, or files from `data/`. Classify each difference as explained, unresolved, or blocking and explicitly approve or reject proceeding to the SALES-03 apply preview. Do not change inventory, marketplace quantities, or the Sales dashboard metric.
+> Replace the Etsy sales refresh's unsupported unfiltered `/shops/{shop_id}/payments` request with a supported read-only Open API v3 payment retrieval flow. Preserve pagination or bounded batching, retain stable refund identities, avoid customer information, and keep incomplete adjustment components unresolved rather than guessing. Add focused tests for successful retrieval, pagination or batching, API errors, and repeat-safe refund imports. Rerun the 30-day Etsy aggregate reconciliation after the fix. Do not change inventory, marketplace quantities, or the Sales dashboard metric.
 
 **Acceptance:**
 
-- A new backup manifest passes `restore-dry-run`; its path remains local and is not committed.
-- Pre-change SQLite integrity is `ok`, and aggregate sales/refund/transaction row counts are recorded.
-- Etsy 30-day and eBay 90-day comparisons use explicit inclusive date boundaries and keep currencies separate.
-- The record contains only aggregate financial components, warning counts, marketplace totals, differences, and explanations.
-- Every difference is classified as explained, unresolved, or blocking.
-- The record ends with an explicit `APPROVED` or `REJECTED` decision for the SALES-03 apply preview and names the remaining unblock condition when rejected.
+- The Etsy refresh no longer sends the invalid payment request that requires missing `payment_ids`.
+- Payment and adjustment retrieval uses documented read-only endpoints and required `transactions_r` scope.
+- Repeated refreshes do not duplicate refunds or orders.
+- Failed or incomplete payment responses leave financial history explicitly unresolved.
+- Focused tests cover retrieval, provider errors, and idempotency.
+- The dated reconciliation record is updated with the new aggregate result.
 
-**Depends on:** Marketplace credentials with read-only sales scopes and operator access to Etsy Shop Manager and eBay Seller Hub dashboards.
+**Depends on:** Etsy Open API v3 payment contract and existing read-only `transactions_r` credentials.
 
 ## Next
 
@@ -78,6 +78,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- SALES-03A created and verified a fresh operational backup, captured aggregate reconciliation evidence, and rejected backfill approval because Etsy payment retrieval and marketplace dashboard comparisons remain blocking. See `docs/reconciliation/2026-07-11-sales-backfill-readiness.md`.
 - Added informational root coverage reports and a non-blocking CI artifact, with initial safety-critical test gaps documented.
 - Replaced the decorative Sales map with an offline Natural Earth map, country-volume shading, accessible regional markers, an explicit legend, and visible unknown-geography count.
 - Added aggregate-only period reconciliation with separate currencies and categorized integrity warnings.
