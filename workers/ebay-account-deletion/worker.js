@@ -2,6 +2,8 @@ const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store"
 };
+const notificationPath = "/ebay/marketplace-account-deletion";
+const maximumNotificationBytes = 32_768;
 
 export default {
   async fetch(request, env) {
@@ -20,7 +22,7 @@ export default {
       return handleMarkNotice(request, env, pathname);
     }
 
-    if (request.method === "POST") {
+    if (request.method === "POST" && pathname === notificationPath) {
       return handleNotification(request, env);
     }
 
@@ -70,13 +72,40 @@ async function handleNotification(request, env) {
     return Response.json({ error: "Deletion notice storage is not configured" }, { status: 500, headers: jsonHeaders });
   }
 
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+    return Response.json({ error: "Content-Type must be application/json" }, { status: 415, headers: jsonHeaders });
+  }
+
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > maximumNotificationBytes) {
+    return Response.json({ error: "Notification payload is too large" }, { status: 413, headers: jsonHeaders });
+  }
+
+  const signatureHeader = request.headers.get("x-ebay-signature");
+  if (!signatureHeader || signatureHeader.length > 4096) {
+    return Response.json({ error: "Missing or invalid X-EBAY-SIGNATURE header" }, { status: 412, headers: jsonHeaders });
+  }
+
   const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > maximumNotificationBytes) {
+    return Response.json({ error: "Notification payload is too large" }, { status: 413, headers: jsonHeaders });
+  }
   const payload = parseJson(rawBody);
-  const receivedAt = new Date().toISOString();
+  const validationError = validateNotification(payload);
+  if (validationError) {
+    return Response.json({ error: validationError }, { status: 400, headers: jsonHeaders });
+  }
+
   const notification = objectValue(payload?.notification);
   const metadata = objectValue(payload?.metadata);
   const data = objectValue(notification?.data);
   const id = noticeId(notification);
+  const key = `notice:${id}`;
+  if (await env.EBAY_DELETION_NOTICES.get(key)) {
+    return new Response(null, { status: 204 });
+  }
+
+  const receivedAt = new Date().toISOString();
 
   const notice = {
     id,
@@ -90,14 +119,34 @@ async function handleNotification(request, env) {
     username: stringValue(data?.username),
     userId: stringValue(data?.userId),
     eiasToken: stringValue(data?.eiasToken),
-    signatureHeader: request.headers.get("x-ebay-signature") || "",
+    signatureHeader,
     userAgent: request.headers.get("user-agent") || "",
     payload: payload ?? null,
     rawBody: payload ? undefined : rawBody
   };
 
-  await env.EBAY_DELETION_NOTICES.put(`notice:${id}`, JSON.stringify(notice));
+  await env.EBAY_DELETION_NOTICES.put(key, JSON.stringify(notice));
   return new Response(null, { status: 204 });
+}
+
+function validateNotification(payload) {
+  if (!payload || typeof payload !== "object") return "Body must be valid JSON";
+  const metadata = objectValue(payload.metadata);
+  const notification = objectValue(payload.notification);
+  const data = objectValue(notification.data);
+  if (metadata.topic !== "MARKETPLACE_ACCOUNT_DELETION") return "Unsupported notification topic";
+  if (!isNonEmptyString(metadata.schemaVersion, 32)) return "Missing schema version";
+  if (!isNonEmptyString(notification.notificationId, 180)) return "Missing notification ID";
+  if (!isNonEmptyString(notification.eventDate, 64)) return "Missing event date";
+  if (!isNonEmptyString(notification.publishDate, 64)) return "Missing publish date";
+  if (!isNonEmptyString(data.userId, 512) && !isNonEmptyString(data.username, 512) && !isNonEmptyString(data.eiasToken, 2048)) {
+    return "Notification is missing an eBay user identifier";
+  }
+  return null;
+}
+
+function isNonEmptyString(value, maximumLength) {
+  return typeof value === "string" && value.length > 0 && value.length <= maximumLength;
 }
 
 async function handleListNotices(request, env) {

@@ -3,13 +3,14 @@ import { createHash } from "node:crypto";
 import worker, { challengeResponseFor } from "./worker.js";
 
 const endpoint = "https://example.workers.dev";
+const notificationEndpoint = `${endpoint}/ebay/marketplace-account-deletion`;
 const challengeCode = "test-challenge-code";
 const verificationToken = "Token_abcdefghijklmnopqrstuvwxyz123456";
 const adminToken = "Admin_abcdefghijklmnopqrstuvwxyz123456";
 const kv = fakeKv();
 const env = {
   EBAY_VERIFICATION_TOKEN: verificationToken,
-  EBAY_NOTIFICATION_ENDPOINT: endpoint,
+  EBAY_NOTIFICATION_ENDPOINT: notificationEndpoint,
   EBAY_NOTIFICATION_ADMIN_TOKEN: adminToken,
   EBAY_DELETION_NOTICES: kv
 };
@@ -17,12 +18,12 @@ const env = {
 const expected = createHash("sha256")
   .update(challengeCode)
   .update(verificationToken)
-  .update(endpoint)
+  .update(notificationEndpoint)
   .digest("hex");
 
-assert.equal(await challengeResponseFor(challengeCode, verificationToken, endpoint), expected);
+assert.equal(await challengeResponseFor(challengeCode, verificationToken, notificationEndpoint), expected);
 
-const response = await worker.fetch(new Request(`${endpoint}?challenge_code=${challengeCode}`), env);
+const response = await worker.fetch(new Request(`${notificationEndpoint}?challenge_code=${challengeCode}`), env);
 assert.equal(response.status, 200);
 assert.equal(response.headers.get("content-type"), "application/json; charset=utf-8");
 
@@ -47,9 +48,10 @@ const notificationPayload = {
   }
 };
 const postResponse = await worker.fetch(
-  new Request(endpoint, {
+  new Request(notificationEndpoint, {
     method: "POST",
     headers: {
+      "content-type": "application/json",
       "x-ebay-signature": "signature"
     },
     body: JSON.stringify(notificationPayload)
@@ -57,6 +59,36 @@ const postResponse = await worker.fetch(
   env
 );
 assert.equal(postResponse.status, 204);
+
+const writesAfterFirstDelivery = kv.writeCount();
+const duplicateResponse = await worker.fetch(
+  new Request(notificationEndpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-ebay-signature": "signature" },
+    body: JSON.stringify(notificationPayload)
+  }),
+  env
+);
+assert.equal(duplicateResponse.status, 204);
+assert.equal(kv.writeCount(), writesAfterFirstDelivery);
+
+const scannerResponse = await worker.fetch(
+  new Request(endpoint, { method: "POST", body: "scanner traffic" }),
+  env
+);
+assert.equal(scannerResponse.status, 405);
+assert.equal(kv.writeCount(), writesAfterFirstDelivery);
+
+const unsignedResponse = await worker.fetch(
+  new Request(notificationEndpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(notificationPayload)
+  }),
+  env
+);
+assert.equal(unsignedResponse.status, 412);
+assert.equal(kv.writeCount(), writesAfterFirstDelivery);
 
 const unauthorizedResponse = await worker.fetch(new Request(`${endpoint}/notices`), env);
 assert.equal(unauthorizedResponse.status, 401);
@@ -92,8 +124,10 @@ console.log("eBay account deletion Worker smoke test passed.");
 
 function fakeKv() {
   const store = new Map();
+  let writes = 0;
   return {
     async put(key, value) {
+      writes += 1;
       store.set(key, value);
     },
     async get(key) {
@@ -103,6 +137,9 @@ function fakeKv() {
       return {
         keys: [...store.keys()].filter((name) => name.startsWith(prefix)).map((name) => ({ name }))
       };
+    },
+    writeCount() {
+      return writes;
     }
   };
 }
