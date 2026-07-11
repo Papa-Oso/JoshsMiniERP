@@ -27,14 +27,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 **Depends on:** SALES-03 and reviewed marketplace reconciliation.
 
-### RELEASE-01 — Define the first release checklist
-
-**Epic:** Release Readiness
-
-**Prompt:**
-
-> Add a concise release checklist covering a focused clean diff, required checks, dependency audit, changelog, migration and backup review, secret/config validation, deployment boundaries, post-release health checks, read-only reconciliation, rollback, and protected eBay behavior. Keep commands linked to their canonical Operations and Testing documentation instead of duplicating full procedures.
-
 ### OPS-02 — Record credential rotation when next performed
 
 **Epic:** Operational Security
@@ -55,6 +47,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- RELEASE-01 added a concise release checklist covering scope, changelog, migrations and backup, secrets, full verification and audit, protected eBay behavior, surface-specific deployment checks, read-only reconciliation, and rollback.
 - OPS-01 restored a fresh operational backup into an ignored disposable directory, verified manifest and SQLite integrity, operational data groups, captured asset trees, API health, and read-only marketplace reconciliation, and documented the rehearsal procedure and aggregate results.
 - EBAY-NOTIFY-02 cryptographically verifies deletion-notification signatures using eBay public keys cached in Worker memory, rejects verification failures before KV, and is deployed with encrypted production application credentials.
 - SALES-03C corrected stale persisted comparable-sales values on order refresh, eliminated all 110 Etsy impossible-total warnings, retained two unresolved refund warnings without guessing components, and added focused financial-boundary tests.

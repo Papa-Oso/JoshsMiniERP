@@ -28,7 +28,7 @@ This file contains active and upcoming work only. Completed user-visible work be
 - [x] Add informational test coverage reporting, then identify safety-critical gaps.
 - [x] Perform and record a dated restore rehearsal using a non-production copy.
 - [ ] Add a credential-rotation runbook after the next marketplace credential rotation.
-- [ ] Define a small release checklist before the first tagged release.
+- [x] Define a small release checklist before the first tagged release.
 
 ## Active Work: Comparable Sales Integrity and Geographic Reporting
 
