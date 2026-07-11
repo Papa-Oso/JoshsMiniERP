@@ -13,6 +13,25 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
+### SALES-03A — Capture backfill safety and comparison inputs
+
+**Epic:** Comparable Sales Integrity
+
+**Prompt:**
+
+> Prepare the operator evidence needed to unblock SALES-03 without applying a backfill. Create a fresh operational backup with `npm run inv -- backup`, verify its latest manifest with `npm run inv -- restore-dry-run`, and record pre-change SQLite integrity and aggregate table counts with `npm run inv -- db-status`. Refresh the read-only Sales data, then capture aggregate-only reconciliation results for Etsy over 30 days and eBay over 90 days, separated by currency. Manually record the matching sales totals displayed in the Etsy and eBay dashboards for the same date boundaries and business definition. Store only dates, currencies, aggregate amounts, categorized warning counts, and differences in a dated document under `docs/reconciliation/`; do not record credentials, order/listing identifiers, customer data, or files from `data/`. Classify each difference as explained, unresolved, or blocking and explicitly approve or reject proceeding to the SALES-03 apply preview. Do not change inventory, marketplace quantities, or the Sales dashboard metric.
+
+**Acceptance:**
+
+- A new backup manifest passes `restore-dry-run`; its path remains local and is not committed.
+- Pre-change SQLite integrity is `ok`, and aggregate sales/refund/transaction row counts are recorded.
+- Etsy 30-day and eBay 90-day comparisons use explicit inclusive date boundaries and keep currencies separate.
+- The record contains only aggregate financial components, warning counts, marketplace totals, differences, and explanations.
+- Every difference is classified as explained, unresolved, or blocking.
+- The record ends with an explicit `APPROVED` or `REJECTED` decision for the SALES-03 apply preview and names the remaining unblock condition when rejected.
+
+**Depends on:** Marketplace credentials with read-only sales scopes and operator access to Etsy Shop Manager and eBay Seller Hub dashboards.
+
 ## Next
 
 ## Later
@@ -35,14 +54,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 > Create a fresh operational backup and rehearse restoration using only a disposable copy. Verify manifest integrity, SQLite integrity and table counts, print assets, review/sales history, application startup, and read-only reconciliation. Record the date and aggregate verification results without credentials, customer data, or files under `data/`. Correct Operations or Troubleshooting documentation for any gap found.
 
-### TEST-01 — Add informational coverage reporting
-
-**Epic:** Safety-Critical Test Visibility
-
-**Prompt:**
-
-> Add informational root test coverage reporting and a CI artifact without introducing a blocking percentage threshold. Use the report to identify untested safety-critical branches in authentication, migrations, marketplace error handling, backups, scheduler behavior, refunds, and reconciliation. Add focused tests only where a failure could corrupt data, repeat a deduction/refund, expose information, or broaden a live write.
-
 ### RELEASE-01 — Define the first release checklist
 
 **Epic:** Release Readiness
@@ -63,7 +74,7 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ### SALES-03 — Preview and verify historical financial backfill
 
-Repository normalization and aggregate reconciliation foundations are complete. Applying the backfill and completing the card require an operator-created operational backup plus reviewed comparisons against the 30-day Etsy and 90-day eBay marketplace dashboards. Resume when those external totals can be reviewed; do not switch the dashboard metric before approval.
+Repository normalization and aggregate reconciliation foundations are complete. Resume after SALES-03A produces an `APPROVED` evidence record; do not switch the dashboard metric before approval.
 
 ## Recently Completed
 
