@@ -56,7 +56,7 @@ product revenue after seller discounts
 
 - [x] Add order-level product, shipping, discount, tax, refund, and comparable-sales amounts to the canonical SQLite sales ledger.
 - [x] Add normalized, idempotent refund records keyed by platform, order, and refund identity.
-- [ ] Record financial completeness, source, source update time, and reconciliation state without retaining additional customer information.
+- [x] Record financial completeness, source, source update time, and reconciliation state without retaining additional customer information.
 - [x] Preserve existing gross and subtotal values during migration for audit and rollback comparison.
 - [x] Document the durable financial model in `docs/DATA_MODEL.md` and an ADR before switching the headline metric.
 
@@ -65,8 +65,8 @@ product revenue after seller discounts
 - [x] Extend eBay order imports to retain price subtotal, delivery cost and discounts, product discounts, tax, cancellation state, and API refunds.
 - [ ] Reconcile eBay order API values with imported financial transactions for fees, refunds, shipping labels, and net proceeds.
 - [x] Extend Etsy receipt imports to retain subtotal, shipping cost, discounts, tax, VAT, paid/canceled state, and payment/refund details.
-- [ ] Use source precedence: official financial/payment API, official order API, transaction report, order report, then legacy approximation.
-- [ ] Allow lower-priority sources to fill missing fields without overwriting newer authoritative values.
+- [x] Use source precedence: official financial/payment API, official order API, transaction report, order report, then legacy approximation.
+- [x] Allow lower-priority sources to fill missing fields without overwriting newer authoritative values.
 
 ### Reconciliation and Integrity
 

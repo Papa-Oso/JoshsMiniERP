@@ -24,7 +24,8 @@ JSON files are export, backup, or migration formats. Timestamped `*.sqlite.migra
 - Sales geography is limited to country and region. Customer names, emails, phone numbers, street addresses, cities, and postal codes are discarded during import.
 - Comparable net sales are product revenue after seller discounts, plus buyer-paid shipping, minus refunded pre-tax product and shipping revenue. Discounts remain separately reportable but are already reflected in normalized product revenue. Canceled orders and marketplace-collected tax/VAT contribute zero.
 - Marketplace fees and purchased shipping labels remain separate from comparable sales and contribute only to expense and net-proceeds reporting.
-- Financial completeness and source are stored explicitly; incomplete historical values must not be presented as fully reconciled.
+- Financial completeness, source, source update time, reconciliation state, and the set of supplied financial fields are stored explicitly. Field presence distinguishes a legitimate zero from a missing value.
+- Financial sources follow the ADR precedence order. Higher-priority sources replace supplied components; equal-priority newer pulls refresh them; lower-priority sources may fill only components not supplied by the authoritative source.
 - Refunds retain authoritative totals plus separate product, shipping, and tax components when the provider proves that breakdown. `components_complete=0` means the total is known but its pre-tax components must not be guessed or applied to comparable sales.
 - Order/refund imports commit atomically and record source update time and reconciliation state. Repeated provider pulls update stable refund identities instead of duplicating them.
 - Marketplace pulls use upserts with stable compound identities, making repeated pulls idempotent.

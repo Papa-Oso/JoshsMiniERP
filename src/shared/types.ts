@@ -20,6 +20,8 @@ export interface SalesLineItem {
   amount: number;
 }
 
+export type SalesFinancialSource = "payment_api" | "financial_api" | "order_api" | "transaction_report" | "order_report" | "legacy";
+
 export interface SalesOrder {
   platform: Platform;
   orderId: string;
@@ -39,7 +41,7 @@ export interface SalesOrder {
   financialStatus?: string;
   canceledAt?: string;
   financialsComplete?: boolean;
-  financialsSource?: string;
+  financialsSource?: SalesFinancialSource;
   financialsUpdatedAt?: string;
   reconciliationState?: "complete" | "incomplete" | "unresolved";
   countryCode: string;

@@ -26,6 +26,7 @@ Marketplace buyer totals are not comparable revenue measures. They may include m
 5. Legacy approximation
 
 A lower-priority source may fill missing fields but must not overwrite newer authoritative values.
+The ledger records which normalized financial fields each source actually supplied, so zero-valued components remain distinct from absent components during merges.
 
 ## Consequences
 

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import initSqlJs from "sql.js";
 import type { Database, SqlValue } from "sql.js";
-import type { Platform, SalesOrder, SalesRefund } from "../shared/types";
+import type { Platform, SalesFinancialSource, SalesOrder, SalesRefund } from "../shared/types";
 import { config } from "./config";
 import { sqliteDatabase } from "./sqliteDatabase";
 
@@ -324,9 +324,12 @@ async function loadCanonicalOrderCount() {
 }
 
 function upsertOrder(db: Database, platform: Platform, order: SalesOrder, seenAt: string) {
+  const existingRow = queryRows(db, "SELECT * FROM sales_orders WHERE platform = ? AND order_id = ?", [platform, order.orderId])[0];
+  const merged = existingRow ? mergeOrderFinancials(rowToOrder(existingRow), order, financialFields(existingRow)) : order;
+  const presentFields = existingRow ? mergedFinancialFields(existingRow, order) : suppliedFinancialFields(order);
   db.run(
-    `INSERT INTO sales_orders (platform, order_id, order_number, created_at, updated_at, status, currency, gross_amount, net_amount, product_amount, shipping_amount, discount_amount, tax_amount, refunded_amount, comparable_sales_amount, financial_status, canceled_at, financials_complete, financials_source, financials_updated_at, reconciliation_state, country_code, region_code, item_count, source_url, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(platform, order_id) DO UPDATE SET order_number=excluded.order_number, created_at=excluded.created_at, updated_at=excluded.updated_at, status=excluded.status, currency=excluded.currency, gross_amount=excluded.gross_amount, net_amount=excluded.net_amount, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, discount_amount=excluded.discount_amount, tax_amount=excluded.tax_amount, comparable_sales_amount=excluded.comparable_sales_amount, financial_status=excluded.financial_status, canceled_at=excluded.canceled_at, financials_complete=excluded.financials_complete, financials_source=excluded.financials_source, financials_updated_at=excluded.financials_updated_at, reconciliation_state=excluded.reconciliation_state, country_code=excluded.country_code, region_code=excluded.region_code, item_count=excluded.item_count, source_url=excluded.source_url, last_seen_at=excluded.last_seen_at`,
+    `INSERT INTO sales_orders (platform, order_id, order_number, created_at, updated_at, status, currency, gross_amount, net_amount, product_amount, shipping_amount, discount_amount, tax_amount, refunded_amount, comparable_sales_amount, financial_status, canceled_at, financials_complete, financials_source, financials_updated_at, reconciliation_state, financial_fields, country_code, region_code, item_count, source_url, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(platform, order_id) DO UPDATE SET order_number=excluded.order_number, created_at=excluded.created_at, updated_at=excluded.updated_at, status=excluded.status, currency=excluded.currency, gross_amount=excluded.gross_amount, net_amount=excluded.net_amount, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, discount_amount=excluded.discount_amount, tax_amount=excluded.tax_amount, comparable_sales_amount=excluded.comparable_sales_amount, financial_status=excluded.financial_status, canceled_at=excluded.canceled_at, financials_complete=excluded.financials_complete, financials_source=excluded.financials_source, financials_updated_at=excluded.financials_updated_at, reconciliation_state=excluded.reconciliation_state, financial_fields=excluded.financial_fields, country_code=excluded.country_code, region_code=excluded.region_code, item_count=excluded.item_count, source_url=excluded.source_url, last_seen_at=excluded.last_seen_at`,
     [
       platform,
       order.orderId,
@@ -335,20 +338,11 @@ function upsertOrder(db: Database, platform: Platform, order: SalesOrder, seenAt
       order.updatedAt,
       order.status,
       order.currency,
-      order.grossAmount,
-      order.netAmount,
-      order.productAmount ?? order.netAmount,
-      order.shippingAmount ?? 0,
-      order.discountAmount ?? 0,
-      order.taxAmount ?? 0,
-      order.refundedAmount ?? 0,
-      order.comparableSalesAmount ?? order.netAmount,
-      order.financialStatus ?? order.status,
-      order.canceledAt ?? "",
-      order.financialsComplete ? 1 : 0,
-      order.financialsSource ?? "legacy",
-      order.financialsUpdatedAt ?? order.updatedAt,
-      order.reconciliationState ?? "incomplete",
+      merged.grossAmount, merged.netAmount, merged.productAmount ?? merged.netAmount, merged.shippingAmount ?? 0,
+      merged.discountAmount ?? 0, merged.taxAmount ?? 0, merged.refundedAmount ?? 0,
+      merged.comparableSalesAmount ?? merged.netAmount, merged.financialStatus ?? merged.status, merged.canceledAt ?? "",
+      merged.financialsComplete ? 1 : 0, merged.financialsSource ?? "legacy",
+      merged.financialsUpdatedAt ?? merged.updatedAt, merged.reconciliationState ?? "incomplete", JSON.stringify(presentFields),
       order.countryCode,
       order.regionCode,
       order.itemCount,
@@ -408,6 +402,7 @@ function ensureSchema(db: Database) {
   ensureColumn(db, "sales_orders", "financials_source", "TEXT NOT NULL DEFAULT 'legacy'");
   ensureColumn(db, "sales_orders", "financials_updated_at", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "sales_orders", "reconciliation_state", "TEXT NOT NULL DEFAULT 'incomplete'");
+  ensureColumn(db, "sales_orders", "financial_fields", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(db, "sales_refunds", "components_complete", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "sales_refunds", "source", "TEXT NOT NULL DEFAULT 'legacy'");
   ensureColumn(db, "sales_refunds", "source_updated_at", "TEXT NOT NULL DEFAULT ''");
@@ -416,7 +411,17 @@ function ensureColumn(db: Database, table: string, column: string, definition: s
   const columns = db.exec(`PRAGMA table_info(${table})`)[0]?.values ?? [];
   if (!columns.some((row) => row[1] === column)) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
-function queryRows(db: Database, sql: string): Array<Record<string, SqlValue>> {
+function queryRows(db: Database, sql: string, params?: SqlValue[]): Array<Record<string, SqlValue>> {
+  if (params) {
+    const statement = db.prepare(sql, params);
+    try {
+      const rows: Array<Record<string, SqlValue>> = [];
+      while (statement.step()) rows.push(statement.getAsObject());
+      return rows;
+    } finally {
+      statement.free();
+    }
+  }
   const result = db.exec(sql)[0];
   return result
     ? result.values.map((values) => Object.fromEntries(result.columns.map((column, index) => [column, values[index]])))
@@ -442,7 +447,7 @@ function rowToOrder(row: Record<string, SqlValue>): SalesOrder {
     financialStatus: String(row.financial_status ?? ""),
     canceledAt: String(row.canceled_at ?? ""),
     financialsComplete: Number(row.financials_complete ?? 0) === 1,
-    financialsSource: String(row.financials_source ?? "legacy"),
+    financialsSource: String(row.financials_source ?? "legacy") as SalesFinancialSource,
     financialsUpdatedAt: String(row.financials_updated_at ?? ""),
     reconciliationState: String(row.reconciliation_state ?? "incomplete") as SalesOrder["reconciliationState"],
     countryCode: String(row.country_code ?? ""),
@@ -451,6 +456,36 @@ function rowToOrder(row: Record<string, SqlValue>): SalesOrder {
     sourceUrl: String(row.source_url ?? ""),
     lineItems: []
   };
+}
+
+const financialKeys = ["grossAmount", "netAmount", "productAmount", "shippingAmount", "discountAmount", "taxAmount", "refundedAmount", "comparableSalesAmount", "financialStatus", "canceledAt"] as const;
+type FinancialKey = (typeof financialKeys)[number];
+const sourceRank: Record<SalesFinancialSource, number> = { legacy: 0, order_report: 1, transaction_report: 2, order_api: 3, financial_api: 4, payment_api: 4 };
+
+function suppliedFinancialFields(order: SalesOrder): FinancialKey[] { return financialKeys.filter((key) => order[key] !== undefined); }
+function financialFields(row: Record<string, SqlValue>): Set<FinancialKey> {
+  try { return new Set(JSON.parse(String(row.financial_fields ?? "[]")) as FinancialKey[]); } catch { return new Set(); }
+}
+function mergedFinancialFields(row: Record<string, SqlValue>, incoming: SalesOrder): FinancialKey[] {
+  const fields = financialFields(row); const existing = rowToOrder(row);
+  const incomingRank = sourceRank[incoming.financialsSource ?? "legacy"]; const existingRank = sourceRank[existing.financialsSource ?? "legacy"];
+  for (const key of suppliedFinancialFields(incoming)) if (incomingRank >= existingRank || !fields.has(key)) fields.add(key);
+  return [...fields];
+}
+export function mergeOrderFinancials(existing: SalesOrder, incoming: SalesOrder, present = new Set<FinancialKey>(financialKeys)): SalesOrder {
+  const incomingSource = incoming.financialsSource ?? "legacy"; const existingSource = existing.financialsSource ?? "legacy";
+  const newerSameSource = sourceRank[incomingSource] === sourceRank[existingSource] && Date.parse(incoming.financialsUpdatedAt ?? incoming.updatedAt) >= Date.parse(existing.financialsUpdatedAt ?? existing.updatedAt);
+  const authoritative = sourceRank[incomingSource] > sourceRank[existingSource] || newerSameSource;
+  const merged = { ...incoming };
+  for (const key of financialKeys) {
+    const value = incoming[key];
+    if (value === undefined || (!authoritative && present.has(key))) (merged as Record<string, unknown>)[key] = existing[key];
+  }
+  if (!authoritative) {
+    merged.financialsSource = existing.financialsSource; merged.financialsUpdatedAt = existing.financialsUpdatedAt;
+    merged.financialsComplete = existing.financialsComplete; merged.reconciliationState = existing.reconciliationState;
+  }
+  return merged;
 }
 
 const schema = `

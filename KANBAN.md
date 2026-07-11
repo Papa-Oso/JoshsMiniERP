@@ -15,16 +15,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Next
 
-### SALES-05 — Track financial provenance and completeness
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Record each sales order's financial completeness, source, source update time, and reconciliation state without retaining additional customer information. Apply source precedence in this order: official financial or payment API, official order API, transaction report, order report, then legacy approximation. Allow lower-priority sources to fill missing fields without overwriting newer authoritative values. Add focused migration, ingestion, and precedence tests.
-
-**Derived from:** `PLAN.md` Normalized Financial Model and Marketplace Ingestion.
-
 ## Later
 
 ### SALES-04 — Switch the dashboard to comparable net sales

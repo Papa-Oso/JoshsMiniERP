@@ -107,6 +107,39 @@ test("sales order refreshes replace stale comparable sales amounts", async () =>
   assert.equal(saved?.comparableSalesAmount, 38);
 });
 
+test("sales financial upserts preserve authoritative values and fill only missing fields", async () => {
+  const id = "source-precedence";
+  await upsertSalesOrders("etsy", [{
+    ...order(), platform: "etsy", orderId: id, productAmount: 30, shippingAmount: undefined,
+    taxAmount: 3, comparableSalesAmount: 30, financialsComplete: false,
+    financialsSource: "order_api", financialsUpdatedAt: "2026-07-10T12:00:00.000Z"
+  }]);
+  await upsertSalesOrders("etsy", [{
+    ...order(), platform: "etsy", orderId: id, productAmount: 999, shippingAmount: 8,
+    taxAmount: 999, comparableSalesAmount: 999, financialsComplete: true,
+    financialsSource: "order_report", financialsUpdatedAt: "2026-07-11T12:00:00.000Z"
+  }]);
+  let saved = (await loadSalesOrders()).find((row) => row.orderId === id);
+  assert.equal(saved?.productAmount, 30);
+  assert.equal(saved?.shippingAmount, 8);
+  assert.equal(saved?.taxAmount, 3);
+  assert.equal(saved?.financialsSource, "order_api");
+  assert.equal(saved?.financialsComplete, false);
+
+  await upsertSalesOrders("etsy", [{
+    ...order(), platform: "etsy", orderId: id, productAmount: 31, shippingAmount: 9,
+    taxAmount: 4, comparableSalesAmount: 40, financialsComplete: true,
+    financialsSource: "payment_api", financialsUpdatedAt: "2026-07-09T12:00:00.000Z",
+    reconciliationState: "complete"
+  }]);
+  saved = (await loadSalesOrders()).find((row) => row.orderId === id);
+  assert.equal(saved?.productAmount, 31);
+  assert.equal(saved?.shippingAmount, 9);
+  assert.equal(saved?.financialsSource, "payment_api");
+  assert.equal(saved?.financialsComplete, true);
+  assert.equal(saved?.reconciliationState, "complete");
+});
+
 test("atomic sales imports apply only complete pre-tax refund components to orders", async () => {
   const base = { ...order(), platform: "etsy" as const, orderId: "etsy-refunds", productAmount: 30, shippingAmount: 8, comparableSalesAmount: 38 };
   const refund = { platform: "etsy" as const, orderId: base.orderId, refundedAt: "2026-07-10T14:00:00.000Z", status: "completed", currency: "USD", source: "payment_api", sourceUpdatedAt: "2026-07-10T14:00:00.000Z" };
