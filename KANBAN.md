@@ -13,16 +13,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### EBAY-NOTIFY-02 — Cryptographically verify deletion notifications
-
-**Epic:** Marketplace Compliance Security
-
-**Prompt:**
-
-> Verify every Marketplace Account Deletion notification's `X-EBAY-SIGNATURE` against eBay's Notification API public key before writing to KV. Cache public keys for a bounded period, fail closed without consuming a KV write, preserve the exact-path, payload-validation, size-limit, and notification-ID deduplication protections, and add focused tests for valid, invalid, malformed, unknown-key, and key-fetch-failure cases. Document required credentials and deployment configuration without recording secrets.
-
-**Acceptance:** Fake or unverifiable notifications never write to KV; verified notifications remain idempotent and receive an eBay-supported success response.
-
 ## Next
 
 ## Later
@@ -73,6 +63,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- EBAY-NOTIFY-02 cryptographically verifies deletion-notification signatures using eBay public keys cached in Worker memory, rejects verification failures before KV, and is deployed with encrypted production application credentials.
 - SALES-03C corrected stale persisted comparable-sales values on order refresh, eliminated all 110 Etsy impossible-total warnings, retained two unresolved refund warnings without guessing components, and added focused financial-boundary tests.
 - SALES-03B replaced the invalid Etsy payments request with bounded read-only ledger windows, added provider tests, completed two live idempotent refreshes, and restored Etsy financial aggregates.
 - SALES-03A created and verified a fresh operational backup, captured aggregate reconciliation evidence, and rejected backfill approval because Etsy payment retrieval and marketplace dashboard comparisons remain blocking. See `docs/reconciliation/2026-07-11-sales-backfill-readiness.md`.
