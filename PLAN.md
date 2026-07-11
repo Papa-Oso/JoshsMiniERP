@@ -26,7 +26,7 @@ This file contains active and upcoming work only. Completed user-visible work be
 
 - [ ] Add an architecture decision record whenever a new durable storage, marketplace, deployment, or safety decision is made.
 - [x] Add informational test coverage reporting, then identify safety-critical gaps.
-- [ ] Perform and record a dated restore rehearsal using a non-production copy.
+- [x] Perform and record a dated restore rehearsal using a non-production copy.
 - [ ] Add a credential-rotation runbook after the next marketplace credential rotation.
 - [ ] Define a small release checklist before the first tagged release.
 

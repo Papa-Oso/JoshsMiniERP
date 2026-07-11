@@ -75,6 +75,20 @@ Keep at least the latest ten operational backups and one monthly copy outside th
 
 `restore-dry-run` verifies a manifest without overwriting anything. A real recovery should restore the canonical operational database and print assets together, then start the API and reconcile before any live sync.
 
+### Disposable Restore Rehearsal
+
+At least periodically, go beyond `restore-dry-run` using an ignored disposable directory under `data/` or a separate temporary location:
+
+1. Create a fresh operational backup and verify its manifest with `restore-dry-run`.
+2. Copy the manifest's SQLite database, printing metadata, printing assets, and product photos into a new disposable directory. Never copy them over the working `data/inventory.sqlite` or working asset directories.
+3. Set `STORE_DRIVER=sqlite` and `DATABASE_FILE` only for the rehearsal process so they point to the disposable database.
+4. Run `db-status`, require SQLite integrity `ok`, and compare aggregate table counts with the backup manifest and expected operational modules.
+5. Start the API on an unused loopback port, require a successful `/api/health` response, and stop the rehearsal process.
+6. Run read-only marketplace reconciliation against the disposable copy. Treat provider throttling as an external limitation, but do not run a live sync to compensate.
+7. Record the date and aggregate results without credentials, customer data, listing identifiers, or files from `data/`.
+
+The latest recorded rehearsal is [Restore Rehearsal — 2026-07-11](recovery/2026-07-11-restore-rehearsal.md).
+
 ## Scheduler
 
 ```powershell

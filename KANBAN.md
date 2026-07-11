@@ -27,14 +27,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 **Depends on:** SALES-03 and reviewed marketplace reconciliation.
 
-### OPS-01 — Perform a disposable restore rehearsal
-
-**Epic:** Recovery Confidence
-
-**Prompt:**
-
-> Create a fresh operational backup and rehearse restoration using only a disposable copy. Verify manifest integrity, SQLite integrity and table counts, print assets, review/sales history, application startup, and read-only reconciliation. Record the date and aggregate verification results without credentials, customer data, or files under `data/`. Correct Operations or Troubleshooting documentation for any gap found.
-
 ### RELEASE-01 — Define the first release checklist
 
 **Epic:** Release Readiness
@@ -63,6 +55,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- OPS-01 restored a fresh operational backup into an ignored disposable directory, verified manifest and SQLite integrity, operational data groups, captured asset trees, API health, and read-only marketplace reconciliation, and documented the rehearsal procedure and aggregate results.
 - EBAY-NOTIFY-02 cryptographically verifies deletion-notification signatures using eBay public keys cached in Worker memory, rejects verification failures before KV, and is deployed with encrypted production application credentials.
 - SALES-03C corrected stale persisted comparable-sales values on order refresh, eliminated all 110 Etsy impossible-total warnings, retained two unresolved refund warnings without guessing components, and added focused financial-boundary tests.
 - SALES-03B replaced the invalid Etsy payments request with bounded read-only ledger windows, added provider tests, completed two live idempotent refreshes, and restored Etsy financial aggregates.

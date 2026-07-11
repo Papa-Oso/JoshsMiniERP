@@ -1,5 +1,6 @@
 # Changelog
 
+- Completed a dated disposable restore rehearsal covering manifest and SQLite integrity, operational table groups, captured asset trees, API startup, and read-only marketplace reconciliation, and documented the repeatable recovery procedure.
 - Hardened the eBay account-deletion Worker with an exact notification path, strict payload and size validation, cryptographic `X-EBAY-SIGNATURE` verification against cached eBay public keys, and idempotent notification storage so invalid traffic and duplicate deliveries do not consume KV writes.
 - Disabled automatic eBay account-deletion notice polling to prevent repeated full-namespace KV reads; notice status remains available only through an explicit operator request while storage is redesigned.
 
