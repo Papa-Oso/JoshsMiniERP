@@ -10,6 +10,7 @@ const dataFile = path.join(tempDir, "inventory.json");
 const printingFile = path.join(tempDir, "printing.json");
 const feedbackFile = path.join(tempDir, "feedback.sqlite");
 const printingAssetDir = path.join(tempDir, "printing-assets");
+const productPhotoDir = path.join(tempDir, "product-photos");
 const originalFetch = globalThis.fetch;
 
 process.env.STORE_DRIVER = "sqlite";
@@ -18,6 +19,7 @@ process.env.DATA_FILE = dataFile;
 process.env.PRINTING_DATA_FILE = printingFile;
 process.env.FEEDBACK_DATA_FILE = feedbackFile;
 process.env.PRINTING_ASSET_DIR = printingAssetDir;
+process.env.PRODUCT_PHOTO_DIR = productPhotoDir;
 process.env.SHOPIFY_SHOP_DOMAIN = "test-shop.myshopify.com";
 process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "test-token";
 process.env.SHOPIFY_API_VERSION = "2026-07";
@@ -28,7 +30,8 @@ const { applyFeedbackHistory } = await import("../src/server/ebayReviews/feedbac
 const { importCsv } = await import("../src/server/csvImport.ts");
 const { listImportBatches } = await import("../src/server/importHistory.ts");
 const { listPrintingAssets } = await import("../src/server/printingAssets.ts");
-const { adjustInstruction, getPrintingData, updatePrintSettings, updateSkuInstructionMatch } = await import("../src/server/printingService.ts");
+const { adjustInstruction, getPrintingData, updatePrintSettings, updateSkuInstructionMatch } =
+  await import("../src/server/printingService.ts");
 const { getOperationsReport } = await import("../src/server/reportingService.ts");
 const { importShopifySkus } = await import("../src/server/shopifyImport.ts");
 const { reconcileInventory } = await import("../src/server/reconcile.ts");
@@ -42,6 +45,8 @@ after(async () => {
 });
 
 test("SQLite default store supports inventory, import, reconcile, sync, backup, and export workflows", async () => {
+  await mkdir(productPhotoDir, { recursive: true });
+  await writeFile(path.join(productPhotoDir, "LOCAL-SKU.jpg"), "photo");
   const item = await createItem({
     sku: "LOCAL-SKU",
     name: "Local SKU",
@@ -69,7 +74,11 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   });
 
   const csvPath = path.join(tempDir, "batch.csv");
-  await writeFile(csvPath, "sku,name,quantity,add,safety_stock,note\nCSV-SKU,CSV SKU,4,,5,initial\nLOCAL-SKU,,,2,,csv add\n", "utf8");
+  await writeFile(
+    csvPath,
+    "sku,name,quantity,add,safety_stock,note\nCSV-SKU,CSV SKU,4,,5,initial\nLOCAL-SKU,,,2,,csv add\n",
+    "utf8"
+  );
   const csvResult = await importCsv(csvPath);
   assert.equal(csvResult.summary.created, 1);
   assert.equal(csvResult.summary.adjusted, 1);
@@ -107,7 +116,10 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   const shopifyImport = await importShopifySkus({ location: "Main" });
   assert.equal(shopifyImport.summary.created, 1);
 
-  await updatePrintSettings({ labelPrinterName: "SQLite Label Printer", instructionPrinterName: "SQLite Instruction Printer" });
+  await updatePrintSettings({
+    labelPrinterName: "SQLite Label Printer",
+    instructionPrinterName: "SQLite Instruction Printer"
+  });
   await updateSkuInstructionMatch("LOCAL-SKU", { mode: "instruction", instructionId: "hjc" });
   await adjustInstruction("hjc", { delta: 12, type: "print_batch", note: "SQLite print batch" });
   const printing = await getPrintingData();
@@ -127,13 +139,20 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   assert.equal(csvBatch?.summary.rowsTotal, 2);
   assert.equal(csvBatch?.summary.created, 1);
   assert.equal(csvBatch?.summary.adjusted, 1);
-  assert.equal(csvBatch?.rows.some((row) => row.lineNumber === 3 && row.action === "adjust"), true);
+  assert.equal(
+    csvBatch?.rows.some((row) => row.lineNumber === 3 && row.action === "adjust"),
+    true
+  );
   assert.equal(shopifyBatch?.status, "applied");
   assert.equal(shopifyBatch?.summary.variantsScanned, 1);
   assert.equal(shopifyBatch?.summary.created, 1);
   assert.equal(shopifyBatch?.rows[0]?.sku, "SHOPIFY-NEW");
 
-  await writeFile(printingFile, `${JSON.stringify({ settings: { labelPrinter: "Test Label Printer" } }, null, 2)}\n`, "utf8");
+  await writeFile(
+    printingFile,
+    `${JSON.stringify({ settings: { labelPrinter: "Test Label Printer" } }, null, 2)}\n`,
+    "utf8"
+  );
   await mkdir(path.join(printingAssetDir, "instructions"), { recursive: true });
   await mkdir(path.join(printingAssetDir, "labels"), { recursive: true });
   await writeFile(path.join(printingAssetDir, "instructions", "JW-HJC-INSTRUCTIONS.pdf"), "instruction asset", "utf8");
@@ -141,8 +160,14 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
   const assets = await listPrintingAssets();
   const assetMetadata = (await store.listPrintAssetMetadata?.()) ?? [];
   assert.equal(assets.length, 2);
-  assert.equal(assetMetadata.some((asset) => asset.kind === "instruction" && asset.instructionId === "hjc"), true);
-  assert.equal(assetMetadata.some((asset) => asset.kind === "label" && asset.sku === "LOCAL-SKU"), true);
+  assert.equal(
+    assetMetadata.some((asset) => asset.kind === "instruction" && asset.instructionId === "hjc"),
+    true
+  );
+  assert.equal(
+    assetMetadata.some((asset) => asset.kind === "label" && asset.sku === "LOCAL-SKU"),
+    true
+  );
 
   await applyFeedbackHistory(
     [
@@ -216,18 +241,30 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
     true
   );
   assert.equal(report.totals.instructionLow >= 0, true);
-  assert.equal(report.lowInventory.some((row) => row.sku === "CSV-SKU"), true);
+  assert.equal(
+    report.lowInventory.some((row) => row.sku === "CSV-SKU"),
+    true
+  );
   assert.equal(report.totals.inventoryLow >= 1, true);
-  assert.equal(report.feedbackConcerns.some((row) => row.platform === "ebay" && row.feedbackText === "Arrived damaged"), true);
+  assert.equal(
+    report.feedbackConcerns.some((row) => row.platform === "ebay" && row.feedbackText === "Arrived damaged"),
+    true
+  );
   assert.equal(
     report.feedbackConcerns.some(
-      (row) => row.platform === "etsy" && row.feedbackText === "Photo did not match" && row.photoUrl.includes("etsy-review.jpg")
+      (row) =>
+        row.platform === "etsy" &&
+        row.feedbackText === "Photo did not match" &&
+        row.photoUrl.includes("etsy-review.jpg")
     ),
     true
   );
   assert.equal(report.totals.negativeFeedback, 2);
   assert.equal(report.feedbackScanRuns.length, 2);
-  assert.equal(report.mappingHealth.some((row) => row.sku === "LOCAL-SKU" && row.platform === "shopify"), true);
+  assert.equal(
+    report.mappingHealth.some((row) => row.sku === "LOCAL-SKU" && row.platform === "shopify"),
+    true
+  );
 
   const backup = await backupInventoryData(path.join(tempDir, "backups"));
   const exportPath = path.join(tempDir, "export.json");
@@ -238,15 +275,19 @@ test("SQLite default store supports inventory, import, reconcile, sync, backup, 
 
   assert.equal(backup.itemCount, 3);
   assert.ok(path.basename(backup.path).startsWith("operational-backup-"));
-  assert.equal(backupFiles.length, 5);
-  assert.equal(manifest.files.length, 4);
+  assert.equal(backupFiles.length, 6);
+  assert.equal(manifest.files.length, 5);
   assert.equal(manifest.missingSources.length, 0);
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("inventory-") && file.endsWith(".json")));
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("inventory-") && file.endsWith(".sqlite")));
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("printing-") && file.endsWith(".json")));
   assert.ok(backupFiles.some((file) => path.basename(file).startsWith("printing-assets-")));
+  assert.ok(backupFiles.some((file) => path.basename(file).startsWith("product-photos-")));
   assert.equal(exported.itemCount, 3);
-  assert.equal(exportedData.items.some((candidate) => candidate.sku === "SHOPIFY-NEW"), true);
+  assert.equal(
+    exportedData.items.some((candidate) => candidate.sku === "SHOPIFY-NEW"),
+    true
+  );
 
   const data = await listData();
   const local = data.items.find((candidate) => candidate.sku === "LOCAL-SKU");

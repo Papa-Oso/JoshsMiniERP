@@ -588,8 +588,22 @@ export function App() {
                   >
                     <td>{item.sku}</td>
                     <td>
-                      <div className="item-name">{item.name}</div>
-                      {item.description ? <div className="item-description">{item.description}</div> : null}
+                      <div className="product-with-thumbnail">
+                        {item.imagePath ? (
+                          <img
+                            className="product-thumbnail"
+                            src={`/api/product-images/${encodeURIComponent(item.imagePath)}`}
+                            alt=""
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="product-thumbnail placeholder" aria-hidden="true" />
+                        )}
+                        <span>
+                          <div className="item-name">{item.name}</div>
+                          {item.description ? <div className="item-description">{item.description}</div> : null}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <StockCell item={item} />

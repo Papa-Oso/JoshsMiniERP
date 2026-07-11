@@ -122,7 +122,18 @@ export async function exportInventoryCsv(outputPath?: string): Promise<DataFileR
 
 export async function exportInventoryEventsCsv(outputPath?: string): Promise<DataFileResult & { csv?: string }> {
   const data = await store.withLock(() => store.read());
-  const headers = ["id", "created_at", "sku", "item_id", "type", "delta", "quantity_after", "source", "platform", "note"];
+  const headers = [
+    "id",
+    "created_at",
+    "sku",
+    "item_id",
+    "type",
+    "delta",
+    "quantity_after",
+    "source",
+    "platform",
+    "note"
+  ];
   const rows = data.events.map((event) => ({
     id: event.id,
     created_at: event.createdAt,
@@ -265,7 +276,16 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
     },
     {
       fileName: "instruction-trends.csv",
-      headers: ["instruction_id", "label", "on_hand", "low_alert", "max_inventory", "recent_delta", "event_count", "status"],
+      headers: [
+        "instruction_id",
+        "label",
+        "on_hand",
+        "low_alert",
+        "max_inventory",
+        "recent_delta",
+        "event_count",
+        "status"
+      ],
       rows: report.instructionTrends.map((row) => ({
         instruction_id: row.instructionId,
         label: row.label,
@@ -292,7 +312,16 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
     },
     {
       fileName: "negative-feedback.csv",
-      headers: ["platform", "rating", "buyer_username", "item_title", "feedback_date", "last_seen_at", "feedback_text", "photo_url"],
+      headers: [
+        "platform",
+        "rating",
+        "buyer_username",
+        "item_title",
+        "feedback_date",
+        "last_seen_at",
+        "feedback_text",
+        "photo_url"
+      ],
       rows: report.feedbackConcerns.map((row) => ({
         platform: row.platform,
         rating: row.rating,
@@ -317,7 +346,16 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
     },
     {
       fileName: "feedback-scans.csv",
-      headers: ["created_at", "id", "platform", "scan_mode", "rows_seen", "rows_exported", "new_rows", "skipped_existing_rows"],
+      headers: [
+        "created_at",
+        "id",
+        "platform",
+        "scan_mode",
+        "rows_seen",
+        "rows_exported",
+        "new_rows",
+        "skipped_existing_rows"
+      ],
       rows: report.feedbackScanRuns.map((run) => ({
         created_at: run.createdAt,
         id: run.id,
@@ -361,9 +399,30 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
   await fs.writeFile(inventoryBackupPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   copiedFiles.push(inventoryBackupPath);
 
-  await copyFileIfExists(config.databaseFile, path.join(backupDirectory, `inventory-${timestamp}.sqlite`), copiedFiles, missingSources);
-  await copyFileIfExists(printingDataFile(), path.join(backupDirectory, `printing-${timestamp}.json`), copiedFiles, missingSources);
-  await copyDirectoryIfExists(printingAssetDirectory(), path.join(backupDirectory, `printing-assets-${timestamp}`), copiedFiles, missingSources);
+  await copyFileIfExists(
+    config.databaseFile,
+    path.join(backupDirectory, `inventory-${timestamp}.sqlite`),
+    copiedFiles,
+    missingSources
+  );
+  await copyFileIfExists(
+    printingDataFile(),
+    path.join(backupDirectory, `printing-${timestamp}.json`),
+    copiedFiles,
+    missingSources
+  );
+  await copyDirectoryIfExists(
+    printingAssetDirectory(),
+    path.join(backupDirectory, `printing-assets-${timestamp}`),
+    copiedFiles,
+    missingSources
+  );
+  await copyDirectoryIfExists(
+    productPhotoDirectory(),
+    path.join(backupDirectory, `product-photos-${timestamp}`),
+    copiedFiles,
+    missingSources
+  );
 
   await fs.writeFile(
     manifestPath,
@@ -458,7 +517,10 @@ function csvCell(value: unknown) {
 }
 
 function backupTimestamp() {
-  return new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 }
 
 async function copyFileIfExists(source: string, destination: string, copiedFiles: string[], missingSources: string[]) {
@@ -477,7 +539,12 @@ async function copyFileIfExists(source: string, destination: string, copiedFiles
   }
 }
 
-async function copyDirectoryIfExists(source: string, destination: string, copiedFiles: string[], missingSources: string[]) {
+async function copyDirectoryIfExists(
+  source: string,
+  destination: string,
+  copiedFiles: string[],
+  missingSources: string[]
+) {
   try {
     const stats = await fs.stat(source);
     if (!stats.isDirectory()) return;
@@ -498,6 +565,10 @@ function printingDataFile() {
 
 function printingAssetDirectory() {
   return path.resolve(process.env.PRINTING_ASSET_DIR ?? "data/printing");
+}
+
+function productPhotoDirectory() {
+  return path.resolve(process.env.PRODUCT_PHOTO_DIR ?? path.join(path.dirname(config.dataFile), "product photos"));
 }
 
 function isMissingFileError(error: unknown) {

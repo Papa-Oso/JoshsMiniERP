@@ -71,19 +71,34 @@ export interface SalesDashboardPayload {
   range: string;
   platform: Platform | "all";
   summary: { revenue: number; orders: number; units: number; averageOrderValue: number; currency: string };
-  ebayFinancials: { grossSales: number; fees: number; refunds: number; shippingLabels: number; netProceeds: number; transactionCount: number } | null;
+  ebayFinancials: {
+    grossSales: number;
+    fees: number;
+    refunds: number;
+    shippingLabels: number;
+    netProceeds: number;
+    transactionCount: number;
+  } | null;
   trend: Array<{ date: string; revenue: number; orders: number; units: number }>;
   platforms: Array<{ platform: Platform; revenue: number; orders: number; units: number }>;
   countries: Array<{ countryCode: string; revenue: number; orders: number; units: number }>;
   locations: Array<{ countryCode: string; regionCode: string; revenue: number; orders: number; units: number }>;
   dataQuality: { unknownGeographyOrders: number; missingSkuLines: number };
-  products: Array<{ sku: string; title: string; revenue: number; orders: number; units: number }>;
+  products: Array<{ sku: string; title: string; imageUrl?: string; revenue: number; orders: number; units: number }>;
   recentOrders: SalesOrder[];
   coverage: Array<{ platform: Platform; orders: number; earliestAt: string | null; latestAt: string | null }>;
   warnings: string[];
 }
 
-export type SalesIntegrityWarningCode = "duplicate_refund" | "unmatched_refund" | "unresolved_refund" | "mixed_currency" | "missing_breakdown" | "impossible_total" | "stale_pull" | "api_report_disagreement";
+export type SalesIntegrityWarningCode =
+  | "duplicate_refund"
+  | "unmatched_refund"
+  | "unresolved_refund"
+  | "mixed_currency"
+  | "missing_breakdown"
+  | "impossible_total"
+  | "stale_pull"
+  | "api_report_disagreement";
 export interface SalesReconciliationPayload {
   generatedAt: string;
   range: string;
@@ -110,13 +125,7 @@ export interface SalesReconciliationPayload {
 }
 
 export type InventoryEventType =
-  | "create"
-  | "batch_add"
-  | "manual_subtract"
-  | "platform_sale"
-  | "sync_baseline"
-  | "sync_push"
-  | "correction";
+  "create" | "batch_add" | "manual_subtract" | "platform_sale" | "sync_baseline" | "sync_push" | "correction";
 
 export interface PlatformMapping {
   enabled: boolean;
@@ -136,6 +145,7 @@ export interface InventoryItem {
   sku: string;
   name: string;
   description?: string;
+  imagePath?: string;
   quantity: number;
   safetyStock: number;
   maxInventory: number;
@@ -188,14 +198,7 @@ export interface SyncRun {
 }
 
 export type ReconcileStatus =
-  | "ok"
-  | "baseline"
-  | "different"
-  | "sale"
-  | "remote_increase"
-  | "missing_config"
-  | "missing_mapping"
-  | "error";
+  "ok" | "baseline" | "different" | "sale" | "remote_increase" | "missing_config" | "missing_mapping" | "error";
 
 export interface ReconcileRow {
   sku: string;

@@ -71,7 +71,7 @@ npm run inv -- restore-dry-run
 npm run inv -- restore-dry-run data/backups/operational-backup-EXAMPLE.json
 ```
 
-Keep at least the latest ten operational backups and one monthly copy outside the repo. Before deleting an older backup, verify a newer manifest and open its captured files.
+Keep at least the latest ten operational backups and one monthly copy outside the repo. Backups include the canonical database, printing assets, and local product photos. Before deleting an older backup, verify a newer manifest and open its captured files.
 
 `restore-dry-run` verifies a manifest without overwriting anything. A real recovery should restore the canonical operational database and print assets together, then start the API and reconcile before any live sync.
 

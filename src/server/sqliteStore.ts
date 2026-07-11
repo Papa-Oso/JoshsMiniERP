@@ -184,6 +184,7 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     ensureColumn(db, "import_batch_rows", "position", "INTEGER NOT NULL DEFAULT 0");
     db.run(sqliteSchema);
     ensureColumn(db, "inventory_items", "description", "TEXT");
+    ensureColumn(db, "inventory_items", "image_path", "TEXT");
     ensureColumn(db, "inventory_items", "max_inventory", "INTEGER NOT NULL DEFAULT 100");
     ensureColumn(db, "inventory_items", "active", "INTEGER NOT NULL DEFAULT 1");
     ensureColumn(db, "platform_mappings", "last_remote_quantity", "INTEGER");
@@ -219,46 +220,64 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
   }
 
   private readWithDatabase(db: Database): StoreData {
-    const itemRows = queryRows(db, `
-      SELECT id, sku, name, description, quantity, safety_stock, max_inventory, active, created_at, updated_at
+    const itemRows = queryRows(
+      db,
+      `
+      SELECT id, sku, name, description, image_path, quantity, safety_stock, max_inventory, active, created_at, updated_at
       FROM inventory_items
       ORDER BY created_at DESC, sku ASC
-    `);
+    `
+    );
 
-    const mappingRows = queryRows(db, `
+    const mappingRows = queryRows(
+      db,
+      `
       SELECT item_id, platform, enabled, remote_sku, listing_id, inventory_item_id,
         location_id, offer_id, last_synced_quantity, last_remote_quantity,
         last_synced_at, warning
       FROM platform_mappings
       ORDER BY created_at ASC
-    `);
+    `
+    );
 
-    const eventRows = queryRows(db, `
+    const eventRows = queryRows(
+      db,
+      `
       SELECT id, item_id, sku, type, delta, quantity_after, source, platform, note, created_at
       FROM inventory_events
       ORDER BY created_at DESC
       LIMIT 500
-    `);
+    `
+    );
 
-    const runRows = queryRows(db, `
+    const runRows = queryRows(
+      db,
+      `
       SELECT id, mode, status, items_checked, sales_detected, pushes, warnings, errors,
         started_at, finished_at
       FROM sync_runs
       ORDER BY started_at DESC
       LIMIT 100
-    `);
+    `
+    );
 
-    const messageRows = queryRows(db, `
+    const messageRows = queryRows(
+      db,
+      `
       SELECT sync_run_id, message
       FROM sync_run_messages
       ORDER BY sync_run_id ASC, position ASC, created_at ASC
-    `);
+    `
+    );
 
-    const scheduleRow = queryRows(db, `
+    const scheduleRow = queryRows(
+      db,
+      `
       SELECT enabled, interval_minutes, last_run_at, next_run_at, updated_at
       FROM schedule_settings
       WHERE id = 1
-    `)[0];
+    `
+    )[0];
 
     const itemsById = new Map<string, InventoryItem>();
     const items = itemRows.map((row) => {
@@ -267,6 +286,7 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
         sku: stringValue(row.sku),
         name: stringValue(row.name),
         description: optionalString(row.description),
+        imagePath: optionalString(row.image_path),
         quantity: integer(row.quantity),
         safetyStock: integer(row.safety_stock),
         maxInventory: storedMaxInventory(row.max_inventory),
@@ -329,12 +349,13 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     db.run(
       `
         INSERT INTO inventory_items (
-          id, sku, name, description, quantity, safety_stock, max_inventory, active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, sku, name, description, image_path, quantity, safety_stock, max_inventory, active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           sku = excluded.sku,
           name = excluded.name,
           description = excluded.description,
+          image_path = excluded.image_path,
           quantity = excluded.quantity,
           safety_stock = excluded.safety_stock,
           max_inventory = excluded.max_inventory,
@@ -347,6 +368,7 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
         item.sku,
         item.name,
         item.description ?? null,
+        item.imagePath ?? null,
         item.quantity,
         item.safetyStock,
         storedMaxInventory(item.maxInventory),
@@ -364,10 +386,10 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     if (mappedPlatforms.length === 0) {
       db.run("DELETE FROM platform_mappings WHERE item_id = ?", [item.id]);
     } else {
-      db.run(
-        `DELETE FROM platform_mappings WHERE item_id = ? AND platform NOT IN (${placeholders})`,
-        [item.id, ...mappedPlatforms]
-      );
+      db.run(`DELETE FROM platform_mappings WHERE item_id = ? AND platform NOT IN (${placeholders})`, [
+        item.id,
+        ...mappedPlatforms
+      ]);
     }
 
     for (const platform of platforms) {
@@ -564,7 +586,13 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
     }
   }
 
-  private insertImportBatchRow(db: Database, batchId: string, row: ImportBatchRow, position: number, createdAt: string) {
+  private insertImportBatchRow(
+    db: Database,
+    batchId: string,
+    row: ImportBatchRow,
+    position: number,
+    createdAt: string
+  ) {
     db.run(
       `
         INSERT INTO import_batch_rows (
@@ -649,32 +677,44 @@ export class SQLiteInventoryStore implements InventoryStoreDriver {
   }
 
   private readPrintingWithDatabase(db: Database): PrintingPayload {
-    const instructionRows = queryRows(db, `
+    const instructionRows = queryRows(
+      db,
+      `
       SELECT id, label, match_terms_json, title, body, on_hand, low_alert,
         max_inventory, per_page, updated_at
       FROM print_instructions
       ORDER BY position ASC, label ASC
-    `);
+    `
+    );
 
-    const eventRows = queryRows(db, `
+    const eventRows = queryRows(
+      db,
+      `
       SELECT id, instruction_id, type, delta, quantity_after, note, created_at
       FROM print_instruction_events
       ORDER BY created_at DESC, id DESC
       LIMIT 250
-    `);
+    `
+    );
 
-    const matchRows = queryRows(db, `
+    const matchRows = queryRows(
+      db,
+      `
       SELECT sku, mode, instruction_id, updated_at
       FROM sku_instruction_matches
       ORDER BY sku ASC
-    `);
+    `
+    );
 
-    const settingsRow = queryRows(db, `
+    const settingsRow = queryRows(
+      db,
+      `
       SELECT label_batch_size, instruction_pages, instruction_per_page,
         label_printer_name, instruction_printer_name
       FROM print_settings
       WHERE id = 1
-    `)[0];
+    `
+    )[0];
 
     return normalizePrintingData({
       instructions: instructionRows.map(rowToPrintInstruction),
@@ -1237,6 +1277,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   sku TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
+  image_path TEXT,
   quantity INTEGER NOT NULL CHECK (quantity >= 0),
   safety_stock INTEGER NOT NULL DEFAULT 0 CHECK (safety_stock >= 0),
   max_inventory INTEGER NOT NULL DEFAULT 100 CHECK (max_inventory >= 1),
