@@ -25,7 +25,7 @@ This file contains active and upcoming work only. Completed user-visible work be
 ## Upcoming Repository Follow-ups
 
 - [ ] Add an architecture decision record whenever a new durable storage, marketplace, deployment, or safety decision is made.
-- [ ] Add informational test coverage reporting, then identify safety-critical gaps.
+- [x] Add informational test coverage reporting, then identify safety-critical gaps.
 - [ ] Perform and record a dated restore rehearsal using a non-production copy.
 - [ ] Add a credential-rotation runbook after the next marketplace credential rotation.
 - [ ] Define a small release checklist before the first tagged release.

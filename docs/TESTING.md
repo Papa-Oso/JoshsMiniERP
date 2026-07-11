@@ -12,6 +12,12 @@
 | Normal code change        | `npm run check`                                              |
 | Release confidence        | `npm run check:all` and `npm run audit:all`                  |
 
+## Informational Coverage
+
+Run `npm run test:coverage` to create text, JSON summary, and browsable HTML reports under ignored `coverage/`. CI uploads the same directory as the `root-test-coverage` artifact.
+
+Coverage is informational: there is deliberately no percentage threshold and it is not part of `npm run check`. Use it to locate missing safety scenarios, then add focused behavioral tests rather than optimizing a percentage.
+
 ## Test Boundaries
 
 The normal suite uses temporary files, temporary SQLite databases, and fake marketplace adapters. It must not contact live Etsy, eBay, Shopify, Cloudflare, Cloud SQL, or other external services.
@@ -32,6 +38,15 @@ Changes to these areas should include focused regression tests:
 - SQLite migrations and store contract behavior
 
 Coverage percentages should be treated as a discovery tool, not a substitute for scenario-based safety tests.
+
+The initial report identified these safety-critical areas for focused follow-up:
+
+- OAuth callback/error and token-refresh failure paths
+- Legacy SQLite migration rollback and partial-schema behavior
+- Marketplace timeout, malformed-response, and partial-import handling
+- Backup copy/manifest failures and scheduler installation failures
+- Refund source-precedence conflicts and unmatched historical transactions
+- Reconciliation disagreement boundaries and stale provider data
 
 ## Manual Review
 

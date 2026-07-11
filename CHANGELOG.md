@@ -1,5 +1,7 @@
 # Changelog
 
+- Added informational root test coverage reporting with text, JSON, and HTML output plus a non-thresholded CI artifact, and documented the initial safety-critical coverage gaps.
+
 - Replaced the decorative Sales map with a locally bundled Natural Earth world map, order-volume country shading, approximate regional pins with accessible sales details, a clear legend, and an always-visible unknown-geography count.
 
 Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` format.

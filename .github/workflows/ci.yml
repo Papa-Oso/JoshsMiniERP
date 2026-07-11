@@ -34,6 +34,17 @@ jobs:
       - name: Run deterministic checks
         run: npm run check
 
+      - name: Generate informational root coverage
+        run: npm run test:coverage
+
+      - name: Upload root coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: root-test-coverage
+          path: coverage/
+          if-no-files-found: warn
+
       - name: Test account-deletion Worker
         run: npm run check:worker
 

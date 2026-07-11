@@ -13,23 +13,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-03 — Preview and verify historical financial backfill
-
-**Epic:** Useful Geographic Reporting
-
-**Prompt:**
-
-> Implement a preview-first historical financial backfill for normalized eBay and Etsy sales components. Require an operational backup before apply, show source precedence and row counts, leave incomplete history explicitly unresolved, and make apply repeat-safe. Compare 30-day Etsy and 90-day eBay results with the marketplace dashboards using aggregate-only reconciliation output. Do not change inventory or marketplace quantities and do not switch the Sales dashboard metric during this task.
-
-**Acceptance:**
-
-- Preview performs no writes and reports proposed inserts, updates, skips, and conflicts.
-- Apply requires a verified backup and passes SQLite integrity/row-count checks.
-- Re-running apply produces no duplicate orders or refunds.
-- Aggregate reconciliation differences are documented before rollout.
-
-**Depends on:** SALES-02.
-
 ## Next
 
 ## Later
@@ -78,10 +61,13 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Blocked
 
-None. Move a card here only when it needs user authority, unavailable credentials/scopes, external provider state, or a prerequisite that cannot be completed locally. State the unblock condition explicitly.
+### SALES-03 — Preview and verify historical financial backfill
+
+Repository normalization and aggregate reconciliation foundations are complete. Applying the backfill and completing the card require an operator-created operational backup plus reviewed comparisons against the 30-day Etsy and 90-day eBay marketplace dashboards. Resume when those external totals can be reviewed; do not switch the dashboard metric before approval.
 
 ## Recently Completed
 
+- Added informational root coverage reports and a non-blocking CI artifact, with initial safety-critical test gaps documented.
 - Replaced the decorative Sales map with an offline Natural Earth map, country-volume shading, accessible regional markers, an explicit legend, and visible unknown-geography count.
 - Added aggregate-only period reconciliation with separate currencies and categorized integrity warnings.
 - Added authoritative eBay refund and Etsy payment-adjustment ingestion with stable identities and unresolved-component safeguards.
