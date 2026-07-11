@@ -4,6 +4,8 @@ const jsonHeaders = {
 };
 const notificationPath = "/ebay/marketplace-account-deletion";
 const maximumNotificationBytes = 32_768;
+const publicKeyCache = new Map();
+const publicKeyCacheMilliseconds = 60 * 60 * 1000;
 
 export default {
   async fetch(request, env) {
@@ -90,6 +92,10 @@ async function handleNotification(request, env) {
   if (new TextEncoder().encode(rawBody).byteLength > maximumNotificationBytes) {
     return Response.json({ error: "Notification payload is too large" }, { status: 413, headers: jsonHeaders });
   }
+  const signatureVerified = await verifyEbaySignature(rawBody, signatureHeader, env);
+  if (!signatureVerified) {
+    return Response.json({ error: "Invalid eBay notification signature" }, { status: 412, headers: jsonHeaders });
+  }
   const payload = parseJson(rawBody);
   const validationError = validateNotification(payload);
   if (validationError) {
@@ -127,6 +133,81 @@ async function handleNotification(request, env) {
 
   await env.EBAY_DELETION_NOTICES.put(key, JSON.stringify(notice));
   return new Response(null, { status: 204 });
+}
+
+async function verifyEbaySignature(rawBody, signatureHeader, env) {
+  try {
+    const envelope = JSON.parse(decodeBase64Text(signatureHeader));
+    if (!isNonEmptyString(envelope.kid, 512) || !isNonEmptyString(envelope.signature, 4096)) return false;
+    const publicKey = await ebayPublicKey(envelope.kid, env);
+    const cryptoKey = await crypto.subtle.importKey(
+      "spki",
+      pemBytes(publicKey),
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-1" },
+      false,
+      ["verify"]
+    );
+    return crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      decodeBase64Bytes(envelope.signature),
+      new TextEncoder().encode(rawBody)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function ebayPublicKey(keyId, env) {
+  const cached = publicKeyCache.get(keyId);
+  if (cached && cached.expiresAt > Date.now()) return cached.key;
+  if (!isValidCredential(env.EBAY_CLIENT_ID) || !isValidCredential(env.EBAY_CLIENT_SECRET)) {
+    throw new Error("eBay application credentials are not configured");
+  }
+  const tokenResponse = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      authorization: `Basic ${encodeBase64Text(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`)}`,
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope"
+  });
+  if (!tokenResponse.ok) throw new Error("Unable to obtain eBay application token");
+  const token = await tokenResponse.json();
+  if (!isNonEmptyString(token.access_token, 8192)) throw new Error("eBay token response is invalid");
+  const keyResponse = await fetch(
+    `https://api.ebay.com/commerce/notification/v1/public_key/${encodeURIComponent(keyId)}`,
+    { headers: { authorization: `Bearer ${token.access_token}` } }
+  );
+  if (!keyResponse.ok) throw new Error("Unable to retrieve eBay notification public key");
+  const result = await keyResponse.json();
+  if (!isNonEmptyString(result.key, 16384)) throw new Error("eBay public-key response is invalid");
+  publicKeyCache.set(keyId, { key: result.key, expiresAt: Date.now() + publicKeyCacheMilliseconds });
+  return result.key;
+}
+
+function pemBytes(value) {
+  return decodeBase64Bytes(value.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\s/g, ""));
+}
+
+function decodeBase64Text(value) {
+  return new TextDecoder().decode(decodeBase64Bytes(value));
+}
+
+function decodeBase64Bytes(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function encodeBase64Text(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function isValidCredential(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 4096;
 }
 
 function validateNotification(payload) {

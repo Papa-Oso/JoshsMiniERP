@@ -25,6 +25,8 @@ npx wrangler login
 npx wrangler kv namespace create EBAY_DELETION_NOTICES
 npx wrangler secret put EBAY_VERIFICATION_TOKEN
 npx wrangler secret put EBAY_NOTIFICATION_ADMIN_TOKEN
+npx wrangler secret put EBAY_CLIENT_ID
+npx wrangler secret put EBAY_CLIENT_SECRET
 npx wrangler deploy
 ```
 
@@ -34,7 +36,7 @@ The verification token must be the same value pasted into eBay's Alerts & Notifi
 
 Before deploying this version, update the endpoint in eBay's Alerts & Notifications page to include `/ebay/marketplace-account-deletion`; eBay will issue a new verification challenge. Notifications must use JSON, contain the expected deletion topic and identifiers, and include `X-EBAY-SIGNATURE`. Duplicate notification IDs are acknowledged without another KV write.
 
-The signature header requirement filters ordinary scanners but is not cryptographic sender verification. Add eBay public-key signature verification before treating the stored notice as authenticated.
+The Worker cryptographically verifies `X-EBAY-SIGNATURE` against the eBay Notification API public key before reading or writing KV. Public keys are cached in Worker memory for one hour. `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` must be the production application credentials for the keyset configured with this endpoint; store them only as encrypted Worker secrets.
 
 Add the admin token and endpoint to the local ERP `.env` so an operator can explicitly inspect stored notices. Automatic polling is disabled because listing the current KV layout reads every stored notice:
 
