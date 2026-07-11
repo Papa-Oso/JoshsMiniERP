@@ -35,6 +35,46 @@ test("applies full and partial Etsy refunds once and leaves unresolved totals ex
   assert.equal(payload.warnings.find((warning) => warning.code === "unresolved_refund")?.count, 1);
 });
 
+test("applies duplicate refund identities exactly once while retaining the warning", () => {
+  const orders = [order({ productAmount: 30, shippingAmount: 5, comparableSalesAmount: 35 })];
+  const duplicate = refund({
+    refundId: "same-refund",
+    productAmount: 5,
+    shippingAmount: 1,
+    totalAmount: 6,
+    sourceUpdatedAt: "2026-07-10T10:00:00.000Z"
+  });
+  const payload = reconcileSales({
+    orders,
+    refunds: [duplicate, { ...duplicate, sourceUpdatedAt: "2026-07-10T11:00:00.000Z" }],
+    pulls: [{ platform: "etsy", pulled_at: "2026-07-10T11:00:00.000Z" }],
+    financials: [],
+    range: "30d",
+    platform: "etsy",
+    now
+  });
+  assert.equal(payload.rows[0].refunds, 6);
+  assert.equal(payload.rows[0].comparableNetSales, 29);
+  assert.equal(payload.warnings.find((warning) => warning.code === "duplicate_refund")?.count, 1);
+});
+
+test("includes an order exactly on the date boundary and excludes one millisecond before it", () => {
+  const boundary = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const payload = reconcileSales({
+    orders: [
+      order({ orderId: "at-boundary", createdAt: boundary }),
+      order({ orderId: "before-boundary", createdAt: new Date(Date.parse(boundary) - 1).toISOString() })
+    ],
+    refunds: [],
+    pulls: [{ platform: "etsy", pulled_at: "2026-07-10T11:00:00.000Z" }],
+    financials: [],
+    range: "30d",
+    platform: "etsy",
+    now
+  });
+  assert.equal(payload.rows[0].importedOrders, 1);
+});
+
 test("separates currencies and reports unresolved integrity categories without identifiers", () => {
   const orders = [order({ orderId: "usd", financialsComplete: false, reconciliationState: "unresolved" }), order({ orderId: "eur", currency: "EUR", financialsComplete: true, comparableSalesAmount: -1 })];
   const refunds = [refund({ orderId: "usd", refundId: "unresolved", totalAmount: 4, componentsComplete: false }), refund({ orderId: "missing", refundId: "unmatched", totalAmount: 2, refundedAt: "2026-07-10T10:00:00.000Z", componentsComplete: false })];

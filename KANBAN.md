@@ -47,6 +47,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- SALES-VERIFY-01 ensures duplicate refund identities contribute to comparable net sales exactly once while retaining an integrity warning, and covers the exact reporting date boundary.
 - RELEASE-01 added a concise release checklist covering scope, changelog, migrations and backup, secrets, full verification and audit, protected eBay behavior, surface-specific deployment checks, read-only reconciliation, and rollback.
 - OPS-01 restored a fresh operational backup into an ignored disposable directory, verified manifest and SQLite integrity, operational data groups, captured asset trees, API health, and read-only marketplace reconciliation, and documented the rehearsal procedure and aggregate results.
 - EBAY-NOTIFY-02 cryptographically verifies deletion-notification signatures using eBay public keys cached in Worker memory, rejects verification failures before KV, and is deployed with encrypted production application credentials.

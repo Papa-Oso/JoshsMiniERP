@@ -141,10 +141,11 @@ export function reconcileSales({
       (!currency || order.currency === currency)
   );
   const orderKeys = new Set(imported.map((order) => order.orderId));
-  const matchingRefunds = refunds.filter(
+  const matchingRefundRows = refunds.filter(
     (refund) =>
       refund.platform === platform && orderKeys.has(refund.orderId) && (!currency || refund.currency === currency)
   );
+  const matchingRefunds = uniqueRefunds(matchingRefundRows);
   const currencies = [...new Set(imported.map((order) => order.currency || "USD"))].sort();
   const rows = currencies.map((code) =>
     reconciliationRow(
@@ -157,8 +158,7 @@ export function reconcileSales({
     )
   );
   const warnings: SalesReconciliationPayload["warnings"] = [];
-  const duplicateRefunds =
-    matchingRefunds.length - new Set(matchingRefunds.map((refund) => `${refund.orderId}:${refund.refundId}`)).size;
+  const duplicateRefunds = matchingRefundRows.length - matchingRefunds.length;
   addWarning(warnings, "duplicate_refund", duplicateRefunds, "Duplicate refund identities require review.");
   addWarning(
     warnings,
@@ -217,6 +217,16 @@ export function reconcileSales({
     );
   }
   return { generatedAt: new Date(now).toISOString(), range, platform, currency: currency ?? null, rows, warnings };
+}
+
+function uniqueRefunds(refunds: SalesRefund[]) {
+  const unique = new Map<string, SalesRefund>();
+  for (const refund of refunds) {
+    const key = `${refund.orderId}:${refund.refundId}`;
+    const existing = unique.get(key);
+    if (!existing || Date.parse(refund.sourceUpdatedAt) >= Date.parse(existing.sourceUpdatedAt)) unique.set(key, refund);
+  }
+  return [...unique.values()];
 }
 
 function reconciliationRow(
