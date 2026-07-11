@@ -1,5 +1,7 @@
 # Changelog
 
+- Repaired Etsy payment and refund refreshes to use documented, bounded payment-account ledger requests, with stable payment deduplication and atomic provider-error handling.
+
 - Added informational root test coverage reporting with text, JSON, and HTML output plus a non-thresholded CI artifact, and documented the initial safety-critical coverage gaps.
 
 - Replaced the decorative Sales map with a locally bundled Natural Earth world map, order-volume country shading, approximate regional pins with accessible sales details, a clear legend, and an always-visible unknown-geography count.

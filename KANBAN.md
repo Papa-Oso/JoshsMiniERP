@@ -13,24 +13,24 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-03B — Repair Etsy payment retrieval for reconciliation
+### SALES-03C — Resolve Etsy reconciliation integrity warnings
 
 **Epic:** Comparable Sales Integrity
 
 **Prompt:**
 
-> Replace the Etsy sales refresh's unsupported unfiltered `/shops/{shop_id}/payments` request with a supported read-only Open API v3 payment retrieval flow. Preserve pagination or bounded batching, retain stable refund identities, avoid customer information, and keep incomplete adjustment components unresolved rather than guessing. Add focused tests for successful retrieval, pagination or batching, API errors, and repeat-safe refund imports. Rerun the 30-day Etsy aggregate reconciliation after the fix. Do not change inventory, marketplace quantities, or the Sales dashboard metric.
+> Diagnose the 110 Etsy `impossible_total` warnings and two unresolved 30-day refunds using aggregate and synthetic test evidence. Correct normalization only where the official receipt/payment components prove the calculation; never infer missing refund splits. Add focused cases for seller discounts, buyer-paid shipping, tax/VAT exclusion, canceled orders, and full/partial unresolved refunds. Update the dated reconciliation record with corrected aggregate warning counts. Do not change inventory, marketplace quantities, or the Sales dashboard metric.
 
 **Acceptance:**
 
-- The Etsy refresh no longer sends the invalid payment request that requires missing `payment_ids`.
-- Payment and adjustment retrieval uses documented read-only endpoints and required `transactions_r` scope.
-- Repeated refreshes do not duplicate refunds or orders.
-- Failed or incomplete payment responses leave financial history explicitly unresolved.
-- Focused tests cover retrieval, provider errors, and idempotency.
-- The dated reconciliation record is updated with the new aggregate result.
+- Every `impossible_total` category is explained or corrected with a focused test.
+- Tax/VAT never contributes to comparable net sales.
+- Discounts are not subtracted twice.
+- Canceled orders contribute zero.
+- Refund components remain excluded when their split is not provable.
+- The dated reconciliation record reports the remaining aggregate warnings and approval state.
 
-**Depends on:** Etsy Open API v3 payment contract and existing read-only `transactions_r` credentials.
+**Depends on:** SALES-03B.
 
 ## Next
 
@@ -78,6 +78,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- SALES-03B replaced the invalid Etsy payments request with bounded read-only ledger windows, added provider tests, completed two live idempotent refreshes, and restored Etsy financial aggregates.
 - SALES-03A created and verified a fresh operational backup, captured aggregate reconciliation evidence, and rejected backfill approval because Etsy payment retrieval and marketplace dashboard comparisons remain blocking. See `docs/reconciliation/2026-07-11-sales-backfill-readiness.md`.
 - Added informational root coverage reports and a non-blocking CI artifact, with initial safety-critical test gaps documented.
 - Replaced the decorative Sales map with an offline Natural Earth map, country-volume shading, accessible regional markers, an explicit legend, and visible unknown-geography count.

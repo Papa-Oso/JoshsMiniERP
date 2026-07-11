@@ -5,7 +5,10 @@ import { ebayFulfillmentScope, getEbayAccessToken } from "./ebayAuth";
 import { getEtsyAccessToken } from "./etsyAuth";
 import { resolveEtsyShopId } from "./etsyReviews";
 
-export interface SalesImportBatch { orders: SalesOrder[]; refunds: SalesRefund[] }
+export interface SalesImportBatch {
+  orders: SalesOrder[];
+  refunds: SalesRefund[];
+}
 export async function importPlatformSales(platform: Platform): Promise<SalesImportBatch> {
   if (platform === "shopify") return { orders: await importShopifySales(), refunds: [] };
   if (platform === "ebay") return importEbaySales();
@@ -16,12 +19,26 @@ interface ShopifyOrdersPage {
   orders: {
     pageInfo: { hasNextPage: boolean; endCursor: string | null };
     nodes: Array<{
-      id: string; legacyResourceId: string; name: string; createdAt: string; updatedAt: string;
-      displayFinancialStatus: string | null; displayFulfillmentStatus: string;
+      id: string;
+      legacyResourceId: string;
+      name: string;
+      createdAt: string;
+      updatedAt: string;
+      displayFinancialStatus: string | null;
+      displayFulfillmentStatus: string;
       currentTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
       currentSubtotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
       shippingAddress: { countryCodeV2: string | null; provinceCode: string | null } | null;
-      lineItems: { nodes: Array<{ id: string; sku: string | null; name: string; quantity: number; currentQuantity: number; discountedTotalSet: { shopMoney: { amount: string } } }> };
+      lineItems: {
+        nodes: Array<{
+          id: string;
+          sku: string | null;
+          name: string;
+          quantity: number;
+          currentQuantity: number;
+          discountedTotalSet: { shopMoney: { amount: string } };
+        }>;
+      };
     }>;
   };
 }
@@ -58,35 +75,78 @@ async function importShopifySales() {
 function toShopifyOrder(order: ShopifyOrdersPage["orders"]["nodes"][number]): SalesOrder {
   const currency = order.currentTotalPriceSet.shopMoney.currencyCode;
   const lineItems = order.lineItems.nodes.map((line) => ({
-    platform: "shopify" as const, orderId: order.legacyResourceId, lineId: line.id,
-    sku: line.sku ?? "", title: line.name, quantity: line.currentQuantity,
+    platform: "shopify" as const,
+    orderId: order.legacyResourceId,
+    lineId: line.id,
+    sku: line.sku ?? "",
+    title: line.name,
+    quantity: line.currentQuantity,
     amount: number(line.discountedTotalSet.shopMoney.amount)
   }));
   return {
-    platform: "shopify", orderId: order.legacyResourceId, orderNumber: order.name,
-    createdAt: order.createdAt, updatedAt: order.updatedAt,
+    platform: "shopify",
+    orderId: order.legacyResourceId,
+    orderNumber: order.name,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
     status: [order.displayFinancialStatus, order.displayFulfillmentStatus].filter(Boolean).join(" / "),
-    currency, grossAmount: number(order.currentTotalPriceSet.shopMoney.amount),
+    currency,
+    grossAmount: number(order.currentTotalPriceSet.shopMoney.amount),
     netAmount: number(order.currentSubtotalPriceSet.shopMoney.amount),
     countryCode: order.shippingAddress?.countryCodeV2 ?? "",
     regionCode: order.shippingAddress?.provinceCode ?? "",
     itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
-    sourceUrl: config.shopify.shopDomain ? `https://${cleanDomain(config.shopify.shopDomain)}/admin/orders/${order.legacyResourceId}` : "",
+    sourceUrl: config.shopify.shopDomain
+      ? `https://${cleanDomain(config.shopify.shopDomain)}/admin/orders/${order.legacyResourceId}`
+      : "",
     lineItems
   };
 }
 
-interface EbayOrderPage { total?: number; next?: string; orders?: EbayOrder[] }
-interface EbayOrder {
-  orderId: string; creationDate: string; lastModifiedDate?: string; orderPaymentStatus?: string;
-  orderFulfillmentStatus?: string; cancelStatus?: { cancelState?: string };
-  pricingSummary?: { total?: Money; priceSubtotal?: Money; deliveryCost?: Money; deliveryDiscount?: Money; priceDiscount?: Money; tax?: Money };
-  fulfillmentStartInstructions?: Array<{ shippingStep?: { shipTo?: { contactAddress?: { countryCode?: string; stateOrProvince?: string } } } }>;
-  paymentSummary?: { refunds?: EbayRefund[] };
-  lineItems?: Array<{ lineItemId: string; sku?: string; title?: string; quantity?: number; total?: Money; refunds?: EbayRefund[] }>;
+interface EbayOrderPage {
+  total?: number;
+  next?: string;
+  orders?: EbayOrder[];
 }
-interface Money { value?: string; currency?: string }
-interface EbayRefund { refundId?: string; refundReferenceId?: string; refundDate?: string; refundStatus?: string; amount?: Money }
+interface EbayOrder {
+  orderId: string;
+  creationDate: string;
+  lastModifiedDate?: string;
+  orderPaymentStatus?: string;
+  orderFulfillmentStatus?: string;
+  cancelStatus?: { cancelState?: string };
+  pricingSummary?: {
+    total?: Money;
+    priceSubtotal?: Money;
+    deliveryCost?: Money;
+    deliveryDiscount?: Money;
+    priceDiscount?: Money;
+    tax?: Money;
+  };
+  fulfillmentStartInstructions?: Array<{
+    shippingStep?: { shipTo?: { contactAddress?: { countryCode?: string; stateOrProvince?: string } } };
+  }>;
+  paymentSummary?: { refunds?: EbayRefund[] };
+  lineItems?: Array<{
+    lineItemId: string;
+    sku?: string;
+    title?: string;
+    quantity?: number;
+    total?: Money;
+    refunds?: EbayRefund[];
+  }>;
+}
+interface Money {
+  value?: string;
+  currency?: string;
+}
+interface EbayRefund {
+  refundId?: string;
+  refundReferenceId?: string;
+  refundDate?: string;
+  refundStatus?: string;
+  amount?: Money;
+}
 
 async function importEbaySales() {
   const token = await getEbayAccessToken(ebayFulfillmentScope);
@@ -94,9 +154,18 @@ async function importEbaySales() {
   const refunds: SalesRefund[] = [];
   let next: string | null = `${ebayBaseUrl()}/sell/fulfillment/v1/order?limit=200&offset=0`;
   while (next) {
-    const response = await fetch(next, { headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId } });
-    const payload = (await response.json().catch(() => ({}))) as EbayOrderPage & { errors?: Array<{ message?: string; longMessage?: string }> };
-    if (!response.ok) throw new Error(payload.errors?.[0]?.longMessage || payload.errors?.[0]?.message || `eBay orders failed with ${response.status}.`);
+    const response = await fetch(next, {
+      headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId }
+    });
+    const payload = (await response.json().catch(() => ({}))) as EbayOrderPage & {
+      errors?: Array<{ message?: string; longMessage?: string }>;
+    };
+    if (!response.ok)
+      throw new Error(
+        payload.errors?.[0]?.longMessage ||
+          payload.errors?.[0]?.message ||
+          `eBay orders failed with ${response.status}.`
+      );
     orders.push(...(payload.orders ?? []).map(toEbayOrder));
     refunds.push(...(payload.orders ?? []).flatMap(ebayRefunds));
     next = payload.next ? new URL(payload.next, ebayBaseUrl()).toString() : null;
@@ -105,59 +174,145 @@ async function importEbaySales() {
 }
 
 export function ebayRefunds(order: EbayOrder): SalesRefund[] {
-  const rows = [...(order.paymentSummary?.refunds ?? []), ...(order.lineItems ?? []).flatMap((line) => line.refunds ?? [])];
-  return rows.filter((row) => row.refundId || row.refundReferenceId).map((row) => ({
-    platform: "ebay", orderId: order.orderId, refundId: String(row.refundId || row.refundReferenceId),
-    refundedAt: row.refundDate ?? order.lastModifiedDate ?? order.creationDate,
-    productAmount: 0, shippingAmount: 0, taxAmount: 0, totalAmount: Math.abs(number(row.amount?.value)),
-    status: row.refundStatus ?? "", currency: row.amount?.currency ?? order.pricingSummary?.total?.currency ?? "USD",
-    componentsComplete: false, source: "order_api", sourceUpdatedAt: order.lastModifiedDate ?? order.creationDate
-  }));
+  const rows = [
+    ...(order.paymentSummary?.refunds ?? []),
+    ...(order.lineItems ?? []).flatMap((line) => line.refunds ?? [])
+  ];
+  return rows
+    .filter((row) => row.refundId || row.refundReferenceId)
+    .map((row) => ({
+      platform: "ebay",
+      orderId: order.orderId,
+      refundId: String(row.refundId || row.refundReferenceId),
+      refundedAt: row.refundDate ?? order.lastModifiedDate ?? order.creationDate,
+      productAmount: 0,
+      shippingAmount: 0,
+      taxAmount: 0,
+      totalAmount: Math.abs(number(row.amount?.value)),
+      status: row.refundStatus ?? "",
+      currency: row.amount?.currency ?? order.pricingSummary?.total?.currency ?? "USD",
+      componentsComplete: false,
+      source: "order_api",
+      sourceUpdatedAt: order.lastModifiedDate ?? order.creationDate
+    }));
 }
 
 export function toEbayOrder(order: EbayOrder): SalesOrder {
   const address = order.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo?.contactAddress;
   const total = order.pricingSummary?.total;
   const priceSubtotal = number(order.pricingSummary?.priceSubtotal?.value ?? total?.value);
-  const shippingAmount = number(order.pricingSummary?.deliveryCost?.value) + number(order.pricingSummary?.deliveryDiscount?.value);
+  const shippingAmount =
+    number(order.pricingSummary?.deliveryCost?.value) + number(order.pricingSummary?.deliveryDiscount?.value);
   const discountAmount = Math.abs(number(order.pricingSummary?.priceDiscount?.value));
   const productAmount = Math.max(0, priceSubtotal - discountAmount);
   const taxAmount = number(order.pricingSummary?.tax?.value);
-  const canceled = order.cancelStatus?.cancelState && order.cancelStatus.cancelState !== "NONE_REQUESTED" ? order.lastModifiedDate ?? order.creationDate : "";
+  const canceled =
+    order.cancelStatus?.cancelState && order.cancelStatus.cancelState !== "NONE_REQUESTED"
+      ? (order.lastModifiedDate ?? order.creationDate)
+      : "";
   const lineItems = (order.lineItems ?? []).map((line) => ({
-    platform: "ebay" as const, orderId: order.orderId, lineId: line.lineItemId,
-    sku: line.sku ?? "", title: line.title ?? "", quantity: line.quantity ?? 0, amount: number(line.total?.value)
+    platform: "ebay" as const,
+    orderId: order.orderId,
+    lineId: line.lineItemId,
+    sku: line.sku ?? "",
+    title: line.title ?? "",
+    quantity: line.quantity ?? 0,
+    amount: number(line.total?.value)
   }));
   return {
-    platform: "ebay", orderId: order.orderId, orderNumber: order.orderId,
-    createdAt: order.creationDate, updatedAt: order.lastModifiedDate ?? order.creationDate,
-    status: [order.orderPaymentStatus, order.orderFulfillmentStatus, order.cancelStatus?.cancelState].filter(Boolean).join(" / "),
-    currency: total?.currency ?? "USD", grossAmount: number(total?.value),
+    platform: "ebay",
+    orderId: order.orderId,
+    orderNumber: order.orderId,
+    createdAt: order.creationDate,
+    updatedAt: order.lastModifiedDate ?? order.creationDate,
+    status: [order.orderPaymentStatus, order.orderFulfillmentStatus, order.cancelStatus?.cancelState]
+      .filter(Boolean)
+      .join(" / "),
+    currency: total?.currency ?? "USD",
+    grossAmount: number(total?.value),
     netAmount: number(order.pricingSummary?.priceSubtotal?.value ?? total?.value),
-    productAmount, shippingAmount, discountAmount, taxAmount, refundedAmount: 0,
+    productAmount,
+    shippingAmount,
+    discountAmount,
+    taxAmount,
+    refundedAmount: 0,
     comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
-    financialStatus: order.orderPaymentStatus ?? "", canceledAt: canceled,
-    financialsComplete: Boolean(order.pricingSummary?.priceSubtotal && order.pricingSummary?.deliveryCost && order.pricingSummary?.tax),
-    financialsSource: "order_api", financialsUpdatedAt: order.lastModifiedDate ?? order.creationDate,
+    financialStatus: order.orderPaymentStatus ?? "",
+    canceledAt: canceled,
+    financialsComplete: Boolean(
+      order.pricingSummary?.priceSubtotal && order.pricingSummary?.deliveryCost && order.pricingSummary?.tax
+    ),
+    financialsSource: "order_api",
+    financialsUpdatedAt: order.lastModifiedDate ?? order.creationDate,
     reconciliationState: "incomplete",
-    countryCode: address?.countryCode ?? "", regionCode: address?.stateOrProvince ?? "",
+    countryCode: address?.countryCode ?? "",
+    regionCode: address?.stateOrProvince ?? "",
     itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
     sourceUrl: `https://www.ebay.com/sh/ord/details?orderid=${encodeURIComponent(order.orderId)}`,
     lineItems
   };
 }
 
-interface EtsyReceiptPage { count?: number; results?: EtsyReceipt[]; error?: string }
-interface EtsyReceipt {
-  receipt_id: number; create_timestamp: number; update_timestamp?: number; status?: string;
-  country_iso?: string; state?: string; total_price?: EtsyMoney; subtotal?: EtsyMoney;
-  total_shipping_cost?: EtsyMoney; total_tax_cost?: EtsyMoney; total_vat_cost?: EtsyMoney; discount_amt?: EtsyMoney;
-  transactions?: Array<{ transaction_id: number; listing_id?: number; title?: string; quantity?: number; sku?: string; price?: EtsyMoney }>;
+interface EtsyReceiptPage {
+  count?: number;
+  results?: EtsyReceipt[];
+  error?: string;
 }
-interface EtsyMoney { amount?: number; divisor?: number; currency_code?: string }
-interface EtsyPaymentPage { count?: number; results?: EtsyPayment[]; error?: string }
-interface EtsyPayment { payment_id: number; receipt_id: number; status?: string; currency?: string; update_timestamp?: number; create_timestamp?: number; payment_adjustments?: EtsyAdjustment[] }
-interface EtsyAdjustment { payment_adjustment_id: number; status?: string; is_success?: boolean; total_adjustment_amount?: number; update_timestamp?: number; create_timestamp?: number; payment_adjustment_items?: Array<{ payment_adjustment_item_id: number; adjustment_type?: string; amount?: number }> }
+interface EtsyReceipt {
+  receipt_id: number;
+  create_timestamp: number;
+  update_timestamp?: number;
+  status?: string;
+  country_iso?: string;
+  state?: string;
+  total_price?: EtsyMoney;
+  subtotal?: EtsyMoney;
+  total_shipping_cost?: EtsyMoney;
+  total_tax_cost?: EtsyMoney;
+  total_vat_cost?: EtsyMoney;
+  discount_amt?: EtsyMoney;
+  transactions?: Array<{
+    transaction_id: number;
+    listing_id?: number;
+    title?: string;
+    quantity?: number;
+    sku?: string;
+    price?: EtsyMoney;
+  }>;
+}
+interface EtsyMoney {
+  amount?: number;
+  divisor?: number;
+  currency_code?: string;
+}
+interface EtsyPaymentPage {
+  count?: number;
+  results?: EtsyPayment[];
+  error?: string;
+}
+interface EtsyLedgerPage {
+  count?: number;
+  results?: Array<{ entry_id?: number }>;
+  error?: string;
+}
+interface EtsyPayment {
+  payment_id: number;
+  receipt_id: number;
+  status?: string;
+  currency?: string;
+  update_timestamp?: number;
+  create_timestamp?: number;
+  payment_adjustments?: EtsyAdjustment[];
+}
+interface EtsyAdjustment {
+  payment_adjustment_id: number;
+  status?: string;
+  is_success?: boolean;
+  total_adjustment_amount?: number;
+  update_timestamp?: number;
+  create_timestamp?: number;
+  payment_adjustment_items?: Array<{ payment_adjustment_item_id: number; adjustment_type?: string; amount?: number }>;
+}
 
 async function importEtsySales() {
   if (!config.etsy.apiKey) throw new Error("Etsy sales require an API key.");
@@ -170,8 +325,11 @@ async function importEtsySales() {
   let total = Number.POSITIVE_INFINITY;
   while (offset < total) {
     const url = new URL(`https://api.etsy.com/v3/application/shops/${encodeURIComponent(shopId)}/receipts`);
-    url.searchParams.set("limit", String(limit)); url.searchParams.set("offset", String(offset));
-    const response = await fetch(url, { headers: { "x-api-key": config.etsy.apiKey, Authorization: `Bearer ${token}` } });
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    const response = await fetch(url, {
+      headers: { "x-api-key": config.etsy.apiKey, Authorization: `Bearer ${token}` }
+    });
     const payload = (await response.json().catch(() => ({}))) as EtsyReceiptPage;
     if (!response.ok) throw new Error(payload.error || `Etsy receipts failed with ${response.status}.`);
     const receipts = payload.results ?? [];
@@ -180,45 +338,125 @@ async function importEtsySales() {
     offset += receipts.length;
     if (!receipts.length) break;
   }
-  return { orders, refunds: await importEtsyRefunds(shopId, token, apiKey) };
+  const earliestCreated = orders.length
+    ? Math.min(...orders.map((order) => Math.floor(Date.parse(order.createdAt) / 1000)))
+    : null;
+  return {
+    orders,
+    refunds:
+      earliestCreated === null
+        ? []
+        : await importEtsyRefunds(shopId, token, apiKey, earliestCreated, Math.floor(Date.now() / 1000))
+  };
 }
 
-async function importEtsyRefunds(shopId: string, token: string, apiKey: string) {
-  const refunds: SalesRefund[] = [];
-  let offset = 0; const limit = 100; let total = Number.POSITIVE_INFINITY;
-  while (offset < total) {
-    const url = new URL(`https://api.etsy.com/v3/application/shops/${encodeURIComponent(shopId)}/payments`);
-    url.searchParams.set("limit", String(limit)); url.searchParams.set("offset", String(offset));
-    const response = await fetch(url, { headers: { "x-api-key": apiKey, Authorization: `Bearer ${token}` } });
-    const payload = (await response.json().catch(() => ({}))) as EtsyPaymentPage;
-    if (!response.ok) throw new Error(payload.error || `Etsy payments failed with ${response.status}.`);
-    const payments = payload.results ?? [];
-    refunds.push(...payments.flatMap(etsyRefunds));
-    total = Number(payload.count ?? payments.length); offset += payments.length;
-    if (!payments.length) break;
+async function importEtsyRefunds(
+  shopId: string,
+  token: string,
+  apiKey: string,
+  minCreated: number,
+  maxCreated: number
+) {
+  const payments = await fetchEtsyPayments(shopId, token, apiKey, minCreated, maxCreated);
+  return payments.flatMap(etsyRefunds);
+}
+
+export async function fetchEtsyPayments(
+  shopId: string,
+  token: string,
+  apiKey: string,
+  minCreated: number,
+  maxCreated: number,
+  fetchImpl: typeof fetch = fetch
+) {
+  const entryIds = new Set<number>();
+  const limit = 100;
+  const maxWindowSeconds = 2_678_400;
+  for (let windowStart = minCreated; windowStart <= maxCreated; windowStart += maxWindowSeconds + 1) {
+    const windowEnd = Math.min(windowStart + maxWindowSeconds, maxCreated);
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+    while (offset < total) {
+      const url = new URL(
+        `https://api.etsy.com/v3/application/shops/${encodeURIComponent(shopId)}/payment-account/ledger-entries`
+      );
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("offset", String(offset));
+      url.searchParams.set("min_created", String(windowStart));
+      url.searchParams.set("max_created", String(windowEnd));
+      const response = await fetchImpl(url, { headers: { "x-api-key": apiKey, Authorization: `Bearer ${token}` } });
+      const payload = (await response.json().catch(() => ({}))) as EtsyLedgerPage;
+      if (!response.ok) throw new Error(payload.error || `Etsy payment ledger failed with ${response.status}.`);
+      const rows = payload.results ?? [];
+      for (const row of rows) {
+        const id = Number(row.entry_id);
+        if (Number.isSafeInteger(id) && id > 0) entryIds.add(id);
+      }
+      total = Number(payload.count ?? offset + rows.length);
+      offset += rows.length;
+      if (!rows.length) break;
+    }
   }
-  return refunds;
+
+  const payments = new Map<number, EtsyPayment>();
+  const uniqueEntryIds = [...entryIds];
+  for (let index = 0; index < uniqueEntryIds.length; index += 100) {
+    const url = new URL(
+      `https://api.etsy.com/v3/application/shops/${encodeURIComponent(shopId)}/payment-account/ledger-entries/payments`
+    );
+    url.searchParams.set("ledger_entry_ids", uniqueEntryIds.slice(index, index + 100).join(","));
+    const response = await fetchImpl(url, { headers: { "x-api-key": apiKey, Authorization: `Bearer ${token}` } });
+    const payload = (await response.json().catch(() => ({}))) as EtsyPaymentPage;
+    if (!response.ok) throw new Error(payload.error || `Etsy ledger payments failed with ${response.status}.`);
+    for (const payment of payload.results ?? [])
+      if (Number.isSafeInteger(payment.payment_id)) payments.set(payment.payment_id, payment);
+  }
+  return [...payments.values()];
 }
 
 export function etsyRefunds(payment: EtsyPayment): SalesRefund[] {
-  return (payment.payment_adjustments ?? []).filter((row) => row.is_success !== false).map((adjustment) => {
-    const items = adjustment.payment_adjustment_items ?? [];
-    let productAmount = 0, shippingAmount = 0, taxAmount = 0; let recognized = items.length > 0;
-    for (const item of items) {
-      const amount = Math.abs(number(item.amount)) / 100; const type = (item.adjustment_type ?? "").toLowerCase();
-      if (type.includes("shipping") || type.includes("postage")) shippingAmount += amount;
-      else if (type.includes("tax") || type.includes("vat")) taxAmount += amount;
-      else if (type.includes("transaction") || type.includes("item") || type.includes("sale")) productAmount += amount;
-      else recognized = false;
-    }
-    const totalAmount = Math.abs(number(adjustment.total_adjustment_amount)) / 100;
-    const componentsComplete = recognized && Math.abs(productAmount + shippingAmount + taxAmount - totalAmount) < 0.01;
-    const updated = adjustment.update_timestamp ?? adjustment.create_timestamp ?? payment.update_timestamp ?? payment.create_timestamp ?? 0;
-    return { platform: "etsy" as const, orderId: String(payment.receipt_id), refundId: String(adjustment.payment_adjustment_id),
-      refundedAt: iso(updated), productAmount: componentsComplete ? productAmount : 0, shippingAmount: componentsComplete ? shippingAmount : 0,
-      taxAmount: componentsComplete ? taxAmount : 0, totalAmount, status: adjustment.status ?? payment.status ?? "", currency: payment.currency ?? "USD",
-      componentsComplete, source: "payment_api", sourceUpdatedAt: iso(updated) };
-  });
+  return (payment.payment_adjustments ?? [])
+    .filter((row) => row.is_success !== false)
+    .map((adjustment) => {
+      const items = adjustment.payment_adjustment_items ?? [];
+      let productAmount = 0,
+        shippingAmount = 0,
+        taxAmount = 0;
+      let recognized = items.length > 0;
+      for (const item of items) {
+        const amount = Math.abs(number(item.amount)) / 100;
+        const type = (item.adjustment_type ?? "").toLowerCase();
+        if (type.includes("shipping") || type.includes("postage")) shippingAmount += amount;
+        else if (type.includes("tax") || type.includes("vat")) taxAmount += amount;
+        else if (type.includes("transaction") || type.includes("item") || type.includes("sale"))
+          productAmount += amount;
+        else recognized = false;
+      }
+      const totalAmount = Math.abs(number(adjustment.total_adjustment_amount)) / 100;
+      const componentsComplete =
+        recognized && Math.abs(productAmount + shippingAmount + taxAmount - totalAmount) < 0.01;
+      const updated =
+        adjustment.update_timestamp ??
+        adjustment.create_timestamp ??
+        payment.update_timestamp ??
+        payment.create_timestamp ??
+        0;
+      return {
+        platform: "etsy" as const,
+        orderId: String(payment.receipt_id),
+        refundId: String(adjustment.payment_adjustment_id),
+        refundedAt: iso(updated),
+        productAmount: componentsComplete ? productAmount : 0,
+        shippingAmount: componentsComplete ? shippingAmount : 0,
+        taxAmount: componentsComplete ? taxAmount : 0,
+        totalAmount,
+        status: adjustment.status ?? payment.status ?? "",
+        currency: payment.currency ?? "USD",
+        componentsComplete,
+        source: "payment_api",
+        sourceUpdatedAt: iso(updated)
+      };
+    });
 }
 
 export function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
@@ -227,32 +465,63 @@ export function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
   const shippingAmount = money(receipt.total_shipping_cost).amount;
   const discountAmount = money(receipt.discount_amt).amount;
   const taxAmount = money(receipt.total_tax_cost).amount + money(receipt.total_vat_cost).amount;
-  const canceled = receipt.status?.toLowerCase() === "canceled" ? iso(receipt.update_timestamp ?? receipt.create_timestamp) : "";
+  const canceled =
+    receipt.status?.toLowerCase() === "canceled" ? iso(receipt.update_timestamp ?? receipt.create_timestamp) : "";
   const lines = (receipt.transactions ?? []).map((line) => ({
-    platform: "etsy" as const, orderId: String(receipt.receipt_id), lineId: String(line.transaction_id),
-    sku: line.sku ?? "", title: line.title ?? "", quantity: line.quantity ?? 0,
+    platform: "etsy" as const,
+    orderId: String(receipt.receipt_id),
+    lineId: String(line.transaction_id),
+    sku: line.sku ?? "",
+    title: line.title ?? "",
+    quantity: line.quantity ?? 0,
     amount: money(line.price).amount * (line.quantity ?? 0)
   }));
   return {
-    platform: "etsy", orderId: String(receipt.receipt_id), orderNumber: String(receipt.receipt_id),
-    createdAt: iso(receipt.create_timestamp), updatedAt: iso(receipt.update_timestamp ?? receipt.create_timestamp),
-    status: receipt.status ?? "", currency: total.currency, grossAmount: total.amount,
+    platform: "etsy",
+    orderId: String(receipt.receipt_id),
+    orderNumber: String(receipt.receipt_id),
+    createdAt: iso(receipt.create_timestamp),
+    updatedAt: iso(receipt.update_timestamp ?? receipt.create_timestamp),
+    status: receipt.status ?? "",
+    currency: total.currency,
+    grossAmount: total.amount,
     netAmount: money(receipt.subtotal ?? receipt.total_price).amount,
-    productAmount, shippingAmount, discountAmount, taxAmount, refundedAmount: 0,
+    productAmount,
+    shippingAmount,
+    discountAmount,
+    taxAmount,
+    refundedAmount: 0,
     comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
-    financialStatus: receipt.status ?? "", canceledAt: canceled,
+    financialStatus: receipt.status ?? "",
+    canceledAt: canceled,
     financialsComplete: Boolean(receipt.subtotal && receipt.total_shipping_cost && receipt.total_tax_cost),
-    financialsSource: "order_api", financialsUpdatedAt: iso(receipt.update_timestamp ?? receipt.create_timestamp),
+    financialsSource: "order_api",
+    financialsUpdatedAt: iso(receipt.update_timestamp ?? receipt.create_timestamp),
     reconciliationState: "incomplete",
-    countryCode: receipt.country_iso ?? "", regionCode: receipt.state ?? "",
+    countryCode: receipt.country_iso ?? "",
+    regionCode: receipt.state ?? "",
     itemCount: lines.reduce((sum, line) => sum + line.quantity, 0),
     sourceUrl: `https://www.etsy.com/your/shops/me/orders/sold?order_id=${receipt.receipt_id}`,
     lineItems: lines
   };
 }
 
-function money(value?: EtsyMoney) { return { amount: number(value?.amount) / Math.max(1, number(value?.divisor) || 100), currency: value?.currency_code ?? "USD" }; }
-function iso(timestamp: number) { return new Date(timestamp * 1000).toISOString(); }
-function number(value: unknown) { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }
-function cleanDomain(value: string) { return value.replace(/^https?:\/\//, "").replace(/\/$/, ""); }
-function ebayBaseUrl() { return config.ebay.environment === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com"; }
+function money(value?: EtsyMoney) {
+  return {
+    amount: number(value?.amount) / Math.max(1, number(value?.divisor) || 100),
+    currency: value?.currency_code ?? "USD"
+  };
+}
+function iso(timestamp: number) {
+  return new Date(timestamp * 1000).toISOString();
+}
+function number(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function cleanDomain(value: string) {
+  return value.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+function ebayBaseUrl() {
+  return config.ebay.environment === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
+}

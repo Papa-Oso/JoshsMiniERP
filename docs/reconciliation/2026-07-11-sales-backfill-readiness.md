@@ -4,7 +4,7 @@
 
 **REJECTED** — do not run the SALES-03 apply preview yet.
 
-Unblock when the Etsy payment/refund refresh uses a supported read-only API request, both marketplace refreshes complete successfully, and matching Etsy Shop Manager and eBay Seller Hub aggregate totals are recorded for the exact periods below.
+Unblock when the remaining integrity warnings are reviewed and matching Etsy Shop Manager and eBay Seller Hub aggregate totals are recorded for the exact periods below.
 
 ## Safety evidence
 
@@ -24,22 +24,27 @@ The repeat-safe eBay refresh found four previously unseen orders. No duplicate o
 
 ## Etsy comparison
 
-Period: trailing 30 days ending `2026-07-11T02:38:41Z` (cutoff `2026-06-11T02:38:41Z`). Currency: USD.
+Period: trailing 30 days ending `2026-07-11T02:47:35Z` (cutoff `2026-06-11T02:47:35Z`). Currency: USD.
 
 | Component            | ERP aggregate |
 | -------------------- | ------------: |
-| Imported orders      |           110 |
-| Included orders      |           108 |
+| Imported orders      |           111 |
+| Included orders      |           109 |
 | Canceled orders      |             2 |
-| Unresolved orders    |           108 |
-| Product revenue      |         $0.00 |
-| Shipping revenue     |         $0.00 |
+| Refunded orders      |             2 |
+| Unresolved orders    |           109 |
+| Product revenue      |     $2,587.39 |
+| Shipping revenue     |       $140.93 |
+| Discounts            |       $623.30 |
+| Excluded tax         |       $220.56 |
 | Refunds applied      |         $0.00 |
-| Comparable net sales |         $0.00 |
+| Comparable net sales |     $2,728.32 |
 
-Warnings: 110 missing financial breakdowns. The read-only Etsy refresh failed with a required payment-query parameter error, so the zero financial components are incomplete and must not be compared or approved.
+The repaired read-only Etsy refresh processed 1,423 orders through documented, bounded ledger-entry payment requests. A second complete refresh left the saved counts unchanged at 1,423 Etsy orders and 32 Etsy refunds, confirming live idempotency.
 
-Etsy Shop Manager total: not recorded because the ERP side is not yet comparable.
+Warnings: two unresolved refunds and 110 impossible-total rows. Refunds without a provable product/shipping/tax split remain excluded rather than guessed.
+
+Etsy Shop Manager total: not yet recorded.
 
 Classification: **blocking**.
 
@@ -71,7 +76,7 @@ Classification: **blocking** until the matching dashboard aggregate is recorded 
 
 ## Follow-up
 
-1. Replace the unsupported Etsy shop payments collection request with a supported read-only payment retrieval flow and add focused tests.
+1. Review the Etsy impossible-total rows and unresolved Etsy/eBay refund component boundaries without guessing values.
 2. Rerun the Etsy 30-day and eBay 90-day reconciliation with exact UTC boundaries.
 3. Record matching marketplace dashboard aggregates and classify every difference.
 4. Approve SALES-03 only when no unexplained blocking difference remains.
