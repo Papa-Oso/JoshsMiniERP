@@ -102,7 +102,27 @@ test("normalizes Etsy buyer-paid shipping while excluding tax from comparable sa
   assert.equal(order.productAmount, 30);
   assert.equal(order.shippingAmount, 8);
   assert.equal(order.taxAmount, 3);
+  assert.equal(order.discountAmount, 1);
   assert.equal(order.comparableSalesAmount, 38);
+});
+
+test("keeps Etsy seller discounts separate from the already-discounted subtotal", () => {
+  const money = (amount: number) => ({ amount, divisor: 100, currency_code: "USD" });
+  const order = toEtsyOrder({
+    receipt_id: 2,
+    create_timestamp: 1_752_105_600,
+    status: "Completed",
+    total_price: money(3_400),
+    subtotal: money(2_500),
+    total_shipping_cost: money(600),
+    total_tax_cost: money(300),
+    total_vat_cost: money(0),
+    discount_amt: money(500),
+    transactions: []
+  });
+  assert.equal(order.productAmount, 25);
+  assert.equal(order.discountAmount, 5);
+  assert.equal(order.comparableSalesAmount, 31);
 });
 
 test("retrieves Etsy payments through paginated ledger entries and bounded batches", async () => {

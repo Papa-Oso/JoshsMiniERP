@@ -1,5 +1,7 @@
 # Changelog
 
+- Fixed marketplace order refreshes to replace stale comparable-sales values, eliminating false Etsy impossible-total reconciliation warnings while preserving unresolved refunds whose component split is not provable.
+
 - Added canonical local product-photo references, safe thumbnail serving, square Top Products thumbnails, and product-photo coverage in operational backups.
 
 - Repaired Etsy payment and refund refreshes to use documented, bounded payment-account ledger requests, with stable payment deduplication and atomic provider-error handling.

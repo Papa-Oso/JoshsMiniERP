@@ -42,7 +42,9 @@ Period: trailing 30 days ending `2026-07-11T02:47:35Z` (cutoff `2026-06-11T02:47
 
 The repaired read-only Etsy refresh processed 1,423 orders through documented, bounded ledger-entry payment requests. A second complete refresh left the saved counts unchanged at 1,423 Etsy orders and 32 Etsy refunds, confirming live idempotency.
 
-Warnings: two unresolved refunds and 110 impossible-total rows. Refunds without a provable product/shipping/tax split remain excluded rather than guessed.
+Follow-up refresh: `2026-07-11T04:01:10Z`. All 1,423 Etsy orders refreshed successfully and the 30-day financial aggregates above remained unchanged. The 110 impossible-total warnings were stale persisted `comparable_sales_amount` values: conflict updates refreshed the receipt components but not that derived amount. After correcting the upsert and refreshing, impossible-total warnings are zero.
+
+Warnings: two unresolved refunds. Both authoritative refund totals lack a provable product/shipping/tax split, so their pre-tax components remain excluded rather than guessed. Focused synthetic cases cover seller discounts, buyer-paid shipping, tax/VAT exclusion, canceled orders, complete full and partial refunds, and unresolved refunds.
 
 Etsy Shop Manager total: not yet recorded.
 
@@ -76,7 +78,7 @@ Classification: **blocking** until the matching dashboard aggregate is recorded 
 
 ## Follow-up
 
-1. Review the Etsy impossible-total rows and unresolved Etsy/eBay refund component boundaries without guessing values.
-2. Rerun the Etsy 30-day and eBay 90-day reconciliation with exact UTC boundaries.
+1. Review the remaining unresolved Etsy/eBay refund component boundaries without guessing values.
+2. Rerun the eBay 90-day reconciliation with the recorded UTC boundary.
 3. Record matching marketplace dashboard aggregates and classify every difference.
 4. Approve SALES-03 only when no unexplained blocking difference remains.

@@ -81,6 +81,32 @@ test("sales financial components persist and refunds upsert idempotently", async
   assert.equal(refunds[0].productAmount, 6);
 });
 
+test("sales order refreshes replace stale comparable sales amounts", async () => {
+  const stale = {
+    ...order(),
+    platform: "etsy" as const,
+    orderId: "etsy-refreshed-financials",
+    productAmount: 0,
+    shippingAmount: 0,
+    comparableSalesAmount: 0,
+    financialsComplete: false
+  };
+  await upsertSalesOrders("etsy", [stale]);
+  await upsertSalesOrders("etsy", [
+    {
+      ...stale,
+      productAmount: 30,
+      shippingAmount: 8,
+      comparableSalesAmount: 38,
+      financialsComplete: true
+    }
+  ]);
+  const saved = (await loadSalesOrders()).find((row) => row.orderId === stale.orderId);
+  assert.equal(saved?.productAmount, 30);
+  assert.equal(saved?.shippingAmount, 8);
+  assert.equal(saved?.comparableSalesAmount, 38);
+});
+
 test("atomic sales imports apply only complete pre-tax refund components to orders", async () => {
   const base = { ...order(), platform: "etsy" as const, orderId: "etsy-refunds", productAmount: 30, shippingAmount: 8, comparableSalesAmount: 38 };
   const refund = { platform: "etsy" as const, orderId: base.orderId, refundedAt: "2026-07-10T14:00:00.000Z", status: "completed", currency: "USD", source: "payment_api", sourceUpdatedAt: "2026-07-10T14:00:00.000Z" };

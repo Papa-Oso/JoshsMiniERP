@@ -13,25 +13,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-03C — Resolve Etsy reconciliation integrity warnings
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Diagnose the 110 Etsy `impossible_total` warnings and two unresolved 30-day refunds using aggregate and synthetic test evidence. Correct normalization only where the official receipt/payment components prove the calculation; never infer missing refund splits. Add focused cases for seller discounts, buyer-paid shipping, tax/VAT exclusion, canceled orders, and full/partial unresolved refunds. Update the dated reconciliation record with corrected aggregate warning counts. Do not change inventory, marketplace quantities, or the Sales dashboard metric.
-
-**Acceptance:**
-
-- Every `impossible_total` category is explained or corrected with a focused test.
-- Tax/VAT never contributes to comparable net sales.
-- Discounts are not subtracted twice.
-- Canceled orders contribute zero.
-- Refund components remain excluded when their split is not provable.
-- The dated reconciliation record reports the remaining aggregate warnings and approval state.
-
-**Depends on:** SALES-03B.
-
 ## Next
 
 ## Later
@@ -78,6 +59,7 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- SALES-03C corrected stale persisted comparable-sales values on order refresh, eliminated all 110 Etsy impossible-total warnings, retained two unresolved refund warnings without guessing components, and added focused financial-boundary tests.
 - SALES-03B replaced the invalid Etsy payments request with bounded read-only ledger windows, added provider tests, completed two live idempotent refreshes, and restored Etsy financial aggregates.
 - SALES-03A created and verified a fresh operational backup, captured aggregate reconciliation evidence, and rejected backfill approval because Etsy payment retrieval and marketplace dashboard comparisons remain blocking. See `docs/reconciliation/2026-07-11-sales-backfill-readiness.md`.
 - Added informational root coverage reports and a non-blocking CI artifact, with initial safety-critical test gaps documented.

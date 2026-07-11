@@ -19,6 +19,22 @@ test("reconciles comparable sales without tax or canceled orders", () => {
   assert.equal(payload.rows[0].comparableNetSales, 32);
 });
 
+test("applies full and partial Etsy refunds once and leaves unresolved totals excluded", () => {
+  const orders = [
+    order({ orderId: "full", productAmount: 20, shippingAmount: 5, comparableSalesAmount: 25 }),
+    order({ orderId: "partial", productAmount: 30, shippingAmount: 4, comparableSalesAmount: 34 })
+  ];
+  const refunds = [
+    refund({ orderId: "full", refundId: "full", productAmount: 20, shippingAmount: 5, taxAmount: 2, totalAmount: 27 }),
+    refund({ orderId: "partial", refundId: "partial", productAmount: 6, shippingAmount: 0, taxAmount: 0.5, totalAmount: 6.5 }),
+    refund({ orderId: "partial", refundId: "unresolved", totalAmount: 3, componentsComplete: false })
+  ];
+  const payload = reconcileSales({ orders, refunds, pulls: [{ platform: "etsy", pulled_at: "2026-07-10T11:00:00.000Z" }], financials: [], range: "30d", platform: "etsy", now });
+  assert.equal(payload.rows[0].refunds, 31);
+  assert.equal(payload.rows[0].comparableNetSales, 28);
+  assert.equal(payload.warnings.find((warning) => warning.code === "unresolved_refund")?.count, 1);
+});
+
 test("separates currencies and reports unresolved integrity categories without identifiers", () => {
   const orders = [order({ orderId: "usd", financialsComplete: false, reconciliationState: "unresolved" }), order({ orderId: "eur", currency: "EUR", financialsComplete: true, comparableSalesAmount: -1 })];
   const refunds = [refund({ orderId: "usd", refundId: "unresolved", totalAmount: 4, componentsComplete: false }), refund({ orderId: "missing", refundId: "unmatched", totalAmount: 2, refundedAt: "2026-07-10T10:00:00.000Z", componentsComplete: false })];
