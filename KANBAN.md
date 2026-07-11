@@ -6,6 +6,9 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 - Keep at most one card in **Doing** and three cards in **Next**.
 - Finish dependencies and verification before pulling the next card.
+- Whenever a card is completed or removed, count the unblocked cards in **Doing** and **Next**. If fewer than two remain, review every unchecked item in `PLAN.md` and add one or two of the highest-priority items that are actionable without external approval, credentials, live marketplace writes, quota recovery, or production data.
+- Turn plan items into small, independently testable tickets with a clear prompt, dependencies, and safety boundaries. Do not copy an epic-sized checkbox into the board when it should be split.
+- If no unfinished plan item is currently actionable, record that conclusion under **Blocked** with the exact dependency instead of leaving the executable queue silently empty.
 - Every card must be safe to paste into an AI coding session as its task prompt.
 - Do not place credentials, customer data, live listing identifiers, or files under `data/` on this board.
 - Back up before migrations or historical marketplace backfills.
@@ -14,6 +17,26 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 ## Doing
 
 ## Next
+
+### SALES-05 — Reconcile eBay orders with financial transactions
+
+**Epic:** Comparable Sales Integrity
+
+**Prompt:**
+
+> Complete the repository-side reconciliation between eBay order API values and imported eBay financial transactions. Match order-linked transactions without guessing ambiguous identities; report fees, refunds, purchased shipping labels, and net proceeds separately from comparable net sales; preserve currency separation; and surface unmatched or conflicting records as aggregate integrity warnings. Add focused tests for matched, unmatched, duplicate, mixed-currency, and date-boundary cases. Do not perform a live backfill or marketplace write.
+
+**Depends on:** Existing normalized sales ledger and read-only eBay transaction import. No production data or external approval is required for repository implementation and synthetic tests.
+
+### SALES-06 — Audit canonical comparable-sales invariants
+
+**Epic:** Comparable Sales Integrity
+
+**Prompt:**
+
+> Audit the canonical comparable-sales calculation against the six unchecked measure requirements in `PLAN.md`: canceled-order exclusion, tax/VAT exclusion, buyer-paid shipping inclusion, exactly-once refunds, separate fees and shipping-label costs, and currency separation. Close any repository behavior or focused-test gaps without switching the Sales dashboard headline or running a historical backfill. Check off only requirements proven by implementation and tests, and document any remaining external-data dependency as a smaller follow-up.
+
+**Depends on:** Normalized financial model and reconciliation service. SALES-03 and SALES-04 remain out of scope.
 
 ## Later
 
