@@ -1,5 +1,7 @@
 # Changelog
 
+- Disabled automatic eBay account-deletion notice polling to prevent repeated full-namespace KV reads; notice status remains available only through an explicit operator request while storage is redesigned.
+
 - Fixed marketplace order refreshes to replace stale comparable-sales values, eliminating false Etsy impossible-total reconciliation warnings while preserving unresolved refunds whose component split is not provable.
 
 - Added canonical local product-photo references, safe thumbnail serving, square Top Products thumbnails, and product-photo coverage in operational backups.

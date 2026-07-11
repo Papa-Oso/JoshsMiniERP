@@ -32,7 +32,7 @@ Use the deployed `https://...workers.dev` URL as the eBay notification endpoint.
 
 The verification token must be the same value pasted into eBay's Alerts & Notifications page.
 
-Add the admin token and endpoint to the local ERP `.env` so app notifications can poll stored notices:
+Add the admin token and endpoint to the local ERP `.env` so an operator can explicitly inspect stored notices. Automatic polling is disabled because listing the current KV layout reads every stored notice:
 
 ```env
 EBAY_DELETION_NOTICES_URL=https://example-worker.workers.dev
