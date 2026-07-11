@@ -13,6 +13,16 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
+### EBAY-NOTIFY-02 — Cryptographically verify deletion notifications
+
+**Epic:** Marketplace Compliance Security
+
+**Prompt:**
+
+> Verify every Marketplace Account Deletion notification's `X-EBAY-SIGNATURE` against eBay's Notification API public key before writing to KV. Cache public keys for a bounded period, fail closed without consuming a KV write, preserve the exact-path, payload-validation, size-limit, and notification-ID deduplication protections, and add focused tests for valid, invalid, malformed, unknown-key, and key-fetch-failure cases. Document required credentials and deployment configuration without recording secrets.
+
+**Acceptance:** Fake or unverifiable notifications never write to KV; verified notifications remain idempotent and receive an eBay-supported success response.
+
 ## Next
 
 ## Later
@@ -52,6 +62,10 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 > During the next real marketplace credential rotation, document the provider-neutral sequence for revocation, replacement, ignored local storage or secret-manager update, connection testing, and reconcile-before-sync. Do not record any credential, token, shop identifier, production URL parameter, or live account detail.
 
 ## Blocked
+
+### EBAY-NOTIFY-01 — Verify live deletion-notification delivery
+
+The protected Worker is deployed and eBay endpoint validation succeeds, but the live notification test cannot write while Cloudflare's daily Workers KV put quota is exhausted. Resume immediately after the quota resets or is raised: rerun eBay's delivery test, confirm HTTP success and exactly one stored notice, repeat the same notification-ID test without another write, and review Cloudflare usage. This is the top operational priority and must complete before considering the endpoint fully restored.
 
 ### SALES-03 — Preview and verify historical financial backfill
 
