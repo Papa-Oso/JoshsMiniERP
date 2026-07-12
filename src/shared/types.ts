@@ -96,6 +96,7 @@ export type SalesIntegrityWarningCode =
   | "duplicate_refund"
   | "unmatched_refund"
   | "unresolved_refund"
+  | "refund_currency_conflict"
   | "mixed_currency"
   | "missing_breakdown"
   | "impossible_total"

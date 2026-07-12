@@ -16,18 +16,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-06 — Audit canonical comparable-sales invariants
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Audit the canonical comparable-sales calculation against the six unchecked measure requirements in `PLAN.md`: canceled-order exclusion, tax/VAT exclusion, buyer-paid shipping inclusion, exactly-once refunds, separate fees and shipping-label costs, and currency separation. Close any repository behavior or focused-test gaps without switching the Sales dashboard headline or running a historical backfill. Check off only requirements proven by implementation and tests, and document any remaining external-data dependency as a smaller follow-up.
-
-**Depends on:** Normalized financial model and reconciliation service. SALES-03 and SALES-04 remain out of scope.
-
-## Next
-
 ### SALES-07 — Audit financial backfill safety gates
 
 **Epic:** Comparable Sales Integrity
@@ -38,15 +26,17 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 **Depends on:** Existing backup, migration, and financial import workflows. No live credentials or production data are required.
 
-### SALES-08 — Add dashboard calculation explanation and warnings
+## Next
+
+### SALES-09 — Complete comparable-sales verification
 
 **Epic:** Comparable Sales Integrity
 
 **Prompt:**
 
-> Add a concise dashboard disclosure describing how comparable net sales is calculated and why canceled orders, tax/VAT, buyer-paid shipping, refunds, separate fees, shipping-label costs, and currency separation are handled the way they are. Surface incomplete-history or reconciliation warning text on the Sales page without switching the headline metric. Add focused tests for the new disclosure and warning behavior.
+> Run the complete repository verification required by `PLAN.md`: `npm test`, `npm run build`, `npm run lint`, and `npm run check:ui` against a local app. Inspect the Sales page at desktop and mobile widths for calculation-copy clarity, warning visibility, currency labeling, overflow, and keyboard access. Fix only regressions within the comparable-sales work, record any external limitation precisely, and check off the verification item only when every required check passes.
 
-**Depends on:** Existing Sales dashboard flow and reconciliation service. No headline metric switch is required.
+**Depends on:** Current comparable-sales implementation. No live marketplace refresh, historical backfill, or marketplace write is required.
 
 ## Later
 
@@ -56,7 +46,7 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 **Prompt:**
 
-> After reconciliation and backfill approval, switch Sales-page headline revenue, trends, platform mix, geography, and product reporting to comparable net sales. Add a concise “How this is calculated” disclosure, separate fees and shipping-label costs from sales, expose incomplete-history warnings, and retain currency separation. Update focused tests and desktop/mobile UI smoke coverage.
+> After reconciliation and backfill approval, switch Sales-page headline revenue, trends, platform mix, geography, and product reporting to comparable net sales. Update the existing “How this is calculated” disclosure, separate fees and shipping-label costs from sales, expose incomplete-history warnings, and retain currency separation. Update focused tests and desktop/mobile UI smoke coverage.
 
 **Depends on:** SALES-03 and reviewed marketplace reconciliation.
 
@@ -80,4 +70,5 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ## Recently Completed
 
+- **SALES-06:** Proved the six canonical comparable-sales invariants in implementation and focused tests, and closed edge cases that allowed canceled-order refunds or currency-conflicting refunds to reduce comparable sales.
 - **EBAY-NOTIFY-01:** Restored the live deletion-notification feed with 25-record cursor pages, processed a 521-notice backlog after backup, verified zero pending notices across 55 live pages, confirmed unauthorized feed access returns 401, and confirmed the enabled eBay subscription targets the deployed Worker. Production delivery is proven by 1,365 unique signed notices; delayed synthetic-test observation remains tracked separately.

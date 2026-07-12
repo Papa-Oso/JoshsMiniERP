@@ -140,19 +140,23 @@ export function reconcileSales({
       (!start || Date.parse(order.createdAt) >= start) &&
       (!currency || order.currency === currency)
   );
+  const importedById = new Map(imported.map((order) => [order.orderId, order]));
   const orderKeys = new Set(imported.map((order) => order.orderId));
-  const matchingRefundRows = refunds.filter(
-    (refund) =>
-      refund.platform === platform && orderKeys.has(refund.orderId) && (!currency || refund.currency === currency)
+  const linkedRefundRows = refunds.filter((refund) => refund.platform === platform && orderKeys.has(refund.orderId));
+  const uniqueLinkedRefunds = uniqueRefunds(linkedRefundRows);
+  const matchingRefunds = uniqueLinkedRefunds.filter(
+    (refund) => importedById.get(refund.orderId)?.currency === refund.currency
   );
-  const matchingRefunds = uniqueRefunds(matchingRefundRows);
+  const applicableRefunds = matchingRefunds.filter((refund) => {
+    const order = importedById.get(refund.orderId);
+    return order && !canceledOrder(order);
+  });
   const currencies = [...new Set(imported.map((order) => order.currency || "USD"))].sort();
   const windowFinancials =
     platform === "ebay"
       ? financials.filter((row) => !start || Date.parse(row.transactionDate) >= start)
       : [];
   const uniqueFinancialRows = uniqueFinancials(windowFinancials);
-  const importedById = new Map(imported.map((order) => [order.orderId, order]));
   const matchingFinancials = uniqueFinancialRows.filter(
     (row) => row.orderId && importedById.get(row.orderId)?.currency === row.currency
   );
@@ -160,14 +164,14 @@ export function reconcileSales({
     reconciliationRow(
       code,
       imported.filter((order) => (order.currency || "USD") === code),
-      matchingRefunds.filter((refund) => refund.currency === code),
+      applicableRefunds.filter((refund) => refund.currency === code),
       platform === "ebay"
         ? matchingFinancials.filter((row) => row.currency === code)
         : []
     )
   );
   const warnings: SalesReconciliationPayload["warnings"] = [];
-  const duplicateRefunds = matchingRefundRows.length - matchingRefunds.length;
+  const duplicateRefunds = linkedRefundRows.length - uniqueLinkedRefunds.length;
   addWarning(warnings, "duplicate_refund", duplicateRefunds, "Duplicate refund identities require review.");
   addWarning(
     warnings,
@@ -183,8 +187,14 @@ export function reconcileSales({
   addWarning(
     warnings,
     "unresolved_refund",
-    matchingRefunds.filter((refund) => !refund.componentsComplete && !failedRefund(refund)).length,
+    applicableRefunds.filter((refund) => !refund.componentsComplete && !failedRefund(refund)).length,
     "Refund totals with unresolved product, shipping, or tax components are excluded from comparable sales."
+  );
+  addWarning(
+    warnings,
+    "refund_currency_conflict",
+    uniqueLinkedRefunds.filter((refund) => importedById.get(refund.orderId)?.currency !== refund.currency).length,
+    "Refunds whose currency conflicts with the saved order were excluded."
   );
   addWarning(
     warnings,

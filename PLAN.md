@@ -45,12 +45,12 @@ product revenue after seller discounts
 = comparable net sales
 ```
 
-- [ ] Exclude canceled orders entirely.
-- [ ] Exclude marketplace-collected sales tax and VAT.
-- [ ] Include buyer-paid shipping, including dynamic eBay and fixed Etsy international shipping.
-- [ ] Apply full and partial refunds exactly once.
-- [ ] Keep marketplace fees and purchased shipping labels separate from sales; use them only in expense and net-proceeds reporting.
-- [ ] Group totals by currency until a reviewed exchange-rate policy exists; never silently combine currencies.
+- [x] Exclude canceled orders entirely.
+- [x] Exclude marketplace-collected sales tax and VAT.
+- [x] Include buyer-paid shipping, including dynamic eBay and fixed Etsy international shipping.
+- [x] Apply full and partial refunds exactly once.
+- [x] Keep marketplace fees and purchased shipping labels separate from sales; use them only in expense and net-proceeds reporting.
+- [x] Group totals by currency until a reviewed exchange-rate policy exists; never silently combine currencies.
 
 ### Normalized Financial Model
 

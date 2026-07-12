@@ -1,5 +1,7 @@
 # Changelog
 
+- Completed the canonical comparable-sales invariant audit, including regression guards that prevent canceled-order refunds and currency-conflicting refunds from reducing comparable sales.
+
 - Restored the eBay account-deletion notice feed under a 1,365-record backlog with bounded cursor pagination, drained 521 pending notices after a verified backup, and kept the protected feed within Cloudflare Worker subrequest limits.
 - Reconciled eBay financial-report rows to saved API orders by exact order ID and currency, counting duplicate transaction keys once and excluding unmatched or conflicting rows with aggregate integrity warnings.
 - Added durable sales financial provenance and field-presence tracking with enforced source precedence, allowing lower-priority imports to fill missing components without replacing authoritative values or mistaking legitimate zeroes for missing data.
