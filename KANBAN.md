@@ -14,18 +14,6 @@ This board contains only current executable tickets and exact external blockers 
 
 ## Doing
 
-### DB-01 — Cover partial-schema migration recovery
-
-**Epic:** Safety-Critical Test Hardening
-
-**Prompt:**
-
-> Add focused tests for opening legacy and partially upgraded SQLite schemas, including a forced migration failure after the verified pre-migration copy is created. Prove that the working test database remains recoverable, existing rows are preserved, incomplete financial fields stay explicitly incomplete, and retrying the supported migration is idempotent. Use disposable databases only; do not inspect or copy `data/inventory.sqlite`.
-
-**Depends on:** Existing SQLite store, migration backup guards, and temporary-database tests.
-
-## Next
-
 ### MKT-01 — Cover malformed and partial marketplace imports
 
 **Epic:** Safety-Critical Test Hardening
@@ -35,6 +23,8 @@ This board contains only current executable tickets and exact external blockers 
 > Add focused fake-adapter tests for marketplace timeouts, malformed success bodies, pagination failure after an earlier page, and incomplete order/refund batches. Assert that failed pulls are reported as failures, atomic imports do not persist partial financial history, prior saved orders remain intact, and no inventory or marketplace quantity mutation occurs. Cover the shared guarantees with the smallest representative Etsy, eBay, and Shopify cases; do not contact live services.
 
 **Depends on:** Existing importer fakes, atomic sales import, and pull-failure recording.
+
+## Next
 
 ### OPS-03 — Cover backup and scheduler failure reporting
 

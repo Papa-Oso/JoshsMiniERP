@@ -41,9 +41,11 @@ export class SQLiteDatabaseManager {
       const db = await this.open();
       const context: DatabaseContext = { db, dirty: write };
       return this.context.run(context, async () => {
-        try { return await callback(db); }
-        finally {
+        try {
+          const result = await callback(db);
           if (context.dirty) await this.save(db);
+          return result;
+        } finally {
           db.close();
         }
       });

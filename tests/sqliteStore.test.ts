@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -80,6 +80,45 @@ test("forced migrate-sqlite preserves and verifies the previous SQLite target", 
   }
 });
 
+test("failed forced migration preserves the target and supports a clean retry", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-sqlite-failed-migration-"));
+  const dataFile = path.join(tempDir, "inventory.json");
+  const databaseFile = path.join(tempDir, "inventory.sqlite");
+  const previousDataFile = config.dataFile;
+  const previousDatabaseFile = config.databaseFile;
+
+  try {
+    config.dataFile = dataFile;
+    config.databaseFile = databaseFile;
+    const previous = seedStore();
+    previous.items[0].sku = "PRESERVED-SKU";
+    previous.items[0].name = "Preserved item";
+    await new SQLiteInventoryStore(databaseFile).mutate((data) => Object.assign(data, previous));
+
+    const invalid = seedStore();
+    invalid.items[0].name = undefined as unknown as string;
+    await writeFile(dataFile, `${JSON.stringify(invalid, null, 2)}\n`, "utf8");
+    await assert.rejects(() => migrateJsonToSQLite({ force: true }));
+
+    const backups = await readdir(path.join(tempDir, "backups"));
+    assert.equal(backups.some((file) => /^inventory-pre-migration-.*\.sqlite$/.test(file)), true);
+    let stored = await new SQLiteInventoryStore(databaseFile).read();
+    assert.equal(stored.items.length, 1);
+    assert.equal(stored.items[0].sku, "PRESERVED-SKU");
+
+    await writeFile(dataFile, `${JSON.stringify(seedStore(), null, 2)}\n`, "utf8");
+    await migrateJsonToSQLite({ force: true });
+    await migrateJsonToSQLite({ force: true });
+    stored = await new SQLiteInventoryStore(databaseFile).read();
+    assert.equal(stored.items.length, 1);
+    assert.equal(stored.items[0].sku, "NEON-MUG");
+  } finally {
+    config.dataFile = previousDataFile;
+    config.databaseFile = previousDatabaseFile;
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SQLite schema upgrade adds import history columns used by Review Center", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-sqlite-import-upgrade-"));
   const databaseFile = path.join(tempDir, "inventory.sqlite");
@@ -133,6 +172,76 @@ test("SQLite schema upgrade adds import history columns used by Review Center", 
     assert.equal(batches[0].rows[0].sku, "NEON-MUG");
     assert.equal(batches[0].rows[0].message, "Created row");
   } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("partial legacy sales schema upgrades idempotently with financial history incomplete", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-partial-sales-schema-"));
+  const databaseFile = path.join(tempDir, "inventory.sqlite");
+  const legacySalesFile = path.join(tempDir, "missing-legacy-sales.sqlite");
+  const previousDatabaseFile = config.databaseFile;
+  const previousLegacySalesFile = process.env.SALES_DATABASE_FILE;
+
+  try {
+    const SQL = await initSqlJs({
+      locateFile: (file) => path.join(process.cwd(), "node_modules", "sql.js", "dist", file)
+    });
+    const db = new SQL.Database();
+    db.run(`
+      CREATE TABLE sales_orders (
+        platform TEXT NOT NULL,
+        order_id TEXT NOT NULL,
+        order_number TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT '',
+        currency TEXT NOT NULL DEFAULT 'USD',
+        gross_amount REAL NOT NULL DEFAULT 0,
+        net_amount REAL NOT NULL DEFAULT 0,
+        country_code TEXT NOT NULL DEFAULT '',
+        region_code TEXT NOT NULL DEFAULT '',
+        item_count INTEGER NOT NULL DEFAULT 0,
+        source_url TEXT NOT NULL DEFAULT '',
+        last_seen_at TEXT NOT NULL,
+        product_amount REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (platform, order_id)
+      );
+      INSERT INTO sales_orders (
+        platform, order_id, order_number, created_at, updated_at, status,
+        currency, gross_amount, net_amount, country_code, region_code,
+        item_count, source_url, last_seen_at, product_amount
+      ) VALUES (
+        'ebay', 'legacy-order', 'legacy-order', '${timestamp}', '${timestamp}', 'PAID',
+        'USD', 20, 15, 'US', 'IL', 1, '', '${timestamp}', 0
+      );
+    `);
+    await writeFile(databaseFile, Buffer.from(db.export()));
+    db.close();
+
+    config.databaseFile = databaseFile;
+    process.env.SALES_DATABASE_FILE = legacySalesFile;
+    const { loadSalesOrders, upsertSalesOrders } = await import("../src/server/salesStore.ts");
+
+    let orders = await loadSalesOrders();
+    assert.equal(orders.length, 1);
+    assert.equal(orders[0].grossAmount, 20);
+    assert.equal(orders[0].productAmount, 0);
+    assert.equal(orders[0].comparableSalesAmount, 0);
+    assert.equal(orders[0].financialsComplete, false);
+    assert.equal(orders[0].reconciliationState, "incomplete");
+
+    await upsertSalesOrders("ebay", orders);
+    await upsertSalesOrders("ebay", orders);
+    orders = await loadSalesOrders();
+    assert.equal(orders.length, 1);
+    assert.equal(orders[0].grossAmount, 20);
+    assert.equal(orders[0].financialsComplete, false);
+    assert.equal(orders[0].reconciliationState, "incomplete");
+  } finally {
+    config.databaseFile = previousDatabaseFile;
+    if (previousLegacySalesFile === undefined) delete process.env.SALES_DATABASE_FILE;
+    else process.env.SALES_DATABASE_FILE = previousLegacySalesFile;
     await rm(tempDir, { recursive: true, force: true });
   }
 });
