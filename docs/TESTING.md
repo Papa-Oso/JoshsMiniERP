@@ -41,10 +41,9 @@ Coverage percentages should be treated as a discovery tool, not a substitute for
 
 Open coverage follow-ups are tracked as executable tickets in `PLAN.md` and `KANBAN.md`:
 
-- `MKT-01`: marketplace timeout, malformed-response, and partial-import handling
 - `OPS-03`: backup copy/manifest failures and scheduler installation failures
 
-OAuth callback and refresh failures, SQLite write rollback and partial-schema recovery, refund source precedence, unmatched financial transactions, reconciliation disagreement categories, and stale-pull warnings now have focused regression coverage and are no longer open discovery items.
+OAuth callback and refresh failures, SQLite write rollback and partial-schema recovery, marketplace timeout/malformed/partial-import handling, refund source precedence, unmatched financial transactions, reconciliation disagreement categories, and stale-pull warnings now have focused regression coverage and are no longer open discovery items.
 
 ## Manual Review
 

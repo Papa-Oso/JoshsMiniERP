@@ -66,6 +66,7 @@ async function importShopifySales() {
       }`,
       { after }
     );
+    validateShopifyOrdersPage(payload);
     orders.push(...payload.orders.nodes.map(toShopifyOrder));
     after = payload.orders.pageInfo.hasNextPage ? payload.orders.pageInfo.endCursor : null;
   } while (after);
@@ -166,8 +167,9 @@ async function importEbaySales() {
           payload.errors?.[0]?.message ||
           `eBay orders failed with ${response.status}.`
       );
-    orders.push(...(payload.orders ?? []).map(toEbayOrder));
-    refunds.push(...(payload.orders ?? []).flatMap(ebayRefunds));
+    validateEbayOrderPage(payload);
+    orders.push(...payload.orders!.map(toEbayOrder));
+    refunds.push(...payload.orders!.flatMap(ebayRefunds));
     next = payload.next ? new URL(payload.next, ebayBaseUrl()).toString() : null;
   }
   return { orders, refunds };
@@ -332,10 +334,12 @@ async function importEtsySales() {
     });
     const payload = (await response.json().catch(() => ({}))) as EtsyReceiptPage;
     if (!response.ok) throw new Error(payload.error || `Etsy receipts failed with ${response.status}.`);
-    const receipts = payload.results ?? [];
+    validateEtsyReceiptPage(payload);
+    const receipts = payload.results!;
     orders.push(...receipts.map(toEtsyOrder));
-    total = Number(payload.count ?? orders.length);
+    total = Number(payload.count);
     offset += receipts.length;
+    if (!receipts.length && offset < total) throw new Error("Etsy receipts returned an incomplete page.");
     if (!receipts.length) break;
   }
   const earliestCreated = orders.length
@@ -387,13 +391,15 @@ export async function fetchEtsyPayments(
       const response = await fetchImpl(url, { headers: { "x-api-key": apiKey, Authorization: `Bearer ${token}` } });
       const payload = (await response.json().catch(() => ({}))) as EtsyLedgerPage;
       if (!response.ok) throw new Error(payload.error || `Etsy payment ledger failed with ${response.status}.`);
-      const rows = payload.results ?? [];
+      validateEtsyLedgerPage(payload);
+      const rows = payload.results!;
       for (const row of rows) {
         const id = Number(row.entry_id);
         if (Number.isSafeInteger(id) && id > 0) entryIds.add(id);
       }
-      total = Number(payload.count ?? offset + rows.length);
+      total = Number(payload.count);
       offset += rows.length;
+      if (!rows.length && offset < total) throw new Error("Etsy payment ledger returned an incomplete page.");
       if (!rows.length) break;
     }
   }
@@ -408,7 +414,8 @@ export async function fetchEtsyPayments(
     const response = await fetchImpl(url, { headers: { "x-api-key": apiKey, Authorization: `Bearer ${token}` } });
     const payload = (await response.json().catch(() => ({}))) as EtsyPaymentPage;
     if (!response.ok) throw new Error(payload.error || `Etsy ledger payments failed with ${response.status}.`);
-    for (const payment of payload.results ?? [])
+    validateEtsyPaymentPage(payload);
+    for (const payment of payload.results!)
       if (Number.isSafeInteger(payment.payment_id)) payments.set(payment.payment_id, payment);
   }
   return [...payments.values()];
@@ -524,4 +531,93 @@ function cleanDomain(value: string) {
 }
 function ebayBaseUrl() {
   return config.ebay.environment === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
+}
+
+function validateShopifyOrdersPage(payload: ShopifyOrdersPage) {
+  const orders = payload?.orders;
+  if (
+    !orders ||
+    !Array.isArray(orders.nodes) ||
+    typeof orders.pageInfo?.hasNextPage !== "boolean" ||
+    (orders.pageInfo.hasNextPage && !orders.pageInfo.endCursor)
+  ) {
+    throw new Error("Shopify orders returned a malformed page.");
+  }
+  for (const order of orders.nodes) {
+    if (
+      !order?.legacyResourceId ||
+      !validDate(order.createdAt) ||
+      !validDate(order.updatedAt) ||
+      !order.currentTotalPriceSet?.shopMoney?.currencyCode ||
+      !Array.isArray(order.lineItems?.nodes)
+    ) {
+      throw new Error("Shopify orders returned a malformed order.");
+    }
+  }
+}
+
+function validateEbayOrderPage(payload: EbayOrderPage) {
+  if (!Array.isArray(payload.orders) || (payload.next !== undefined && typeof payload.next !== "string")) {
+    throw new Error("eBay orders returned a malformed page.");
+  }
+  for (const order of payload.orders) {
+    if (!order?.orderId || !validDate(order.creationDate) || !Array.isArray(order.lineItems ?? [])) {
+      throw new Error("eBay orders returned a malformed order.");
+    }
+    if (order.paymentSummary?.refunds && !Array.isArray(order.paymentSummary.refunds)) {
+      throw new Error("eBay orders returned a malformed refund batch.");
+    }
+    if (order.lineItems?.some((line) => !line?.lineItemId || (line.refunds && !Array.isArray(line.refunds)))) {
+      throw new Error("eBay orders returned a malformed line-item batch.");
+    }
+  }
+}
+
+function validateEtsyReceiptPage(payload: EtsyReceiptPage) {
+  if (!nonnegativeCount(payload.count) || !Array.isArray(payload.results)) {
+    throw new Error("Etsy receipts returned a malformed page.");
+  }
+  if (
+    payload.results.some(
+      (receipt) =>
+        !Number.isSafeInteger(receipt?.receipt_id) ||
+        !validUnixTimestamp(receipt.create_timestamp) ||
+        !Array.isArray(receipt.transactions ?? [])
+    )
+  ) {
+    throw new Error("Etsy receipts returned a malformed receipt.");
+  }
+}
+
+function validateEtsyLedgerPage(payload: EtsyLedgerPage) {
+  if (!nonnegativeCount(payload.count) || !Array.isArray(payload.results)) {
+    throw new Error("Etsy payment ledger returned a malformed page.");
+  }
+}
+
+function validateEtsyPaymentPage(payload: EtsyPaymentPage) {
+  if (!Array.isArray(payload.results)) throw new Error("Etsy ledger payments returned a malformed page.");
+  if (
+    payload.results.some(
+      (payment) =>
+        !Number.isSafeInteger(payment?.payment_id) ||
+        !Number.isSafeInteger(payment.receipt_id) ||
+        !Array.isArray(payment.payment_adjustments ?? [])
+    )
+  ) {
+    throw new Error("Etsy ledger payments returned a malformed payment batch.");
+  }
+}
+
+function nonnegativeCount(value: unknown) {
+  const count = Number(value);
+  return Number.isSafeInteger(count) && count >= 0;
+}
+
+function validDate(value: unknown) {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function validUnixTimestamp(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
