@@ -239,8 +239,9 @@ async function handleListNotices(request, env) {
   }
 
   const url = new URL(request.url);
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 25)));
-  const listed = await env.EBAY_DELETION_NOTICES.list({ prefix: "notice:" });
+  const limit = Math.min(25, Math.max(1, Number(url.searchParams.get("limit") || 25)));
+  const cursor = url.searchParams.get("cursor") || undefined;
+  const listed = await env.EBAY_DELETION_NOTICES.list({ prefix: "notice:", limit, cursor });
   const notices = (
     await Promise.all(
       listed.keys.map(async (key) => {
@@ -256,7 +257,9 @@ async function handleListNotices(request, env) {
     {
       notices: notices.slice(0, limit),
       total: notices.length,
-      unprocessedCount: notices.filter((notice) => !notice.processedAt).length
+      unprocessedCount: notices.filter((notice) => !notice.processedAt).length,
+      cursor: listed.list_complete ? undefined : listed.cursor,
+      listComplete: listed.list_complete !== false
     },
     { headers: jsonHeaders }
   );

@@ -16,8 +16,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-## Next
-
 ### SALES-06 — Audit canonical comparable-sales invariants
 
 **Epic:** Comparable Sales Integrity
@@ -28,6 +26,8 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 **Depends on:** Normalized financial model and reconciliation service. SALES-03 and SALES-04 remain out of scope.
 
+## Next
+
 ### SALES-07 — Audit financial backfill safety gates
 
 **Epic:** Comparable Sales Integrity
@@ -37,6 +37,16 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 > Audit repository commands and documentation that can perform schema migration or bulk financial backfill. Ensure every apply path requires or creates a verified backup before mutation, keeps a dry-run or preview path, and marks incomplete historical financial rows instead of inventing component values. Add focused tests for any missing repository guard. Do not run a real backfill, inspect production data, or change marketplace state. Check off the corresponding `PLAN.md` requirement only when every repository-controlled path is proven safe; document external operational steps separately.
 
 **Depends on:** Existing backup, migration, and financial import workflows. No live credentials or production data are required.
+
+### SALES-08 — Add dashboard calculation explanation and warnings
+
+**Epic:** Comparable Sales Integrity
+
+**Prompt:**
+
+> Add a concise dashboard disclosure describing how comparable net sales is calculated and why canceled orders, tax/VAT, buyer-paid shipping, refunds, separate fees, shipping-label costs, and currency separation are handled the way they are. Surface incomplete-history or reconciliation warning text on the Sales page without switching the headline metric. Add focused tests for the new disclosure and warning behavior.
+
+**Depends on:** Existing Sales dashboard flow and reconciliation service. No headline metric switch is required.
 
 ## Later
 
@@ -60,12 +70,14 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Blocked
 
-### EBAY-NOTIFY-01 — Verify live deletion-notification delivery
+### EBAY-NOTIFY-02 — Observe eBay's delayed test delivery
 
-The protected Worker is deployed and eBay endpoint validation succeeds, but the live notification test cannot write while Cloudflare's daily Workers KV put quota is exhausted. Resume immediately after the quota resets or is raised: rerun eBay's delivery test, confirm HTTP success and exactly one stored notice, repeat the same notification-ID test without another write, and review Cloudflare usage. This is the top operational priority and must complete before considering the endpoint fully restored.
+The protected Worker is deployed, paginated, authenticated, and healthy; all 1,365 retained signed notices are processed. eBay's official subscription test API accepted repeated requests with HTTP 202 and returned notification IDs, but no test delivery appeared during the observation window. Resume when eBay delivers a queued test or exposes a delivery failure, then verify the exact returned notification ID is stored once and repeated delivery does not increase the namespace count.
 
 ### SALES-03 — Preview and verify historical financial backfill
 
 Repository normalization and aggregate reconciliation foundations are complete. Resume after SALES-03A produces an `APPROVED` evidence record; do not switch the dashboard metric before approval.
 
 ## Recently Completed
+
+- **EBAY-NOTIFY-01:** Restored the live deletion-notification feed with 25-record cursor pages, processed a 521-notice backlog after backup, verified zero pending notices across 55 live pages, confirmed unauthorized feed access returns 401, and confirmed the enabled eBay subscription targets the deployed Worker. Production delivery is proven by 1,365 unique signed notices; delayed synthetic-test observation remains tracked separately.

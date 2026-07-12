@@ -6,12 +6,16 @@ interface WorkerNoticePayload {
   notices?: EbayDeletionNoticeRecord[];
   total?: number;
   unprocessedCount?: number;
+  cursor?: string;
+  listComplete?: boolean;
 }
 
 interface WorkerNoticeList {
   notices: EbayDeletionNoticeRecord[];
   total: number;
   unprocessedCount: number;
+  cursor?: string;
+  listComplete: boolean;
 }
 
 interface EbayDeletionNoticeProcessResult {
@@ -113,23 +117,32 @@ export async function processEbayDeletionNotices(): Promise<EbayDeletionNoticePr
   };
 
   try {
-    const { notices } = await fetchWorkerNotices(100);
-    const unprocessed = notices.filter((notice) => !notice.processedAt);
-    result.checkedNotices = unprocessed.length;
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = await fetchWorkerNotices(25, cursor);
+      const unprocessed = page.notices.filter((notice) => !notice.processedAt);
+      result.checkedNotices += unprocessed.length;
 
-    for (const notice of unprocessed) {
-      try {
-        const usernames = noticeUsernames(notice);
-        if (usernames.length > 0) {
-          const anonymized = await anonymizeFeedbackUsernames(usernames);
-          result.anonymizedRows += anonymized.changedRows;
+      for (const notice of unprocessed) {
+        try {
+          const usernames = noticeUsernames(notice);
+          if (usernames.length > 0) {
+            const anonymized = await anonymizeFeedbackUsernames(usernames);
+            result.anonymizedRows += anonymized.changedRows;
+          }
+          await markWorkerNoticeProcessed(notice.id);
+          result.processedNotices += 1;
+        } catch (error) {
+          result.errors.push(error instanceof Error ? error.message : String(error));
         }
-        await markWorkerNoticeProcessed(notice.id);
-        result.processedNotices += 1;
-      } catch (error) {
-        result.errors.push(error instanceof Error ? error.message : String(error));
       }
-    }
+
+      cursor = page.cursor;
+      pages += 1;
+    } while (cursor && pages < 100);
+
+    if (cursor) result.errors.push("Deletion notice scan stopped after 100 pages.");
   } catch (error) {
     result.errors.push(error instanceof Error ? error.message : String(error));
   }
@@ -137,8 +150,10 @@ export async function processEbayDeletionNotices(): Promise<EbayDeletionNoticePr
   return result;
 }
 
-async function fetchWorkerNotices(limit: number): Promise<WorkerNoticeList> {
-  const response = await fetch(`${workerEndpoint()}/notices?limit=${limit}`, {
+async function fetchWorkerNotices(limit: number, cursor?: string): Promise<WorkerNoticeList> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  const response = await fetch(`${workerEndpoint()}/notices?${query}`, {
     headers: workerHeaders()
   });
   const payload = (await response.json().catch(() => ({}))) as WorkerNoticePayload & { error?: string };
@@ -151,7 +166,9 @@ async function fetchWorkerNotices(limit: number): Promise<WorkerNoticeList> {
   return {
     notices,
     total: Number(payload.total ?? notices.length),
-    unprocessedCount: Number(payload.unprocessedCount ?? notices.filter((notice) => !notice.processedAt).length)
+    unprocessedCount: Number(payload.unprocessedCount ?? notices.filter((notice) => !notice.processedAt).length),
+    cursor: typeof payload.cursor === "string" && payload.cursor ? payload.cursor : undefined,
+    listComplete: payload.listComplete !== false
   };
 }
 

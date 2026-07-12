@@ -6,7 +6,7 @@ It supports:
 
 - `GET ?challenge_code=...` for eBay endpoint verification.
 - `POST /ebay/marketplace-account-deletion` for Marketplace Account Deletion notifications.
-- `GET /notices` for the local ERP to poll stored notices with an admin bearer token.
+- `GET /notices` for the local ERP to poll stored notices with an admin bearer token. Results are capped at 25 records per request and include a cursor when another page exists.
 - `POST /notices/:id/processed` for marking a notice processed.
 
 The local ERP remains local. This endpoint does not expose the dashboard, inventory database, or API.

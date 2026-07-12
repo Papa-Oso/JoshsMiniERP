@@ -142,6 +142,8 @@ assert.equal(noticesResponse.status, 200);
 const noticesBody = await noticesResponse.json();
 assert.equal(noticesBody.total, 1);
 assert.equal(noticesBody.unprocessedCount, 1);
+assert.equal(noticesBody.listComplete, true);
+assert.equal(noticesBody.cursor, undefined);
 assert.equal(noticesBody.notices[0].username, "buyer-one");
 
 const processedResponse = await worker.fetch(
@@ -156,6 +158,30 @@ const processedResponse = await worker.fetch(
 assert.equal(processedResponse.status, 200);
 const processedBody = await processedResponse.json();
 assert.ok(processedBody.notice.processedAt);
+
+const pagedKv = fakeKv();
+for (let index = 0; index < 30; index += 1) {
+  await pagedKv.put(`notice:paged-${String(index).padStart(2, "0")}`, JSON.stringify({ id: `paged-${index}` }));
+}
+const pagedEnv = { ...env, EBAY_DELETION_NOTICES: pagedKv };
+const firstPageResponse = await worker.fetch(
+  new Request(`${endpoint}/notices?limit=100`, { headers: { authorization: `Bearer ${adminToken}` } }),
+  pagedEnv
+);
+const firstPage = await firstPageResponse.json();
+assert.equal(firstPage.notices.length, 25);
+assert.equal(firstPage.listComplete, false);
+assert.ok(firstPage.cursor);
+const secondPageResponse = await worker.fetch(
+  new Request(`${endpoint}/notices?limit=100&cursor=${encodeURIComponent(firstPage.cursor)}`, {
+    headers: { authorization: `Bearer ${adminToken}` }
+  }),
+  pagedEnv
+);
+const secondPage = await secondPageResponse.json();
+assert.equal(secondPage.notices.length, 5);
+assert.equal(secondPage.listComplete, true);
+assert.equal(secondPage.cursor, undefined);
 
 console.log("eBay account deletion Worker smoke test passed.");
 globalThis.fetch = originalFetch;
@@ -196,9 +222,15 @@ function fakeKv() {
     async get(key) {
       return store.get(key) ?? null;
     },
-    async list({ prefix = "" } = {}) {
+    async list({ prefix = "", limit = 1000, cursor } = {}) {
+      const offset = Number(cursor || 0);
+      const matchingKeys = [...store.keys()].filter((name) => name.startsWith(prefix));
+      const page = matchingKeys.slice(offset, offset + limit);
+      const nextOffset = offset + page.length;
       return {
-        keys: [...store.keys()].filter((name) => name.startsWith(prefix)).map((name) => ({ name }))
+        keys: page.map((name) => ({ name })),
+        list_complete: nextOffset >= matchingKeys.length,
+        cursor: nextOffset >= matchingKeys.length ? undefined : String(nextOffset)
       };
     },
     writeCount() {
