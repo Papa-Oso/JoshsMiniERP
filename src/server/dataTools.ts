@@ -41,6 +41,12 @@ export interface VerifiedOperationalBackup extends DataFileResult {
   inspection: BackupInspectionResult;
 }
 
+interface OperationalBackupDependencies {
+  copyFile?: (source: string, destination: string) => Promise<void>;
+  copyDirectory?: (source: string, destination: string) => Promise<void>;
+  now?: () => Date;
+}
+
 const operationalBackupRetention = 5;
 
 export async function exportInventoryData(outputPath?: string): Promise<DataFileResult & { json?: string }> {
@@ -403,63 +409,89 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
   };
 }
 
-export async function backupInventoryData(outputDirectory?: string): Promise<DataFileResult> {
+export async function backupInventoryData(
+  outputDirectory?: string,
+  dependencies: OperationalBackupDependencies = {}
+): Promise<DataFileResult> {
   const backupDirectory = path.resolve(outputDirectory ?? path.join(path.dirname(config.dataFile), "backups"));
-  const timestamp = backupTimestamp();
+  const timestamp = backupTimestamp(dependencies.now?.());
   const inventoryBackupPath = path.join(backupDirectory, `inventory-${timestamp}.json`);
   const manifestPath = path.join(backupDirectory, `operational-backup-${timestamp}.json`);
   const copiedFiles: string[] = [];
   const missingSources: string[] = [];
 
-  await fs.mkdir(backupDirectory, { recursive: true });
-  await copyFileIfExists(
-    config.databaseFile,
-    path.join(backupDirectory, `inventory-${timestamp}.sqlite`),
-    copiedFiles,
-    missingSources
+  await runBackupStage("directory preparation", () => fs.mkdir(backupDirectory, { recursive: true }));
+  await runBackupStage("database copy", () =>
+    copyFileIfExists(
+      config.databaseFile,
+      path.join(backupDirectory, `inventory-${timestamp}.sqlite`),
+      copiedFiles,
+      missingSources,
+      dependencies.copyFile
+    )
   );
-  const data = await store.withLock(() => store.read());
-  await fs.writeFile(inventoryBackupPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  const data = await runBackupStage("inventory read", () => store.withLock(() => store.read()));
+  await runBackupStage("inventory export", () =>
+    fs.writeFile(inventoryBackupPath, `${JSON.stringify(data, null, 2)}\n`, "utf8")
+  );
   copiedFiles.push(inventoryBackupPath);
-  await copyFileIfExists(
-    printingDataFile(),
-    path.join(backupDirectory, `printing-${timestamp}.json`),
-    copiedFiles,
-    missingSources
+  await runBackupStage("printing data copy", () =>
+    copyFileIfExists(
+      printingDataFile(),
+      path.join(backupDirectory, `printing-${timestamp}.json`),
+      copiedFiles,
+      missingSources,
+      dependencies.copyFile
+    )
   );
-  await copyDirectoryIfExists(
-    printingAssetDirectory(),
-    path.join(backupDirectory, `printing-assets-${timestamp}`),
-    copiedFiles,
-    missingSources
+  await runBackupStage("printing asset copy", () =>
+    copyDirectoryIfExists(
+      printingAssetDirectory(),
+      path.join(backupDirectory, `printing-assets-${timestamp}`),
+      copiedFiles,
+      missingSources,
+      dependencies.copyDirectory
+    )
   );
-  await copyDirectoryIfExists(
-    productPhotoDirectory(),
-    path.join(backupDirectory, `product-photos-${timestamp}`),
-    copiedFiles,
-    missingSources
+  await runBackupStage("product photo copy", () =>
+    copyDirectoryIfExists(
+      productPhotoDirectory(),
+      path.join(backupDirectory, `product-photos-${timestamp}`),
+      copiedFiles,
+      missingSources,
+      dependencies.copyDirectory
+    )
   );
 
-  await fs.writeFile(
-    manifestPath,
-    `${JSON.stringify(
-      {
-        createdAt: new Date().toISOString(),
-        itemCount: data.items.length,
-        files: copiedFiles,
-        missingSources
-      },
-      null,
-      2
-    )}\n`,
-    "utf8"
+  await runBackupStage("manifest write", () =>
+    fs.writeFile(
+      manifestPath,
+      `${JSON.stringify(
+        {
+          createdAt: (dependencies.now?.() ?? new Date()).toISOString(),
+          itemCount: data.items.length,
+          files: copiedFiles,
+          missingSources
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    )
   );
   copiedFiles.push(manifestPath);
 
-  const pruneResult = await pruneOperationalBackups({
-    outputDirectory: backupDirectory,
-    apply: true
-  });
+  const inspection = await runBackupStage("manifest verification", () => inspectOperationalBackup(manifestPath));
+  if (!inspection.restorable) {
+    throw new Error("Operational backup failed during manifest verification.");
+  }
+
+  const pruneResult = await runBackupStage("automatic cleanup", () =>
+    pruneOperationalBackups({
+      outputDirectory: backupDirectory,
+      apply: true
+    })
+  );
 
   return {
     path: manifestPath,
@@ -542,17 +574,44 @@ export async function pruneOperationalBackups({
 
 export async function inspectOperationalBackup(manifestPath?: string): Promise<BackupInspectionResult> {
   const resolved = manifestPath ? path.resolve(manifestPath) : await latestBackupManifest();
-  const raw = JSON.parse(await fs.readFile(resolved, "utf8")) as {
+  const rawText = await fs.readFile(resolved, "utf8");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {
+      path: resolved,
+      files: [],
+      missingSources: [],
+      restorable: false
+    };
+  }
+  const raw = parsed as {
     createdAt?: string;
     itemCount?: number;
     files?: unknown[];
     missingSources?: unknown[];
   };
   const manifestDirectory = path.dirname(resolved);
-  const filePaths = Array.isArray(raw.files) ? raw.files.map((file) => String(file)) : [];
+  const validCreatedAt = typeof raw?.createdAt === "string" && Number.isFinite(Date.parse(raw.createdAt));
+  const validItemCount = Number.isInteger(raw?.itemCount) && Number(raw.itemCount) >= 0;
+  const validFiles =
+    Array.isArray(raw?.files) &&
+    raw.files.length > 0 &&
+    raw.files.every((file) => typeof file === "string" && file.trim().length > 0);
+  const validMissingSources =
+    Array.isArray(raw?.missingSources) && raw.missingSources.every((source) => typeof source === "string");
+  const manifestComplete = validCreatedAt && validItemCount && validFiles && validMissingSources;
+  const filePaths = manifestComplete ? (raw.files as string[]) : [];
   const files = await Promise.all(
     filePaths.map(async (file) => {
       const candidate = path.isAbsolute(file) ? file : path.resolve(manifestDirectory, file);
+      if (!isPathInside(manifestDirectory, candidate)) {
+        return {
+          path: candidate,
+          exists: false
+        } satisfies BackupInspectionFile;
+      }
       try {
         const stats = await fs.stat(candidate);
         return {
@@ -574,11 +633,11 @@ export async function inspectOperationalBackup(manifestPath?: string): Promise<B
 
   return {
     path: resolved,
-    createdAt: raw.createdAt,
-    itemCount: typeof raw.itemCount === "number" ? raw.itemCount : undefined,
+    createdAt: raw?.createdAt,
+    itemCount: typeof raw?.itemCount === "number" ? raw.itemCount : undefined,
     files,
-    missingSources: Array.isArray(raw.missingSources) ? raw.missingSources.map((source) => String(source)) : [],
-    restorable: files.length > 0 && files.every((file) => file.exists)
+    missingSources: validMissingSources ? (raw.missingSources as string[]) : [],
+    restorable: manifestComplete && files.every((file) => file.exists)
   };
 }
 
@@ -609,8 +668,8 @@ function csvCell(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function backupTimestamp() {
-  return new Date()
+function backupTimestamp(now = new Date()) {
+  return now
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z");
@@ -638,12 +697,18 @@ async function pathSize(target: string): Promise<number | undefined> {
   }
 }
 
-async function copyFileIfExists(source: string, destination: string, copiedFiles: string[], missingSources: string[]) {
+async function copyFileIfExists(
+  source: string,
+  destination: string,
+  copiedFiles: string[],
+  missingSources: string[],
+  copyFile: (source: string, destination: string) => Promise<void> = fs.copyFile
+) {
   try {
     const stats = await fs.stat(source);
     if (!stats.isFile()) return;
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.copyFile(source, destination);
+    await copyFile(source, destination);
     copiedFiles.push(destination);
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -658,12 +723,14 @@ async function copyDirectoryIfExists(
   source: string,
   destination: string,
   copiedFiles: string[],
-  missingSources: string[]
+  missingSources: string[],
+  copyDirectory: (source: string, destination: string) => Promise<void> = (from, to) =>
+    fs.cp(from, to, { recursive: true })
 ) {
   try {
     const stats = await fs.stat(source);
     if (!stats.isDirectory()) return;
-    await fs.cp(source, destination, { recursive: true });
+    await copyDirectory(source, destination);
     copiedFiles.push(destination);
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -671,6 +738,14 @@ async function copyDirectoryIfExists(
       return;
     }
     throw error;
+  }
+}
+
+async function runBackupStage<T>(stage: string, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch {
+    throw new Error(`Operational backup failed during ${stage}.`);
   }
 }
 

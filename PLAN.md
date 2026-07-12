@@ -23,12 +23,6 @@ This file contains active and upcoming work only. Completed user-visible work be
 - Comparable-sales normalization, refunds, source precedence, reconciliation, integrity warnings, verified backfill guards, and desktop/mobile disclosure are implemented. The legacy Revenue headline remains until reviewed historical evidence is approved.
 - Credential rotation, recovery, release, marketplace, and deployment procedures are documented in their canonical operator guides.
 
-## Active Work: Safety-Critical Test Hardening
-
-Informational coverage identified four repository-controlled failure areas that still need focused behavioral tests:
-
-- [ ] **OPS-03:** Cover operational backup copy/manifest failures and scheduler installation failures so partial setup cannot be reported as successful.
-
 ## Blocked Rollout Work
 
 - [ ] **SALES-03A:** Record matching Etsy Shop Manager and eBay Seller Hub aggregates for exact UTC periods, classify all differences, and create a new dated `APPROVED` or `REJECTED` evidence record.

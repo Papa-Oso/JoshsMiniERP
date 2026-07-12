@@ -39,11 +39,9 @@ Changes to these areas should include focused regression tests:
 
 Coverage percentages should be treated as a discovery tool, not a substitute for scenario-based safety tests.
 
-Open coverage follow-ups are tracked as executable tickets in `PLAN.md` and `KANBAN.md`:
+There are no open repository-controlled coverage follow-ups. New gaps belong in `PLAN.md` and `KANBAN.md` when discovery produces a concrete behavioral scenario.
 
-- `OPS-03`: backup copy/manifest failures and scheduler installation failures
-
-OAuth callback and refresh failures, SQLite write rollback and partial-schema recovery, marketplace timeout/malformed/partial-import handling, refund source precedence, unmatched financial transactions, reconciliation disagreement categories, and stale-pull warnings now have focused regression coverage and are no longer open discovery items.
+OAuth callback and refresh failures, SQLite write rollback and partial-schema recovery, marketplace timeout/malformed/partial-import handling, backup copy/manifest and scheduler installation failures, refund source precedence, unmatched financial transactions, reconciliation disagreement categories, and stale-pull warnings have focused regression coverage.
 
 ## Manual Review
 

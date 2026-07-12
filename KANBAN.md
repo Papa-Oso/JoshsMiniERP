@@ -14,16 +14,6 @@ This board contains only current executable tickets and exact external blockers 
 
 ## Doing
 
-### OPS-03 — Cover backup and scheduler failure reporting
-
-**Epic:** Safety-Critical Test Hardening
-
-**Prompt:**
-
-> Add focused tests for operational backup copy failure, invalid or incomplete manifests, automatic-prune refusal, and Windows scheduler installation command failure. Assert that partial backups are never reported as verified or restorable, retained good backups are not removed, scheduler settings are not reported as installed after command failure, and error messages identify the failed stage without exposing environment values. Use temporary paths and mocked process execution only.
-
-**Depends on:** Existing backup inspection/prune tests and scheduler preview/install boundaries. Do not install a real scheduled task.
-
 ## Next
 
 ## Blocked

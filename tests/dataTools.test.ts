@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
@@ -133,6 +133,60 @@ test("verified operational backup creates and inspects its manifest before retur
   assert.equal(result.inspection.files.every((file) => file.exists), true);
 });
 
+test("backup copy failure does not create a manifest or expose the underlying error", async () => {
+  const backupDirectory = path.join(tempDir, "copy-failure-backups");
+  const now = new Date("2026-04-01T00:00:00.000Z");
+  const sensitiveValue = "private-environment-value";
+  await writeStore(seedStore());
+  await writeFile(databaseFile, "sqlite", "utf8");
+  await writeFile(printingFile, "{}\n", "utf8");
+
+  await assert.rejects(
+    backupInventoryData(backupDirectory, {
+      now: () => now,
+      copyFile: async (source, destination) => {
+        if (source === printingFile) throw new Error(`copy failed: ${sensitiveValue}`);
+        await copyFile(source, destination);
+      }
+    }),
+    (error: unknown) => {
+      assert.equal(error instanceof Error, true);
+      const message = error instanceof Error ? error.message : String(error);
+      assert.match(message, /printing data copy/);
+      assert.equal(message.includes(sensitiveValue), false);
+      return true;
+    }
+  );
+
+  const files = await readdir(backupDirectory);
+  assert.equal(files.includes("inventory-20260401T000000Z.sqlite"), true);
+  assert.equal(files.includes("inventory-20260401T000000Z.json"), true);
+  assert.equal(files.some((file) => file.startsWith("operational-backup-")), false);
+});
+
+test("malformed and incomplete manifests are never reported restorable", async () => {
+  const backupDirectory = path.join(tempDir, "invalid-manifest-backups");
+  await mkdir(backupDirectory, { recursive: true });
+  const artifact = path.join(backupDirectory, "inventory.sqlite");
+  await writeFile(artifact, "sqlite", "utf8");
+
+  const malformedManifest = path.join(backupDirectory, "operational-backup-20260401T000000Z.json");
+  await writeFile(malformedManifest, "{not-json", "utf8");
+  const malformed = await inspectOperationalBackup(malformedManifest);
+  assert.equal(malformed.restorable, false);
+  assert.deepEqual(malformed.files, []);
+
+  const incompleteManifest = path.join(backupDirectory, "operational-backup-20260402T000000Z.json");
+  await writeFile(
+    incompleteManifest,
+    `${JSON.stringify({ createdAt: timestamp, files: [artifact], missingSources: [] })}\n`,
+    "utf8"
+  );
+  const incomplete = await inspectOperationalBackup(incompleteManifest);
+  assert.equal(incomplete.restorable, false);
+  assert.deepEqual(incomplete.files, []);
+});
+
 test("backup cleanup keeps the newest five operational backup sets", async () => {
   const backupDirectory = path.join(tempDir, "prune-backups");
   await mkdir(backupDirectory, { recursive: true });
@@ -196,6 +250,37 @@ test("successful operational backups automatically rotate to five sets", async (
     true
   );
   assert.equal(manifests.includes("operational-backup-20260301T000000Z.json"), false);
+});
+
+test("automatic backup cleanup refuses an invalid retained manifest without removing good backups", async () => {
+  const backupDirectory = path.join(tempDir, "automatic-prune-refusal-backups");
+  await mkdir(backupDirectory, { recursive: true });
+  await writeStore(seedStore());
+  const existingFiles: string[] = [];
+
+  for (let index = 1; index <= 6; index += 1) {
+    const suffix = `2026030${index}T000000Z`;
+    const artifact = path.join(backupDirectory, `inventory-${suffix}.sqlite`);
+    const manifest = path.join(backupDirectory, `operational-backup-${suffix}.json`);
+    await writeFile(artifact, "sqlite", "utf8");
+    await writeFile(
+      manifest,
+      index === 6
+        ? `${JSON.stringify({ createdAt: timestamp, files: [artifact], missingSources: [] })}\n`
+        : `${JSON.stringify({ createdAt: timestamp, itemCount: 1, files: [artifact], missingSources: [] })}\n`,
+      "utf8"
+    );
+    existingFiles.push(artifact, manifest);
+  }
+
+  await assert.rejects(
+    backupInventoryData(backupDirectory, { now: () => new Date("2026-04-01T00:00:00.000Z") }),
+    /automatic cleanup/
+  );
+
+  for (const existingFile of existingFiles) {
+    assert.equal(typeof (await readFile(existingFile, "utf8")), "string");
+  }
 });
 
 test("backup cleanup refuses paths outside the backup directory", async () => {

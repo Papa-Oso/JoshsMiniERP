@@ -18,6 +18,10 @@ export interface TaskSchedulerResult {
   command: string;
 }
 
+interface TaskSchedulerDependencies {
+  execute?: (file: string, args: string[]) => Promise<unknown>;
+}
+
 export async function createWindowsStartupScript(install: boolean): Promise<StartupScriptResult> {
   const startupDirectory = windowsStartupDirectory();
   const scriptPath = path.join(startupDirectory, "JoshsMiniERP.cmd");
@@ -43,7 +47,7 @@ export async function createWindowsSyncTask({
   install: boolean;
   intervalMinutes: number;
   taskName?: string;
-}): Promise<TaskSchedulerResult> {
+}, dependencies: TaskSchedulerDependencies = {}): Promise<TaskSchedulerResult> {
   if (!Number.isInteger(intervalMinutes) || intervalMinutes < 5 || intervalMinutes > 1440) {
     throw new Error("Task Scheduler interval must be between 5 and 1440 minutes.");
   }
@@ -65,7 +69,11 @@ export async function createWindowsSyncTask({
   ];
 
   if (install) {
-    await execFileAsync("schtasks", args);
+    try {
+      await (dependencies.execute ?? execFileAsync)("schtasks", args);
+    } catch {
+      throw new Error("Task Scheduler installation failed while creating the scheduled task.");
+    }
   }
 
   return {

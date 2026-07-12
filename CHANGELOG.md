@@ -6,6 +6,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ### Sales, safety, and operations
 
+- Required structural manifest validation before a backup can be considered restorable or trigger automatic cleanup, added stage-safe backup errors, and covered copy, retained-manifest, and mocked Windows Task Scheduler command failures.
 - Rejected malformed or incomplete Shopify, eBay, and Etsy sales pages before persistence, with timeout and later-page failure coverage proving prior sales, refunds, and inventory remain intact.
 - Prevented failed SQLite write callbacks from saving partial in-memory changes, with disposable forced-migration rollback, verified-target-backup, idempotent retry, and partial financial-schema coverage.
 - Added isolated eBay and Etsy OAuth failure tests covering rejected callbacks, state mismatch, provider exchange errors, missing saved authorization, and refresh failure without persisting invalid token state.
