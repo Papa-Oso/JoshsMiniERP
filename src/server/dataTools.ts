@@ -37,6 +37,10 @@ export interface BackupPruneResult {
   reclaimedBytes: number;
 }
 
+export interface VerifiedOperationalBackup extends DataFileResult {
+  inspection: BackupInspectionResult;
+}
+
 const operationalBackupRetention = 5;
 
 export async function exportInventoryData(outputPath?: string): Promise<DataFileResult & { json?: string }> {
@@ -400,7 +404,6 @@ export async function exportOperationsReportCsv(outputDirectory?: string): Promi
 }
 
 export async function backupInventoryData(outputDirectory?: string): Promise<DataFileResult> {
-  const data = await store.withLock(() => store.read());
   const backupDirectory = path.resolve(outputDirectory ?? path.join(path.dirname(config.dataFile), "backups"));
   const timestamp = backupTimestamp();
   const inventoryBackupPath = path.join(backupDirectory, `inventory-${timestamp}.json`);
@@ -409,15 +412,15 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
   const missingSources: string[] = [];
 
   await fs.mkdir(backupDirectory, { recursive: true });
-  await fs.writeFile(inventoryBackupPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  copiedFiles.push(inventoryBackupPath);
-
   await copyFileIfExists(
     config.databaseFile,
     path.join(backupDirectory, `inventory-${timestamp}.sqlite`),
     copiedFiles,
     missingSources
   );
+  const data = await store.withLock(() => store.read());
+  await fs.writeFile(inventoryBackupPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  copiedFiles.push(inventoryBackupPath);
   await copyFileIfExists(
     printingDataFile(),
     path.join(backupDirectory, `printing-${timestamp}.json`),
@@ -464,6 +467,15 @@ export async function backupInventoryData(outputDirectory?: string): Promise<Dat
     files: copiedFiles,
     prunedBackupSets: pruneResult.removedManifests.length
   };
+}
+
+export async function createVerifiedOperationalBackup(outputDirectory?: string): Promise<VerifiedOperationalBackup> {
+  const backup = await backupInventoryData(outputDirectory);
+  const inspection = await inspectOperationalBackup(backup.path);
+  if (!inspection.restorable) {
+    throw new Error(`Operational backup verification failed for ${backup.path}.`);
+  }
+  return { ...backup, inspection };
 }
 
 export async function pruneOperationalBackups({

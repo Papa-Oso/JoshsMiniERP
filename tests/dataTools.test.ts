@@ -24,6 +24,7 @@ process.env.SHOPIFY_CLIENT_SECRET = "";
 
 const {
   backupInventoryData,
+  createVerifiedOperationalBackup,
   exportInventoryCsv,
   exportInventoryEventsCsv,
   exportOperationsReportCsv,
@@ -122,6 +123,14 @@ test("backup inspection checks manifest files without restoring", async () => {
   const missingFile = await inspectOperationalBackup(manifestPath);
   assert.equal(missingFile.restorable, false);
   assert.equal(missingFile.files.some((file) => !file.exists && file.path === sqliteBackup), true);
+});
+
+test("verified operational backup creates and inspects its manifest before returning", async () => {
+  await writeStore(seedStore());
+  const result = await createVerifiedOperationalBackup(path.join(tempDir, "verified-backups"));
+  assert.equal(result.inspection.path, result.path);
+  assert.equal(result.inspection.restorable, true);
+  assert.equal(result.inspection.files.every((file) => file.exists), true);
 });
 
 test("backup cleanup keeps the newest five operational backup sets", async () => {

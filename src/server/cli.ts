@@ -438,6 +438,7 @@ async function ebaySalesImportFromCli(commandArgs: string[]) {
   if (!file) throw new Error("Usage: npm run inv -- ebay-sales-import <orders-report.csv> [--dry-run]");
   const result = await importEbaySalesCsv(file, { dryRun: commandArgs.includes("--dry-run") });
   console.log(`${result.dryRun ? "Previewed" : "Imported"} ${result.orders} eBay orders and ${result.lineItems} line items.`);
+  if (result.backupPath) console.log(`Verified backup: ${result.backupPath}`);
   console.log(`Coverage: ${result.earliestAt?.slice(0, 10) ?? "none"} through ${result.latestAt?.slice(0, 10) ?? "none"}.`);
 }
 
@@ -445,6 +446,7 @@ async function ebayTransactionsImportFromCli(commandArgs: string[]) {
   const inputPath = commandArgs.find((value) => !value.startsWith("--")); if (!inputPath) throw new Error("Usage: npm run inv -- ebay-transactions-import <file-or-directory> [--dry-run]");
   const result = await importEbayTransactionReports(inputPath, { dryRun: commandArgs.includes("--dry-run") });
   console.log(`${result.dryRun ? "Previewed" : "Imported"} ${result.transactions} financial transactions and ${result.orders} eBay orders from ${result.files} files.`);
+  if (result.backupPath) console.log(`Verified backup: ${result.backupPath}`);
   console.log(`Removed ${result.duplicates} overlapping rows. Coverage: ${result.earliestAt?.slice(0,10)} through ${result.latestAt?.slice(0,10)}.`);
 }
 
@@ -579,7 +581,8 @@ async function migrateSQLiteFromCli(input: string[]) {
       syncMessages: result.syncMessages,
       scheduleRows: result.scheduleRows,
       force: result.force,
-      backup: result.backupPath ?? "-"
+      backup: result.backupPath ?? "-",
+      targetBackup: result.targetBackupPath ?? "-"
     }
   ]);
 }

@@ -2,20 +2,32 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { SalesOrder } from "../shared/types";
+import { createVerifiedOperationalBackup } from "./dataTools";
 import { parseCsv } from "./ebayReviews/productCatalog";
 import { upsertEbayTransactions, upsertSalesOrders, type EbayFinancialTransaction } from "./salesStore";
 
-export async function importEbayTransactionReports(inputPath: string, { dryRun = false } = {}) {
+interface EbayTransactionImportOptions {
+  dryRun?: boolean;
+  createBackup?: typeof createVerifiedOperationalBackup;
+  apply?: (transactions: EbayFinancialTransaction[], orders: SalesOrder[]) => Promise<void>;
+}
+
+export async function importEbayTransactionReports(inputPath: string, options: EbayTransactionImportOptions = {}) {
+  const { dryRun = false } = options;
   const files = await transactionFiles(inputPath);
   const parsed = (await Promise.all(files.map(async (file) => parseEbayTransactionCsv(await fs.readFile(file, "utf8"))))).flat();
   const transactions = [...new Map(parsed.map((row) => [row.transactionKey, row])).values()]
     .sort((left, right) => right.transactionDate.localeCompare(left.transactionDate));
   const orders = ordersFromTransactions(transactions);
+  let backupPath: string | null = null;
   if (!dryRun) {
-    await upsertEbayTransactions(transactions);
-    await upsertSalesOrders("ebay", orders);
+    backupPath = (await (options.createBackup ?? createVerifiedOperationalBackup)()).path;
+    await (options.apply ?? (async (financialRows, orderRows) => {
+      await upsertEbayTransactions(financialRows);
+      await upsertSalesOrders("ebay", orderRows);
+    }))(transactions, orders);
   }
-  return { dryRun, files: files.length, sourceRows: parsed.length, transactions: transactions.length, duplicates: parsed.length - transactions.length, orders: orders.length, earliestAt: transactions.at(-1)?.transactionDate ?? null, latestAt: transactions[0]?.transactionDate ?? null };
+  return { dryRun, backupPath, files: files.length, sourceRows: parsed.length, transactions: transactions.length, duplicates: parsed.length - transactions.length, orders: orders.length, earliestAt: transactions.at(-1)?.transactionDate ?? null, latestAt: transactions[0]?.transactionDate ?? null };
 }
 
 export function parseEbayTransactionCsv(csv: string): EbayFinancialTransaction[] {
@@ -38,7 +50,7 @@ export function parseEbayTransactionCsv(csv: string): EbayFinancialTransaction[]
 function ordersFromTransactions(rows: EbayFinancialTransaction[]): SalesOrder[] {
   const sales = rows.filter((row) => row.type.toLowerCase() === "order" && row.orderId); const groups = new Map<string, EbayFinancialTransaction[]>();
   for (const row of sales) { const group = groups.get(row.orderId) ?? []; if (!group.some((existing) => existing.transactionId === row.transactionId && existing.itemId === row.itemId)) group.push(row); groups.set(row.orderId, group); }
-  return [...groups.entries()].map(([orderId, group]) => ({ platform: "ebay" as const, orderId, orderNumber: orderId, createdAt: group[0].transactionDate, updatedAt: group[0].transactionDate, status: "PAID", currency: group[0].currency, grossAmount: group.reduce((sum, row) => sum + row.grossAmount, 0), netAmount: group.reduce((sum, row) => sum + row.netAmount, 0), countryCode: "", regionCode: "", itemCount: group.reduce((sum, row) => sum + row.quantity, 0), sourceUrl: `https://www.ebay.com/sh/ord/details?orderid=${encodeURIComponent(orderId)}`, lineItems: group.map((row, index) => ({ platform: "ebay" as const, orderId, lineId: row.transactionId || row.itemId || `${orderId}-${index + 1}`, sku: row.sku, title: row.title, quantity: row.quantity, amount: row.itemSubtotal })) })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...groups.entries()].map(([orderId, group]): SalesOrder => ({ platform: "ebay", orderId, orderNumber: orderId, createdAt: group[0].transactionDate, updatedAt: group[0].transactionDate, status: "PAID", currency: group[0].currency, grossAmount: group.reduce((sum, row) => sum + row.grossAmount, 0), netAmount: group.reduce((sum, row) => sum + row.netAmount, 0), financialsComplete: false, financialsSource: "transaction_report", financialsUpdatedAt: group[0].transactionDate, reconciliationState: "incomplete", countryCode: "", regionCode: "", itemCount: group.reduce((sum, row) => sum + row.quantity, 0), sourceUrl: `https://www.ebay.com/sh/ord/details?orderid=${encodeURIComponent(orderId)}`, lineItems: group.map((row, index) => ({ platform: "ebay" as const, orderId, lineId: row.transactionId || row.itemId || `${orderId}-${index + 1}`, sku: row.sku, title: row.title, quantity: row.quantity, amount: row.itemSubtotal })) })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 async function transactionFiles(inputPath: string) { const stat = await fs.stat(inputPath); if (stat.isFile()) return [inputPath]; return (await fs.readdir(inputPath)).filter((name) => /^Transaction-.*\.csv$/i.test(name)).sort().map((name) => path.join(inputPath, name)); }

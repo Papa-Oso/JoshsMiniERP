@@ -81,6 +81,21 @@ test("sales financial components persist and refunds upsert idempotently", async
   assert.equal(refunds[0].productAmount, 6);
 });
 
+test("incomplete historical reports preserve legacy totals without inventing comparable components", async () => {
+  await upsertSalesOrders("ebay", [{
+    ...order(), platform: "ebay", orderId: "historical-incomplete", grossAmount: 41, netAmount: 30,
+    financialsComplete: false, financialsSource: "order_report", reconciliationState: "incomplete"
+  }]);
+  const saved = (await loadSalesOrders()).find((row) => row.orderId === "historical-incomplete");
+  assert.equal(saved?.grossAmount, 41);
+  assert.equal(saved?.netAmount, 30);
+  assert.equal(saved?.productAmount, 0);
+  assert.equal(saved?.shippingAmount, 0);
+  assert.equal(saved?.comparableSalesAmount, 0);
+  assert.equal(saved?.financialsComplete, false);
+  assert.equal(saved?.reconciliationState, "incomplete");
+});
+
 test("sales order refreshes replace stale comparable sales amounts", async () => {
   const stale = {
     ...order(),

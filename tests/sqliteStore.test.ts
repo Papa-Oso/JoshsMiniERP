@@ -50,6 +50,36 @@ test("migrate-sqlite copies JSON inventory into a SQLite database", async () => 
   }
 });
 
+test("forced migrate-sqlite preserves and verifies the previous SQLite target", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-sqlite-force-migration-"));
+  const dataFile = path.join(tempDir, "inventory.json");
+  const databaseFile = path.join(tempDir, "inventory.sqlite");
+  const previousDataFile = config.dataFile;
+  const previousDatabaseFile = config.databaseFile;
+
+  try {
+    config.dataFile = dataFile;
+    config.databaseFile = databaseFile;
+    const previous = seedStore();
+    previous.items[0].sku = "PREVIOUS-SKU";
+    previous.items[0].name = "Previous item";
+    await new SQLiteInventoryStore(databaseFile).mutate((data) => Object.assign(data, previous));
+    await writeFile(dataFile, `${JSON.stringify(seedStore(), null, 2)}\n`, "utf8");
+
+    const result = await migrateJsonToSQLite({ force: true });
+    const backup = await new SQLiteInventoryStore(result.targetBackupPath!).read();
+    const migrated = await new SQLiteInventoryStore(databaseFile).read();
+
+    assert.match(result.targetBackupPath ?? "", /inventory-pre-migration-\d+T\d+Z\.sqlite$/);
+    assert.equal(backup.items[0].sku, "PREVIOUS-SKU");
+    assert.equal(migrated.items[0].sku, "NEON-MUG");
+  } finally {
+    config.dataFile = previousDataFile;
+    config.databaseFile = previousDatabaseFile;
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SQLite schema upgrade adds import history columns used by Review Center", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "joshs-mini-erp-sqlite-import-upgrade-"));
   const databaseFile = path.join(tempDir, "inventory.sqlite");

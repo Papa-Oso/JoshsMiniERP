@@ -111,4 +111,4 @@ npm run inv -- migrate-sqlite --dry-run
 npm run inv -- migrate-sqlite
 ```
 
-Migration writes a JSON backup first and refuses to overwrite a non-empty SQLite database unless explicitly forced. Do not use `--force` without a reviewed backup and clear reason.
+Migration writes and verifies a JSON source backup and refuses to overwrite a non-empty SQLite database unless explicitly forced. Before opening the target for any schema upgrade, an apply run also creates and byte-verifies a pre-migration copy of an existing SQLite target. Review both reported backup paths and do not use `--force` without a clear reason.

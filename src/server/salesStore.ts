@@ -328,6 +328,7 @@ function upsertOrder(db: Database, platform: Platform, order: SalesOrder, seenAt
   const existingRow = queryRows(db, "SELECT * FROM sales_orders WHERE platform = ? AND order_id = ?", [platform, order.orderId])[0];
   const merged = existingRow ? mergeOrderFinancials(rowToOrder(existingRow), order, financialFields(existingRow)) : order;
   const presentFields = existingRow ? mergedFinancialFields(existingRow, order) : suppliedFinancialFields(order);
+  const complete = Boolean(merged.financialsComplete);
   db.run(
     `INSERT INTO sales_orders (platform, order_id, order_number, created_at, updated_at, status, currency, gross_amount, net_amount, product_amount, shipping_amount, discount_amount, tax_amount, refunded_amount, comparable_sales_amount, financial_status, canceled_at, financials_complete, financials_source, financials_updated_at, reconciliation_state, financial_fields, country_code, region_code, item_count, source_url, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(platform, order_id) DO UPDATE SET order_number=excluded.order_number, created_at=excluded.created_at, updated_at=excluded.updated_at, status=excluded.status, currency=excluded.currency, gross_amount=excluded.gross_amount, net_amount=excluded.net_amount, product_amount=excluded.product_amount, shipping_amount=excluded.shipping_amount, discount_amount=excluded.discount_amount, tax_amount=excluded.tax_amount, comparable_sales_amount=excluded.comparable_sales_amount, financial_status=excluded.financial_status, canceled_at=excluded.canceled_at, financials_complete=excluded.financials_complete, financials_source=excluded.financials_source, financials_updated_at=excluded.financials_updated_at, reconciliation_state=excluded.reconciliation_state, financial_fields=excluded.financial_fields, country_code=excluded.country_code, region_code=excluded.region_code, item_count=excluded.item_count, source_url=excluded.source_url, last_seen_at=excluded.last_seen_at`,
@@ -339,10 +340,10 @@ function upsertOrder(db: Database, platform: Platform, order: SalesOrder, seenAt
       order.updatedAt,
       order.status,
       order.currency,
-      merged.grossAmount, merged.netAmount, merged.productAmount ?? merged.netAmount, merged.shippingAmount ?? 0,
+      merged.grossAmount, merged.netAmount, merged.productAmount ?? (complete ? merged.netAmount : 0), merged.shippingAmount ?? 0,
       merged.discountAmount ?? 0, merged.taxAmount ?? 0, merged.refundedAmount ?? 0,
-      merged.comparableSalesAmount ?? merged.netAmount, merged.financialStatus ?? merged.status, merged.canceledAt ?? "",
-      merged.financialsComplete ? 1 : 0, merged.financialsSource ?? "legacy",
+      merged.comparableSalesAmount ?? (complete ? merged.netAmount : 0), merged.financialStatus ?? merged.status, merged.canceledAt ?? "",
+      complete ? 1 : 0, merged.financialsSource ?? "legacy",
       merged.financialsUpdatedAt ?? merged.updatedAt, merged.reconciliationState ?? "incomplete", JSON.stringify(presentFields),
       order.countryCode,
       order.regionCode,

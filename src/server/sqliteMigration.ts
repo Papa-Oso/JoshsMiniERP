@@ -22,6 +22,7 @@ export interface SQLiteMigrationSummary {
   syncMessages: number;
   scheduleRows: number;
   backupPath?: string;
+  targetBackupPath?: string;
 }
 
 export async function migrateJsonToSQLite(
@@ -36,6 +37,7 @@ export async function migrateJsonToSQLite(
   }
 
   const targetStore = new SQLiteInventoryStore(config.databaseFile);
+  const targetBackupPath = await backupSQLiteTarget();
   const existing = await targetStore.read();
   if (!options.force && !isEmptyStore(existing)) {
     throw new Error("SQLite inventory tables are not empty. Rerun with --force to overwrite them.");
@@ -49,7 +51,7 @@ export async function migrateJsonToSQLite(
     target.syncRuns = clone(data.syncRuns);
   });
 
-  return { ...summary, backupPath };
+  return { ...summary, backupPath, targetBackupPath };
 }
 
 function summarizeData(data: StoreData, dryRun: boolean, force: boolean): SQLiteMigrationSummary {
@@ -80,7 +82,26 @@ async function backupJsonSource(data: StoreData) {
   const backupDirectory = path.resolve(path.join(path.dirname(config.dataFile), "backups"));
   const backupPath = path.join(backupDirectory, `inventory-${backupTimestamp()}.json`);
   await fs.mkdir(backupDirectory, { recursive: true });
-  await fs.writeFile(backupPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  const json = `${JSON.stringify(data, null, 2)}\n`;
+  await fs.writeFile(backupPath, json, "utf8");
+  if ((await fs.readFile(backupPath, "utf8")) !== json) throw new Error(`JSON migration backup verification failed: ${backupPath}`);
+  return backupPath;
+}
+
+async function backupSQLiteTarget() {
+  const backupDirectory = path.resolve(path.join(path.dirname(config.databaseFile), "backups"));
+  const backupPath = path.join(backupDirectory, `inventory-pre-migration-${backupTimestamp()}.sqlite`);
+  let source: Buffer;
+  try {
+    source = await fs.readFile(config.databaseFile);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  await fs.mkdir(backupDirectory, { recursive: true });
+  await fs.writeFile(backupPath, source);
+  const copied = await fs.readFile(backupPath);
+  if (!source.equals(copied)) throw new Error(`SQLite migration backup verification failed: ${backupPath}`);
   return backupPath;
 }
 
