@@ -6,6 +6,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ### Sales, safety, and operations
 
+- Added isolated eBay and Etsy OAuth failure tests covering rejected callbacks, state mismatch, provider exchange errors, missing saved authorization, and refresh failure without persisting invalid token state.
 - Pruned completed roadmap and audit prose, centralized every remaining work item in Plan and Kanban, and added the credential-rotation runbook.
 - Added verified pre-mutation backups to historical eBay financial imports and SQLite migration, while preserving incomplete report rows without inventing comparable-sales components.
 - Surfaced incomplete and unresolved financial-history counts on the Sales page and clarified how the legacy view labels mixed-currency selections.

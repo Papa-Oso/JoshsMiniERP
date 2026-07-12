@@ -27,7 +27,6 @@ This file contains active and upcoming work only. Completed user-visible work be
 
 Informational coverage identified four repository-controlled failure areas that still need focused behavioral tests:
 
-- [ ] **AUTH-01:** Cover eBay and Etsy OAuth callback rejection, state mismatch, provider error, missing-token, and refresh failure paths without recording token values.
 - [ ] **DB-01:** Cover legacy SQLite migration rollback and partial-schema recovery without touching the working database.
 - [ ] **MKT-01:** Cover marketplace timeouts, malformed responses, and partial-import refusal so failed reads cannot persist misleading success or partial financial history.
 - [ ] **OPS-03:** Cover operational backup copy/manifest failures and scheduler installation failures so partial setup cannot be reported as successful.

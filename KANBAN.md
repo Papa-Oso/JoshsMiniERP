@@ -14,18 +14,6 @@ This board contains only current executable tickets and exact external blockers 
 
 ## Doing
 
-### AUTH-01 — Cover OAuth failure boundaries
-
-**Epic:** Safety-Critical Test Hardening
-
-**Prompt:**
-
-> Add focused tests for eBay and Etsy OAuth callback rejection, state mismatch, provider error responses, missing saved authorization, and access-token refresh failure. Use temporary ignored token paths and fake HTTP responses. Assert that failures are specific, no invalid token state is saved, and no token, code, verifier, state value, or authorization header appears in test output. Do not contact either marketplace or change the documented OAuth scopes.
-
-**Depends on:** Existing eBay/Etsy authorization helpers and temporary-file test patterns. No credentials or network access are required.
-
-## Next
-
 ### DB-01 — Cover partial-schema migration recovery
 
 **Epic:** Safety-Critical Test Hardening
@@ -35,6 +23,8 @@ This board contains only current executable tickets and exact external blockers 
 > Add focused tests for opening legacy and partially upgraded SQLite schemas, including a forced migration failure after the verified pre-migration copy is created. Prove that the working test database remains recoverable, existing rows are preserved, incomplete financial fields stay explicitly incomplete, and retrying the supported migration is idempotent. Use disposable databases only; do not inspect or copy `data/inventory.sqlite`.
 
 **Depends on:** Existing SQLite store, migration backup guards, and temporary-database tests.
+
+## Next
 
 ### MKT-01 — Cover malformed and partial marketplace imports
 
