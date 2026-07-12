@@ -90,7 +90,7 @@ product revenue after seller discounts
 - [x] Cover domestic free shipping, international paid shipping, discounts, cancellations, full and partial refunds, refunded shipping/tax, duplicate imports, mixed currencies, and date boundaries.
 - [x] Assert that tax never contributes to comparable sales, canceled orders contribute zero, and refunds are applied exactly once.
 - [ ] Backfill on a verified backup, compare new results against marketplace dashboards, and review unresolved differences before switching the headline metric.
-- [ ] Run `npm test`, `npm run build`, `npm run lint`, and `npm run check:ui`; inspect Sales at desktop and mobile widths.
+- [x] Run `npm test`, `npm run build`, `npm run lint`, and `npm run check:ui`; inspect Sales at desktop and mobile widths.
 
 ## Protected eBay Work
 

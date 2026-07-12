@@ -49,6 +49,7 @@ try {
   await expectPanels(mobile);
   await mobile.getByText("How these totals are calculated").click();
   await expectVisible(mobile.getByText(/Comparable net sales will replace Revenue/));
+  await expectVisible(mobile.getByText(/currency-separated reconciliation totals/));
   await mobile.screenshot({ path: path.join(outputDir, "sales-mobile.png"), fullPage: true });
 
   console.log(`UI smoke screenshots written to ${outputDir}`);

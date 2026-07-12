@@ -34,6 +34,7 @@ test("sales dashboard aggregates revenue, geography, products, and platform cove
   assert.equal(dashboard.products[0].sku, "SKU-1");
   assert.equal(dashboard.products[0].title, "Product");
   assert.equal(dashboard.platforms.find((row) => row.platform === "shopify")?.orders, 1);
+  assert.ok(dashboard.warnings.some((warning) => /1 included order does not yet have/.test(warning)));
 });
 
 test("inventory and sales share one SQLite file without overwriting each other", async () => {

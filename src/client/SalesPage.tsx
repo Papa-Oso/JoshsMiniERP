@@ -119,7 +119,8 @@ export function SalesPage() {
           <p>
             <strong>Orders</strong> counts the included saved orders in the selected period and platform.{" "}
             <strong>Units sold</strong> adds their item quantities. <strong>Average order</strong> is Revenue divided by
-            Orders. Currencies are displayed separately and are never converted or silently combined.
+            Orders. If the selection contains multiple currencies, this legacy view shows a warning and does not
+            perform currency conversion; use the currency-separated reconciliation totals for comparison.
           </p>
           <p>
             Comparable net sales will replace Revenue only after the financial backfill and marketplace reconciliation

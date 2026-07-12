@@ -57,6 +57,20 @@ export async function getSalesDashboard({
   const units = sum(orders.map((order) => order.itemCount));
   const warnings: string[] = [];
   if (currencies.length > 1) warnings.push("Multiple currencies are shown without exchange-rate conversion.");
+  const unresolvedOrders = orders.filter((order) => order.reconciliationState === "unresolved").length;
+  const incompleteOrders = orders.filter(
+    (order) => !order.financialsComplete && order.reconciliationState !== "unresolved"
+  ).length;
+  if (incompleteOrders) {
+    warnings.push(
+      `${incompleteOrders} included ${incompleteOrders === 1 ? "order does" : "orders do"} not yet have a complete comparable-sales breakdown. Legacy Revenue remains in use.`
+    );
+  }
+  if (unresolvedOrders) {
+    warnings.push(
+      `${unresolvedOrders} included ${unresolvedOrders === 1 ? "order has" : "orders have"} unresolved financial history that requires reconciliation.`
+    );
+  }
   for (const source of platforms) {
     const latest = pulls.find((pull) => pull.platform === source);
     if (latest?.status === "error") warnings.push(`${label(source)} sales pull needs attention: ${latest.message}`);

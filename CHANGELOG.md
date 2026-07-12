@@ -1,6 +1,7 @@
 # Changelog
 
 - Added verified pre-mutation backups to historical eBay financial imports and SQLite migration, while preserving incomplete report rows without inventing comparable-sales components.
+- Surfaced incomplete and unresolved financial-history counts on the Sales page and clarified how the legacy view labels mixed-currency selections.
 - Completed the canonical comparable-sales invariant audit, including regression guards that prevent canceled-order refunds and currency-conflicting refunds from reducing comparable sales.
 
 - Restored the eBay account-deletion notice feed under a 1,365-record backlog with bounded cursor pagination, drained 521 pending notices after a verified backup, and kept the protected feed within Cloudflare Worker subrequest limits.

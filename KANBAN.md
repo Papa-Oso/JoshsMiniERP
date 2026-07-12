@@ -16,16 +16,6 @@ This board turns the larger epics in `PLAN.md` into small, executable developmen
 
 ## Doing
 
-### SALES-09 — Complete comparable-sales verification
-
-**Epic:** Comparable Sales Integrity
-
-**Prompt:**
-
-> Run the complete repository verification required by `PLAN.md`: `npm test`, `npm run build`, `npm run lint`, and `npm run check:ui` against a local app. Inspect the Sales page at desktop and mobile widths for calculation-copy clarity, warning visibility, currency labeling, overflow, and keyboard access. Fix only regressions within the comparable-sales work, record any external limitation precisely, and check off the verification item only when every required check passes.
-
-**Depends on:** Current comparable-sales implementation. No live marketplace refresh, historical backfill, or marketplace write is required.
-
 ## Next
 
 ## Later
@@ -60,10 +50,11 @@ Repository normalization and aggregate reconciliation foundations are complete. 
 
 ### QUEUE-01 — Await another unblocked plan item
 
-After SALES-09, every remaining unchecked plan item requires an external event or approval: a real credential rotation, an approved historical backfill evidence record, delayed eBay test delivery, or completion of that reviewed backfill before the headline switch. The ADR reminder is conditional on a future durable decision rather than executable work by itself.
+With SALES-09 complete, every remaining unchecked plan item requires an external event or approval: a real credential rotation, an approved historical backfill evidence record, delayed eBay test delivery, or completion of that reviewed backfill before the headline switch. The ADR reminder is conditional on a future durable decision rather than executable work by itself.
 
 ## Recently Completed
 
+- **SALES-09:** Passed the complete repository and browser verification, confirmed responsive and keyboard behavior, surfaced incomplete and unresolved history warnings, and corrected the legacy mixed-currency explanation.
 - **SALES-07:** Added preview-first, verified-backup gates for SQLite migration and historical eBay report imports, and ensured incomplete report rows retain legacy totals without invented comparable-sales components.
 - **SALES-06:** Proved the six canonical comparable-sales invariants in implementation and focused tests, and closed edge cases that allowed canceled-order refunds or currency-conflicting refunds to reduce comparable sales.
 - **EBAY-NOTIFY-01:** Restored the live deletion-notification feed with 25-record cursor pages, processed a 521-notice backlog after backup, verified zero pending notices across 55 live pages, confirmed unauthorized feed access returns 401, and confirmed the enabled eBay subscription targets the deployed Worker. Production delivery is proven by 1,365 unique signed notices; delayed synthetic-test observation remains tracked separately.
