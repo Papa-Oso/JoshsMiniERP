@@ -1,5 +1,7 @@
 # Sales Backfill Readiness — 2026-07-11
 
+This is an immutable historical evidence record. Current unblock work is tracked as `SALES-03A` in `KANBAN.md`; create a new dated evidence file for another review instead of rewriting the decision or aggregates below.
+
 ## Decision
 
 **REJECTED** — do not run the SALES-03 apply preview yet.

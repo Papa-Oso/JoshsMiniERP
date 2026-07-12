@@ -104,6 +104,10 @@ npm run inv -- schedule-windows task 30
 
 The Windows automation commands preview their changes by default. Add `--install` only after reviewing the generated startup or Task Scheduler command. Enable automatic sync only after mappings, credentials, baselines, and dry-run results are trusted.
 
+## Credential Rotation
+
+Use the [credential-rotation runbook](CREDENTIAL_ROTATION.md) for planned replacement or suspected exposure. It defines the backup, one-integration-at-a-time update, ignored local or hosted secret storage, read-only connection test, reconcile-before-sync, revocation, safe recording, and rollback sequence. Never record the rotated value or provider account identifiers.
+
 ## SQLite Migration
 
 ```powershell

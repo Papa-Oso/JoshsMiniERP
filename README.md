@@ -46,20 +46,21 @@ The complete CLI and marketplace setup references are in [Operations](docs/OPERA
 
 ## Documentation
 
-| Document                                   | Purpose                                                       |
-| ------------------------------------------ | ------------------------------------------------------------- |
-| [Development](docs/DEVELOPMENT.md)         | Setup, scripts, project layout, and change workflow           |
-| [Architecture](docs/ARCHITECTURE.md)       | Data ownership, storage, sync behavior, and system boundaries |
-| [Data model](docs/DATA_MODEL.md)           | Canonical SQLite tables, identities, practices, and queries   |
-| [Operations](docs/OPERATIONS.md)           | Daily commands, backup, restore, scheduler, and CSV workflows |
-| [Marketplaces](docs/MARKETPLACES.md)       | Shopify, Etsy, eBay, OAuth, mapping, and write-safety rules   |
-| [Deployment](docs/DEPLOYMENT.md)           | Local ERP and embedded-app deployment boundaries              |
-| [Testing](docs/TESTING.md)                 | Test layers, required checks, and live-service boundaries     |
-| [Releases](docs/RELEASES.md)               | Release preparation, verification, rollout, and rollback      |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common startup, storage, credential, and sync problems        |
-| [UI style guide](UI_STYLE_GUIDE.md)        | Local ERP visual and interaction standards                    |
-| [Plan](PLAN.md)                            | Active priorities and acceptance criteria                     |
-| [Near-term kanban](KANBAN.md)              | Current executable work queue derived from the plan           |
+| Document                                           | Purpose                                                           |
+| -------------------------------------------------- | ----------------------------------------------------------------- |
+| [Development](docs/DEVELOPMENT.md)                 | Setup, scripts, project layout, and change workflow               |
+| [Architecture](docs/ARCHITECTURE.md)               | Data ownership, storage, sync behavior, and system boundaries     |
+| [Data model](docs/DATA_MODEL.md)                   | Canonical SQLite tables, identities, practices, and queries       |
+| [Operations](docs/OPERATIONS.md)                   | Daily commands, backup, restore, scheduler, and CSV workflows     |
+| [Credential rotation](docs/CREDENTIAL_ROTATION.md) | Safe replacement, verification, revocation, and rollback sequence |
+| [Marketplaces](docs/MARKETPLACES.md)               | Shopify, Etsy, eBay, OAuth, mapping, and write-safety rules       |
+| [Deployment](docs/DEPLOYMENT.md)                   | Local ERP and embedded-app deployment boundaries                  |
+| [Testing](docs/TESTING.md)                         | Test layers, required checks, and live-service boundaries         |
+| [Releases](docs/RELEASES.md)                       | Release preparation, verification, rollout, and rollback          |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)         | Common startup, storage, credential, and sync problems            |
+| [UI style guide](UI_STYLE_GUIDE.md)                | Local ERP visual and interaction standards                        |
+| [Plan](PLAN.md)                                    | Active priorities and acceptance criteria                         |
+| [Near-term kanban](KANBAN.md)                      | Current executable work queue derived from the plan               |
 
 AI coding agents must also follow [AGENTS.md](AGENTS.md).
 

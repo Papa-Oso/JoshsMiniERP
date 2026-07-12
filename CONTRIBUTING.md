@@ -23,6 +23,7 @@ Follow the complete task sequence in `AGENTS.md`. Select near-term work from `KA
 - `README.md`: orientation and quick start
 - `docs/DEVELOPMENT.md`: developer workflow and scripts
 - `docs/OPERATIONS.md`: operator commands and recovery
+- `docs/CREDENTIAL_ROTATION.md`: planned and emergency credential replacement
 - `docs/MARKETPLACES.md`: marketplace setup and safety
 - `docs/ARCHITECTURE.md`: durable system design
 - `PLAN.md`: active and upcoming work only

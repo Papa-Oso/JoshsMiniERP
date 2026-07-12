@@ -39,14 +39,14 @@ Changes to these areas should include focused regression tests:
 
 Coverage percentages should be treated as a discovery tool, not a substitute for scenario-based safety tests.
 
-The initial report identified these safety-critical areas for focused follow-up:
+Open coverage follow-ups are tracked as executable tickets in `PLAN.md` and `KANBAN.md`:
 
-- OAuth callback/error and token-refresh failure paths
-- Legacy SQLite migration rollback and partial-schema behavior
-- Marketplace timeout, malformed-response, and partial-import handling
-- Backup copy/manifest failures and scheduler installation failures
-- Refund source-precedence conflicts and unmatched historical transactions
-- Reconciliation disagreement boundaries and stale provider data
+- `AUTH-01`: OAuth callback/error and token-refresh failure paths
+- `DB-01`: legacy SQLite migration rollback and partial-schema behavior
+- `MKT-01`: marketplace timeout, malformed-response, and partial-import handling
+- `OPS-03`: backup copy/manifest failures and scheduler installation failures
+
+Refund source precedence, unmatched financial transactions, reconciliation disagreement categories, and stale-pull warnings now have focused regression coverage and are no longer open discovery items.
 
 ## Manual Review
 

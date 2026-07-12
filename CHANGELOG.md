@@ -1,5 +1,12 @@
 # Changelog
 
+Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` format.
+
+## Unreleased
+
+### Sales, safety, and operations
+
+- Pruned completed roadmap and audit prose, centralized every remaining work item in Plan and Kanban, and added the credential-rotation runbook.
 - Added verified pre-mutation backups to historical eBay financial imports and SQLite migration, while preserving incomplete report rows without inventing comparable-sales components.
 - Surfaced incomplete and unresolved financial-history counts on the Sales page and clarified how the legacy view labels mixed-currency selections.
 - Completed the canonical comparable-sales invariant audit, including regression guards that prevent canceled-order refunds and currency-conflicting refunds from reducing comparable sales.
@@ -23,10 +30,6 @@
 - Added informational root test coverage reporting with text, JSON, and HTML output plus a non-thresholded CI artifact, and documented the initial safety-critical coverage gaps.
 
 - Replaced the decorative Sales map with a locally bundled Natural Earth world map, order-volume country shading, approximate regional pins with accessible sales details, a clear legend, and an always-visible unknown-geography count.
-
-Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` format.
-
-## Unreleased
 
 - Changed Top Products to show the short canonical inventory name with SKU as secondary reference; long marketplace titles remain available in stored sales history and reports.
 - Prevented marketplace placeholder SKU `--` from merging unrelated historical resale items into one Top Products row; manually reviewed historical catalog titles now aggregate under their current SKUs.

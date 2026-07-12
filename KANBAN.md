@@ -1,60 +1,75 @@
 # Near-Term Kanban
 
-This board turns the larger epics in `PLAN.md` into small, executable development tasks. Keep it short: when a card is completed, record user-visible results in `CHANGELOG.md`, update the relevant plan checkbox, and remove the card after the next planning pass.
+This board contains only current executable tickets and exact external blockers derived from `PLAN.md`. Completed results belong in `CHANGELOG.md`, not on this board.
 
 ## Board Rules
 
 - Keep at most one card in **Doing** and three cards in **Next**.
 - Finish dependencies and verification before pulling the next card.
-- Whenever a card is completed or removed, count the unblocked cards in **Doing** and **Next**. If fewer than two remain, review every unchecked item in `PLAN.md` and add one or two of the highest-priority items that are actionable without external approval, credentials, live marketplace writes, quota recovery, or production data.
-- Turn plan items into small, independently testable tickets with a clear prompt, dependencies, and safety boundaries. Do not copy an epic-sized checkbox into the board when it should be split.
-- If no unfinished plan item is currently actionable, record that conclusion under **Blocked** with the exact dependency instead of leaving the executable queue silently empty.
+- Turn plan items into small, independently testable tickets with a clear prompt, dependencies, and safety boundaries.
 - Every card must be safe to paste into an AI coding session as its task prompt.
 - Do not place credentials, customer data, live listing identifiers, or files under `data/` on this board.
-- Back up before migrations or historical marketplace backfills.
-- Legacy eBay listing writes remain outside this board unless Josh approves a separate write-safety plan.
+- Do not run live marketplace writes, historical backfills, credential rotations, or production-data operations unless the card and Josh explicitly authorize them.
+- When Doing and Next are empty, review every active plan item. Record exact external dependencies under **Blocked** instead of creating placeholder queue cards.
 
 ## Doing
 
+### AUTH-01 — Cover OAuth failure boundaries
+
+**Epic:** Safety-Critical Test Hardening
+
+**Prompt:**
+
+> Add focused tests for eBay and Etsy OAuth callback rejection, state mismatch, provider error responses, missing saved authorization, and access-token refresh failure. Use temporary ignored token paths and fake HTTP responses. Assert that failures are specific, no invalid token state is saved, and no token, code, verifier, state value, or authorization header appears in test output. Do not contact either marketplace or change the documented OAuth scopes.
+
+**Depends on:** Existing eBay/Etsy authorization helpers and temporary-file test patterns. No credentials or network access are required.
+
 ## Next
 
-## Later
+### DB-01 — Cover partial-schema migration recovery
 
-### SALES-04 — Switch the dashboard to comparable net sales
-
-**Epic:** Comparable Sales Integrity
+**Epic:** Safety-Critical Test Hardening
 
 **Prompt:**
 
-> After reconciliation and backfill approval, switch Sales-page headline revenue, trends, platform mix, geography, and product reporting to comparable net sales. Update the existing “How this is calculated” disclosure, separate fees and shipping-label costs from sales, expose incomplete-history warnings, and retain currency separation. Update focused tests and desktop/mobile UI smoke coverage.
+> Add focused tests for opening legacy and partially upgraded SQLite schemas, including a forced migration failure after the verified pre-migration copy is created. Prove that the working test database remains recoverable, existing rows are preserved, incomplete financial fields stay explicitly incomplete, and retrying the supported migration is idempotent. Use disposable databases only; do not inspect or copy `data/inventory.sqlite`.
 
-**Depends on:** SALES-03 and reviewed marketplace reconciliation.
+**Depends on:** Existing SQLite store, migration backup guards, and temporary-database tests.
 
-### OPS-02 — Record credential rotation when next performed
+### MKT-01 — Cover malformed and partial marketplace imports
 
-**Epic:** Operational Security
+**Epic:** Safety-Critical Test Hardening
 
 **Prompt:**
 
-> During the next real marketplace credential rotation, document the provider-neutral sequence for revocation, replacement, ignored local storage or secret-manager update, connection testing, and reconcile-before-sync. Do not record any credential, token, shop identifier, production URL parameter, or live account detail.
+> Add focused fake-adapter tests for marketplace timeouts, malformed success bodies, pagination failure after an earlier page, and incomplete order/refund batches. Assert that failed pulls are reported as failures, atomic imports do not persist partial financial history, prior saved orders remain intact, and no inventory or marketplace quantity mutation occurs. Cover the shared guarantees with the smallest representative Etsy, eBay, and Shopify cases; do not contact live services.
+
+**Depends on:** Existing importer fakes, atomic sales import, and pull-failure recording.
+
+### OPS-03 — Cover backup and scheduler failure reporting
+
+**Epic:** Safety-Critical Test Hardening
+
+**Prompt:**
+
+> Add focused tests for operational backup copy failure, invalid or incomplete manifests, automatic-prune refusal, and Windows scheduler installation command failure. Assert that partial backups are never reported as verified or restorable, retained good backups are not removed, scheduler settings are not reported as installed after command failure, and error messages identify the failed stage without exposing environment values. Use temporary paths and mocked process execution only.
+
+**Depends on:** Existing backup inspection/prune tests and scheduler preview/install boundaries. Do not install a real scheduled task.
 
 ## Blocked
 
-### EBAY-NOTIFY-02 — Observe eBay's delayed test delivery
+### SALES-03A — Capture approved marketplace comparison evidence
 
-The protected Worker is deployed, paginated, authenticated, and healthy; all 1,365 retained signed notices are processed. eBay's official subscription test API accepted repeated requests with HTTP 202 and returned notification IDs, but no test delivery appeared during the observation window. Resume when eBay delivers a queued test or exposes a delivery failure, then verify the exact returned notification ID is stored once and repeated delivery does not increase the namespace count.
+The dated readiness record is `REJECTED` because matching Etsy Shop Manager and eBay Seller Hub aggregates were not recorded and remaining refund/reconciliation differences were not fully classified. Resume only with operator dashboard access. Create a new dated evidence file rather than rewriting the historical record; use exact UTC boundaries, currency-separated aggregate values, no customer/order identifiers, and finish with an explicit `APPROVED` or `REJECTED` decision.
 
 ### SALES-03 — Preview and verify historical financial backfill
 
-Repository normalization and aggregate reconciliation foundations are complete. Resume after SALES-03A produces an `APPROVED` evidence record; do not switch the dashboard metric before approval.
+Resume only after SALES-03A produces an `APPROVED` evidence record. Create and inspect a fresh operational backup, keep a preview path, apply no guessed components, compare the result with the approved evidence, and do not switch the dashboard metric as part of this card.
 
-### QUEUE-01 — Await another unblocked plan item
+### SALES-04 — Switch the dashboard to comparable net sales
 
-With SALES-09 complete, every remaining unchecked plan item requires an external event or approval: a real credential rotation, an approved historical backfill evidence record, delayed eBay test delivery, or completion of that reviewed backfill before the headline switch. The ADR reminder is conditional on a future durable decision rather than executable work by itself.
+Resume only after SALES-03 completes with reviewed reconciliation results. Then switch headline revenue, trends, marketplace mix, geography, and product reporting to currency-separated comparable net sales; update the existing disclosure, focused tests, and desktop/mobile UI smoke coverage.
 
-## Recently Completed
+### EBAY-NOTIFY-02 — Observe eBay's delayed test delivery
 
-- **SALES-09:** Passed the complete repository and browser verification, confirmed responsive and keyboard behavior, surfaced incomplete and unresolved history warnings, and corrected the legacy mixed-currency explanation.
-- **SALES-07:** Added preview-first, verified-backup gates for SQLite migration and historical eBay report imports, and ensured incomplete report rows retain legacy totals without invented comparable-sales components.
-- **SALES-06:** Proved the six canonical comparable-sales invariants in implementation and focused tests, and closed edge cases that allowed canceled-order refunds or currency-conflicting refunds to reduce comparable sales.
-- **EBAY-NOTIFY-01:** Restored the live deletion-notification feed with 25-record cursor pages, processed a 521-notice backlog after backup, verified zero pending notices across 55 live pages, confirmed unauthorized feed access returns 401, and confirmed the enabled eBay subscription targets the deployed Worker. Production delivery is proven by 1,365 unique signed notices; delayed synthetic-test observation remains tracked separately.
+The protected Worker is deployed, paginated, authenticated, and healthy, and the retained signed-notice backlog is processed. Resume only when eBay delivers the accepted synthetic test or exposes a delivery failure. Verify the exact returned notification identity is stored once and that repeated delivery does not increase the namespace count.

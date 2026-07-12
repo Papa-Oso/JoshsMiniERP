@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node `>=20.19 <22` or `>=22.12`
+- Node `>=20.19 <22` for the root ERP, or Node `>=22.18` for the complete ERP and embedded Shopify app toolchain
 - npm
 - PowerShell for the documented Windows commands
 

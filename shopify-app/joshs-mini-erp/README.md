@@ -6,7 +6,7 @@ This app owns Shopify OAuth sessions. It does not own inventory data; authentica
 
 ## Prerequisites
 
-- Node `>=20.19 <22` or `>=22.12`
+- Node `>=22.18`
 - A Shopify app and development store
 - The root ERP API running locally for integrated development
 
@@ -69,7 +69,7 @@ Required runtime settings include:
 - `ERP_API_TOKEN`
 - `NODE_ENV=production`
 
-Use Secret Manager for secret values. The Shopify session database must be separate from the ERP inventory database. See the root `docs/DEPLOYMENT.md` for the supported Cloud Run and Cloud SQL workflow.
+Use the hosting platform's secret manager for secret values. The Shopify session database must be durable and separate from the ERP inventory database. See the root `docs/DEPLOYMENT.md` for the supported deployment boundaries.
 
 ## Safety Boundaries
 

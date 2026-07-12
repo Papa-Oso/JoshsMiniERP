@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist before the first tag and every later release. A release may cover the local ERP, embedded Shopify app, Cloudflare compliance Worker, or more than one surface; deploy and verify only the surfaces changed.
+Use this reusable checklist before the first tag and every later release. Its unchecked boxes are per-release operator steps, not unfinished project work and not Kanban tickets by themselves. A release may cover the local ERP, embedded Shopify app, Cloudflare compliance Worker, or more than one surface; deploy and verify only the surfaces changed.
 
 ## Prepare
 

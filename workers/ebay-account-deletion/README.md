@@ -34,7 +34,7 @@ Use `https://...workers.dev/ebay/marketplace-account-deletion` as the eBay notif
 
 The verification token must be the same value pasted into eBay's Alerts & Notifications page.
 
-Before deploying this version, update the endpoint in eBay's Alerts & Notifications page to include `/ebay/marketplace-account-deletion`; eBay will issue a new verification challenge. Notifications must use JSON, contain the expected deletion topic and identifiers, and include `X-EBAY-SIGNATURE`. Duplicate notification IDs are acknowledged without another KV write.
+When creating or changing the subscription, configure the endpoint in eBay's Alerts & Notifications page with `/ebay/marketplace-account-deletion`; eBay will issue a verification challenge. Notifications must use JSON, contain the expected deletion topic and identifiers, and include `X-EBAY-SIGNATURE`. Duplicate notification IDs are acknowledged without another KV write.
 
 The Worker cryptographically verifies `X-EBAY-SIGNATURE` against the eBay Notification API public key before reading or writing KV. Public keys are cached in Worker memory for one hour. `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` must be the production application credentials for the keyset configured with this endpoint; store them only as encrypted Worker secrets.
 
