@@ -49,6 +49,11 @@ export const api = {
     request("/api/schedule", { method: "PATCH", body: JSON.stringify(input) }),
   runSync: () => request("/api/sync", { method: "POST" }),
   operationsReport: () => request<OperationsReportPayload>("/api/reports/operations"),
+  refreshReviews: () =>
+    request<{
+      warnings: string[];
+      history: { rows_seen: number; new_rows: number; skipped_existing_rows: number };
+    }>("/api/ebay-reviews/refresh-history", { method: "POST", body: JSON.stringify({ maxPages: 100 }) }),
   acknowledgeFeedback: (feedbackKey: string) =>
     request(`/api/ebay-reviews/feedback/${encodeURIComponent(feedbackKey)}/acknowledge`, { method: "POST" }),
   sales: (range = "90d", platform: Platform | "all" = "all") =>

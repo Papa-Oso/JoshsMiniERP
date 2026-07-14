@@ -21,6 +21,7 @@ export function ReviewPage() {
   const [report, setReport] = useState<OperationsReportPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshStatus, setRefreshStatus] = useState("");
 
   useEffect(() => {
     void load();
@@ -45,6 +46,22 @@ export function ReviewPage() {
       await load();
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function refreshReviews() {
+    setLoading(true);
+    setError("");
+    setRefreshStatus("");
+    try {
+      const result = await api.refreshReviews();
+      setReport(await api.operationsReport());
+      const summary = `Review refresh checked ${result.history.rows_seen} marketplace review${result.history.rows_seen === 1 ? "" : "s"} and found ${result.history.new_rows} new.`;
+      setRefreshStatus(result.warnings.length ? `${summary} ${result.warnings.join(" ")}` : summary);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -80,12 +97,13 @@ export function ReviewPage() {
         <Metric label="Sync Runs" value={report.totals.syncRuns} />
         <Metric label="Review Pulls" value={report.totals.feedbackScanRuns} />
         <Metric label="Map Issues" value={report.totals.mappingIssues} tone={report.totals.mappingIssues ? "warn" : "ok"} />
-        <button className="icon-button primary review-refresh" type="button" onClick={load} disabled={loading}>
+        <button className="icon-button primary review-refresh" type="button" onClick={() => void refreshReviews()} disabled={loading}>
           <RefreshCw className={loading ? "spin" : ""} size={18} />
-          Refresh
+          Refresh Reviews
         </button>
       </div>
 
+      {refreshStatus ? <p className="notice">{refreshStatus}</p> : null}
       {error ? <p className="notice">{error}</p> : null}
 
       <div className="review-priority-grid">

@@ -32,6 +32,10 @@ const refreshSchema = z.object({
   exportMode: z.enum(["incremental", "full"]).default("incremental")
 });
 
+const refreshHistorySchema = z.object({
+  maxPages: z.coerce.number().int().min(1).max(100).default(100)
+});
+
 ebayReviewsRouter.get("/feedback-history", asyncHandler(async (_req, res) => {
   const rows = await enrichReviewRows(await loadFeedbackHistory());
   const payload = {
@@ -113,40 +117,8 @@ ebayReviewsRouter.post("/ebay-import", asyncHandler(async (req, res) => {
 
 ebayReviewsRouter.post("/refresh", asyncHandler(async (req, res) => {
   const input = refreshSchema.parse(req.body ?? {});
-  const savedRows = await loadFeedbackHistory();
-  const warnings: string[] = [];
-  const newRows: Array<Record<string, unknown>> = [];
-  let rowsSeen = 0;
-  let skippedRows = 0;
-  let successfulPlatforms = 0;
-
-  try {
-    const sellerUsername = ebaySellerUsername(savedRows);
-    const imported = await importEbayFeedback({ username: sellerUsername, maxPages: input.maxPages });
-    const prepared = await enrichMarketplaceRowsWithInventory(imported.rows, "ebay");
-    const history = await applyFeedbackHistory(prepared, { scanMode: "incremental", platform: "ebay" });
-    newRows.push(...history.rows);
-    rowsSeen += history.stats.rows_seen;
-    skippedRows += history.stats.skipped_existing_rows;
-    successfulPlatforms += 1;
-  } catch (error) {
-    warnings.push(`eBay refresh failed: ${errorMessage(error)}`);
-  }
-
-  try {
-    const imported = await importEtsyReviews({ maxPages: input.maxPages });
-    const prepared = await enrichMarketplaceRowsWithInventory(imported.rows, "etsy");
-    const history = await applyFeedbackHistory(prepared, { scanMode: "incremental", platform: "etsy" });
-    newRows.push(...history.rows);
-    rowsSeen += history.stats.rows_seen;
-    skippedRows += history.stats.skipped_existing_rows;
-    successfulPlatforms += 1;
-  } catch (error) {
-    warnings.push(`Etsy refresh failed: ${errorMessage(error)}`);
-  }
-
-  if (!successfulPlatforms) throw new Error(warnings.join(" "));
-
+  const refreshed = await refreshMarketplaceReviewHistory(input.maxPages);
+  const { warnings, newRows, rowsSeen, skippedRows } = refreshed;
   const newlyDiscoveredRows = await enrichReviewRows(newRows);
   const allRows = await enrichReviewRows(await loadFeedbackHistory());
   const selectedRows = input.exportMode === "full"
@@ -174,6 +146,57 @@ ebayReviewsRouter.post("/refresh", asyncHandler(async (req, res) => {
   await appendCatalogWarning(result);
   res.json(result);
 }));
+
+ebayReviewsRouter.post("/refresh-history", asyncHandler(async (req, res) => {
+  const input = refreshHistorySchema.parse(req.body ?? {});
+  const refreshed = await refreshMarketplaceReviewHistory(input.maxPages);
+  res.json({
+    warnings: refreshed.warnings,
+    history: {
+      scan_mode: "incremental",
+      rows_seen: refreshed.rowsSeen,
+      new_rows: refreshed.newRows.length,
+      skipped_existing_rows: refreshed.skippedRows
+    }
+  });
+}));
+
+async function refreshMarketplaceReviewHistory(maxPages: number) {
+  const savedRows = await loadFeedbackHistory();
+  const warnings: string[] = [];
+  const newRows: Array<Record<string, unknown>> = [];
+  let rowsSeen = 0;
+  let skippedRows = 0;
+  let successfulPlatforms = 0;
+
+  try {
+    const sellerUsername = ebaySellerUsername(savedRows);
+    const imported = await importEbayFeedback({ username: sellerUsername, maxPages });
+    const prepared = await enrichMarketplaceRowsWithInventory(imported.rows, "ebay");
+    const history = await applyFeedbackHistory(prepared, { scanMode: "incremental", platform: "ebay" });
+    newRows.push(...history.rows);
+    rowsSeen += history.stats.rows_seen;
+    skippedRows += history.stats.skipped_existing_rows;
+    successfulPlatforms += 1;
+  } catch (error) {
+    warnings.push(`eBay refresh failed: ${errorMessage(error)}`);
+  }
+
+  try {
+    const imported = await importEtsyReviews({ maxPages });
+    const prepared = await enrichMarketplaceRowsWithInventory(imported.rows, "etsy");
+    const history = await applyFeedbackHistory(prepared, { scanMode: "incremental", platform: "etsy" });
+    newRows.push(...history.rows);
+    rowsSeen += history.stats.rows_seen;
+    skippedRows += history.stats.skipped_existing_rows;
+    successfulPlatforms += 1;
+  } catch (error) {
+    warnings.push(`Etsy refresh failed: ${errorMessage(error)}`);
+  }
+
+  if (!successfulPlatforms) throw new Error(warnings.join(" "));
+  return { warnings, newRows, rowsSeen, skippedRows };
+}
 
 function ebaySellerUsername(savedRows: Array<Record<string, unknown>>) {
   const usernames = [
