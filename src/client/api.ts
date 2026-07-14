@@ -18,7 +18,8 @@ import type {
   UpdateItemInput,
   UpdateScheduleInput,
   SalesDashboardPayload,
-  Platform
+  Platform,
+  SyncRun
 } from "../shared/types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -47,7 +48,7 @@ export const api = {
     request(`/api/items/${id}/adjust`, { method: "POST", body: JSON.stringify(input) }),
   updateSchedule: (input: UpdateScheduleInput) =>
     request("/api/schedule", { method: "PATCH", body: JSON.stringify(input) }),
-  runSync: () => request("/api/sync", { method: "POST" }),
+  runSync: () => request<SyncRun>("/api/sync", { method: "POST" }),
   operationsReport: () => request<OperationsReportPayload>("/api/reports/operations"),
   refreshReviews: () =>
     request<{

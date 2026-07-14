@@ -56,7 +56,7 @@ Judge.me CSV exports use Judge.me's required `dd/mm/yyyy` review-date format, in
 
 Review Center shows the six most recent substantive reviews. Unacknowledged negative reviews stay pinned even when older than the normal six-row window; use the eye action to mark one seen. Acknowledged negatives remain softly highlighted while recent, then age out normally. Acknowledgment is stored in SQLite and is preserved by later marketplace refreshes.
 
-`Refresh Reviews` in Review Center refreshes the saved eBay and Etsy review history through their official APIs without creating a CSV or advancing either export checkpoint.
+`Refresh All` in Review Center pulls marketplace sales, refreshes saved eBay and Etsy review history, runs a live inventory sync, and then reloads the operations report. It asks for confirmation because supported marketplace quantities may be updated. The review refresh does not create a CSV or advance either export checkpoint, and protected legacy eBay quantity writes remain skipped.
 
 ## eBay OAuth and Inspection
 

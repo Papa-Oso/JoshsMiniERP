@@ -49,6 +49,8 @@ npm run inv -- sync
 
 Reconcile and dry-run operations may pull live quantities and save review snapshots, but they do not change inventory quantities or push marketplace quantities. Run a live sync only after reviewing the preview.
 
+`Refresh All` on the Review Center runs the operational sequence from the UI: it pulls sales, refreshes reviews, performs a live inventory sync, and reloads the report. The button requires confirmation because supported marketplace quantities may be updated. Protected legacy eBay quantity writes remain disabled.
+
 ## Export and Review
 
 ```powershell

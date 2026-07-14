@@ -49,17 +49,66 @@ export function ReviewPage() {
     }
   }
 
-  async function refreshReviews() {
+  async function refreshAll() {
+    const confirmed = window.confirm(
+      "Refresh sales and reviews, then run a live inventory sync? Inventory sync may update supported marketplace quantities."
+    );
+    if (!confirmed) return;
+
     setLoading(true);
     setError("");
-    setRefreshStatus("");
+    setRefreshStatus("Refreshing marketplace sales...");
+    const issues: string[] = [];
+    let salesPlatforms = 0;
+    let salesOrders = 0;
+    let reviewsSeen = 0;
+    let newReviews = 0;
+    let syncRun: SyncRun | null = null;
+
     try {
-      const result = await api.refreshReviews();
+      try {
+        const sales = await api.refreshSales();
+        salesPlatforms = sales.results.filter((result) => result.ok).length;
+        salesOrders = sales.results.reduce((total, result) => total + (result.ok ? result.ordersSeen : 0), 0);
+        issues.push(
+          ...sales.results
+            .filter((result) => !result.ok)
+            .map((result) => `${platformLabels[result.platform]} sales: ${result.message}`)
+        );
+      } catch (caught) {
+        issues.push(`Sales refresh: ${errorMessage(caught)}`);
+      }
+
+      setRefreshStatus("Refreshing marketplace reviews...");
+      try {
+        const reviews = await api.refreshReviews();
+        reviewsSeen = reviews.history.rows_seen;
+        newReviews = reviews.history.new_rows;
+        issues.push(...reviews.warnings);
+      } catch (caught) {
+        issues.push(`Review refresh: ${errorMessage(caught)}`);
+      }
+
+      setRefreshStatus("Syncing inventory...");
+      try {
+        syncRun = await api.runSync();
+        if (syncRun.status === "failed" || syncRun.summary.errors > 0 || syncRun.summary.warnings > 0) {
+          issues.push(
+            `Inventory sync finished with ${syncRun.summary.errors} error${syncRun.summary.errors === 1 ? "" : "s"} and ${syncRun.summary.warnings} warning${syncRun.summary.warnings === 1 ? "" : "s"}.`
+          );
+        }
+      } catch (caught) {
+        issues.push(`Inventory sync: ${errorMessage(caught)}`);
+      }
+
+      setRefreshStatus("Reloading operations report...");
       setReport(await api.operationsReport());
-      const summary = `Review refresh checked ${result.history.rows_seen} marketplace review${result.history.rows_seen === 1 ? "" : "s"} and found ${result.history.new_rows} new.`;
-      setRefreshStatus(result.warnings.length ? `${summary} ${result.warnings.join(" ")}` : summary);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+      setRefreshStatus(
+        `Refresh complete: ${salesOrders} sales orders from ${salesPlatforms} marketplaces, ${reviewsSeen} reviews checked (${newReviews} new), and ${syncRun?.summary.itemsChecked ?? 0} inventory items synced with ${syncRun?.summary.pushes ?? 0} marketplace pushes.`
+      );
+      if (issues.length) setError(`Completed with issues: ${issues.join(" ")}`);
+    } catch (caught) {
+      setError(`Operations report reload failed: ${errorMessage(caught)}`);
     } finally {
       setLoading(false);
     }
@@ -97,9 +146,9 @@ export function ReviewPage() {
         <Metric label="Sync Runs" value={report.totals.syncRuns} />
         <Metric label="Review Pulls" value={report.totals.feedbackScanRuns} />
         <Metric label="Map Issues" value={report.totals.mappingIssues} tone={report.totals.mappingIssues ? "warn" : "ok"} />
-        <button className="icon-button primary review-refresh" type="button" onClick={() => void refreshReviews()} disabled={loading}>
+        <button className="icon-button primary review-refresh" type="button" onClick={() => void refreshAll()} disabled={loading}>
           <RefreshCw className={loading ? "spin" : ""} size={18} />
-          Refresh Reviews
+          Refresh All
         </button>
       </div>
 
@@ -124,6 +173,10 @@ export function ReviewPage() {
       </div>
     </section>
   );
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function LowInventoryPanel({ rows }: { rows: LowInventoryRow[] }) {
