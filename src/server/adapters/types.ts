@@ -19,6 +19,7 @@ export interface PlatformAdapter {
   missingEnv(): string[];
   hasRequiredMapping(item: InventoryItem, mapping: PlatformMapping): boolean;
   missingMapping(item: InventoryItem, mapping: PlatformMapping): string[];
+  pushBlockReason?(item: InventoryItem, mapping: PlatformMapping): string | undefined;
   pullQuantity(item: InventoryItem, mapping: PlatformMapping): Promise<RemoteQuantity>;
   pushQuantity(item: InventoryItem, mapping: PlatformMapping, quantity: number): Promise<PushResult>;
 }

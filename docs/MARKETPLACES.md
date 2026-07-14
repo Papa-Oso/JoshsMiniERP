@@ -122,7 +122,7 @@ Live migration is a risky write and must remain one listing at a time:
 npm run inv -- ebay-migrate EXAMPLE-SKU-001 --apply --confirm-listing-id 123456789012
 ```
 
-Run it only after backup, preview, Seller Hub review, and exact listing confirmation. Legacy quantity pushes remain disabled unless a separate write-safety plan is explicitly approved.
+Run it only after backup, preview, Seller Hub review, and exact listing confirmation. Legacy quantity pushes remain disabled unless a separate write-safety plan is explicitly approved. Normal sync runs continue to read these listings for reconciliation and sale detection, but skip their protected quantity writes without counting the expected skip as a sync issue.
 
 ## Account Deletion Notices
 

@@ -102,6 +102,10 @@ export class EbayAdapter implements PlatformAdapter {
     return mappingSku(item, mapping) ? [] : ["sku"];
   }
 
+  pushBlockReason(_item: InventoryItem, mapping: PlatformMapping) {
+    return mapping.listingId ? "protected legacy listing; quantity push skipped" : undefined;
+  }
+
   async pullQuantity(item: InventoryItem, mapping: PlatformMapping): Promise<RemoteQuantity> {
     const sku = mappingSku(item, mapping);
     if (mapping.listingId) {

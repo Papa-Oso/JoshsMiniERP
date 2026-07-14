@@ -17,6 +17,10 @@ process.env.STORE_DRIVER = "json";
 process.env.SHOPIFY_SHOP_DOMAIN = "test-shop.myshopify.com";
 process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "test-token";
 process.env.SHOPIFY_API_VERSION = "2026-07";
+process.env.EBAY_CLIENT_ID = "test-ebay-client";
+process.env.EBAY_CLIENT_SECRET = "test-ebay-secret";
+process.env.EBAY_ACCESS_TOKEN = "test-ebay-access-token";
+process.env.EBAY_REFRESH_TOKEN = "test-ebay-refresh-token";
 
 const { runInventorySync } = await import("../src/server/syncEngine.ts");
 const { updateItem } = await import("../src/server/inventoryService.ts");
@@ -207,6 +211,39 @@ test("failed pushes do not make the same platform sale subtract twice", async ()
   assert.equal(secondRun.summary.salesDetected, 0);
   assert.equal(item.quantity, 9);
   assert.equal(item.mappings.shopify?.lastSyncedQuantity, 9);
+});
+
+test("legacy eBay listings remain read-only without being reported as sync issues", async () => {
+  const data = seedStore({ quantity: 10, lastSyncedQuantity: 8, lastRemoteQuantity: 8 });
+  data.items[0].mappings.shopify = { enabled: false };
+  data.items[0].mappings.ebay = {
+    enabled: true,
+    listingId: "legacy-listing-1",
+    lastSyncedQuantity: 8,
+    lastRemoteQuantity: 8,
+    lastSyncedAt: timestamp,
+    warning: null
+  };
+  await writeStore(data);
+  let writeCalls = 0;
+  globalThis.fetch = (async (_url, init) => {
+    if (init?.headers && new Headers(init.headers).get("X-EBAY-API-CALL-NAME") === "GetItem") {
+      return new Response(
+        "<GetItemResponse><Ack>Success</Ack><Item><ItemID>legacy-listing-1</ItemID><SKU>NEON-MUG</SKU><Quantity>8</Quantity><SellingStatus><QuantitySold>0</QuantitySold></SellingStatus></Item></GetItemResponse>",
+        { status: 200, headers: { "Content-Type": "text/xml" } }
+      );
+    }
+    writeCalls += 1;
+    throw new Error("Legacy eBay quantity push should not be attempted.");
+  }) as typeof fetch;
+
+  const run = await runInventorySync("cli");
+
+  assert.equal(run.summary.errors, 0);
+  assert.equal(run.summary.warnings, 0);
+  assert.equal(run.summary.pushes, 0);
+  assert.equal(writeCalls, 0);
+  assert.match(run.messages.join("\n"), /protected legacy listing; quantity push skipped/);
 });
 
 test("platform sales consume mapped instruction inventory", async () => {

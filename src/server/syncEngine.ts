@@ -203,6 +203,12 @@ async function applySalesAndPlanPushes(
       if (!pushableMappings.has(pushKey(item.id, platform))) continue;
       if (reading.quantity === item.quantity) continue;
 
+      const pushBlockReason = adapter.pushBlockReason?.(item, mapping);
+      if (pushBlockReason) {
+        messages.push(`${item.sku}: ${adapter.label} ${pushBlockReason}.`);
+        continue;
+      }
+
       targets.push({ itemId: item.id, platform, quantity: item.quantity });
     }
 
