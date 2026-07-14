@@ -16,6 +16,11 @@ npm run dev
 
 Open `http://127.0.0.1:5175`. The API listens on `http://127.0.0.1:5174`.
 
+On Windows, after installing dependencies, you can instead double-click
+`Start ERP.cmd`. It starts both local servers and opens the app in your default
+browser when the UI is ready. Keep its terminal window open while using the app;
+press `Ctrl+C` there to stop the servers.
+
 Leave `NODE_ENV` unset for local use. Production startup requires `ERP_API_TOKEN`.
 
 ## Daily Safety Rules

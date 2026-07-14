@@ -18,6 +18,12 @@ npm run dev
 
 The UI runs at `http://127.0.0.1:5175`; the API runs at `http://127.0.0.1:5174`. Keep `NODE_ENV` unset locally.
 
+For normal Windows use, double-click `Start ERP.cmd` in the repository root. The
+launcher runs `npm run dev`, waits for the UI, and opens it in the default
+browser. If the app is already available, it opens the existing instance instead
+of starting a duplicate. Keep the launcher terminal open and press `Ctrl+C` to
+stop the local servers.
+
 The Shopify app has its own dependency tree:
 
 ```powershell
