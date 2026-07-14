@@ -4,12 +4,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $appUrl = "http://127.0.0.1:5175"
+$healthUrl = "$appUrl/api/health"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 
 function Test-AppAvailable {
   try {
-    $response = Invoke-WebRequest -Uri $appUrl -Method Head -TimeoutSec 1 -UseBasicParsing
-    return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
+    $response = Invoke-WebRequest -Uri $healthUrl -TimeoutSec 1 -UseBasicParsing
+    return $response.StatusCode -eq 200
   }
   catch {
     return $false
