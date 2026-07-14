@@ -212,20 +212,30 @@ export async function loadSalesPulls() {
   });
 }
 
-export async function loadCanonicalProductNames() {
+export async function loadCanonicalProducts() {
   await ensureLegacySalesMigrated();
   return database.read((db) => {
     ensureSchema(db);
-    const exists =
+    const inventoryExists =
       queryRows(db, "SELECT 1 AS found FROM sqlite_master WHERE type='table' AND name='inventory_items'").length > 0;
-    return exists
-      ? new Map(
-          queryRows(db, "SELECT sku, name, image_path FROM inventory_items WHERE active = 1").map((row) => [
-            String(row.sku).toLowerCase(),
-            { name: String(row.name), imagePath: String(row.image_path ?? "") }
-          ])
-        )
-      : new Map<string, { name: string; imagePath: string }>();
+    const products = inventoryExists
+      ? queryRows(db, "SELECT sku, name, image_path FROM inventory_items WHERE active = 1").map((row) => ({
+          sku: String(row.sku),
+          name: String(row.name),
+          imagePath: String(row.image_path ?? "")
+        }))
+      : [];
+    const bySku = new Map(products.map((product) => [product.sku.toLowerCase(), product]));
+    const byTitle = new Map(products.map((product) => [product.name.trim().toLowerCase(), product]));
+    const aliasesExist =
+      queryRows(db, "SELECT 1 AS found FROM sqlite_master WHERE type='table' AND name='review_product_aliases'").length > 0;
+    if (aliasesExist) {
+      for (const row of queryRows(db, "SELECT title, sku FROM review_product_aliases")) {
+        const product = bySku.get(String(row.sku).trim().toLowerCase());
+        if (product) byTitle.set(String(row.title).trim().toLowerCase(), product);
+      }
+    }
+    return { bySku, byTitle };
   });
 }
 

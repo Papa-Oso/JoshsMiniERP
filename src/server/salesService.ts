@@ -10,7 +10,7 @@ import { platforms } from "../shared/types";
 import { importPlatformSales } from "./salesImporters";
 import {
   applySalesImport,
-  loadCanonicalProductNames,
+  loadCanonicalProducts,
   loadEbayFinancialTransactions,
   loadSalesOrders,
   loadSalesPulls,
@@ -38,11 +38,11 @@ export async function getSalesDashboard({
   range = "90d",
   platform = "all"
 }: { range?: string; platform?: Platform | "all" } = {}): Promise<SalesDashboardPayload> {
-  const [allOrders, pulls, allEbayFinancials, productNames] = await Promise.all([
+  const [allOrders, pulls, allEbayFinancials, products] = await Promise.all([
     loadSalesOrders(),
     loadSalesPulls(),
     loadEbayFinancialTransactions(),
-    loadCanonicalProductNames()
+    loadCanonicalProducts()
   ]);
   const start = rangeStart(range);
   const orders = allOrders.filter(
@@ -102,7 +102,7 @@ export async function getSalesDashboard({
       unknownGeographyOrders: orders.filter((order) => !order.countryCode).length,
       missingSkuLines: sum(orders.map((order) => order.lineItems.filter((line) => !line.sku).length))
     },
-    products: aggregateProducts(orders, productNames),
+    products: aggregateProducts(orders, products),
     recentOrders: orders.slice(0, 25),
     coverage: platforms.map((source) => coverage(allOrders, source)),
     warnings
@@ -427,7 +427,13 @@ function aggregateLocations(orders: SalesOrder[]) {
   return [...groups.values()].sort((a, b) => b.orders - a.orders || b.revenue - a.revenue);
 }
 
-function aggregateProducts(orders: SalesOrder[], productNames: Map<string, { name: string; imagePath: string }>) {
+function aggregateProducts(
+  orders: SalesOrder[],
+  products: {
+    bySku: Map<string, { sku: string; name: string; imagePath: string }>;
+    byTitle: Map<string, { sku: string; name: string; imagePath: string }>;
+  }
+) {
   const groups = new Map<
     string,
     { sku: string; title: string; imageUrl?: string; revenue: number; orders: Set<string>; units: number }
@@ -435,10 +441,13 @@ function aggregateProducts(orders: SalesOrder[], productNames: Map<string, { nam
   for (const order of orders)
     for (const line of order.lineItems) {
       const sku = line.sku.trim() === "--" ? "" : line.sku.trim();
-      const key = sku || line.title || "Unknown product";
-      const product = sku ? productNames.get(sku.toLowerCase()) : undefined;
+      const product = sku
+        ? products.bySku.get(sku.toLowerCase())
+        : products.byTitle.get(line.title.trim().toLowerCase());
+      const resolvedSku = sku || product?.sku || "";
+      const key = resolvedSku || line.title || "Unknown product";
       const group = groups.get(key) ?? {
-        sku,
+        sku: resolvedSku,
         title: product?.name || line.title,
         imageUrl: product?.imagePath ? `/api/product-images/${encodeURIComponent(product.imagePath)}` : undefined,
         revenue: 0,

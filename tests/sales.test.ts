@@ -11,6 +11,7 @@ process.env.SALES_DATABASE_FILE = path.join(directory, "legacy-sales.sqlite");
 const { applySalesImport, loadSalesOrders, loadSalesRefunds, upsertSalesOrders, upsertSalesRefunds } = await import("../src/server/salesStore.ts");
 const { getSalesDashboard } = await import("../src/server/salesService.ts");
 const { SQLiteInventoryStore } = await import("../src/server/sqliteStore.ts");
+const { replaceReviewProductAliases } = await import("../src/server/ebayReviews/feedbackStore.ts");
 
 test.after(async () => { await fs.rm(directory, { recursive: true, force: true }); });
 
@@ -174,6 +175,26 @@ test("Top Products treats marketplace placeholder SKUs as missing instead of mer
   assert.equal(dashboard.products.some((row) => row.sku === "--"), false);
   assert.ok(dashboard.products.some((row) => row.title === "First resale item"));
   assert.ok(dashboard.products.some((row) => row.title === "Second resale item"));
+});
+
+test("Top Products resolves missing historical SKUs through product title aliases", async () => {
+  const inventory = new SQLiteInventoryStore(process.env.DATABASE_FILE);
+  await inventory.mutate((data) => {
+    const item = data.items.find((row) => row.sku === "SKU-1");
+    assert.ok(item);
+    item.imagePath = "SKU-1.png";
+  });
+  await replaceReviewProductAliases([{ title: "Marketplace Product Title", sku: "SKU-1" }]);
+  await upsertSalesOrders("ebay", [{
+    ...order(), platform: "ebay", orderId: "historical-product-alias", lineItems: [{
+      platform: "ebay", orderId: "historical-product-alias", lineId: "alias-line", sku: "", title: "Marketplace Product Title", quantity: 1, amount: 18
+    }]
+  }]);
+
+  const dashboard = await getSalesDashboard({ range: "all", platform: "ebay" });
+  const product = dashboard.products.find((row) => row.sku === "SKU-1");
+  assert.equal(product?.title, "Product");
+  assert.equal(product?.imageUrl, "/api/product-images/SKU-1.png");
 });
 
 function order(overrides: Partial<SalesOrder> = {}): SalesOrder {
