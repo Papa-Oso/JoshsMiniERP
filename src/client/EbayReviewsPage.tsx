@@ -392,15 +392,16 @@ export function judgeMePictureUrls(value = "") {
       try {
         const url = new URL(entry);
         if (!/^https?:$/.test(url.protocol) || !/\.(?:jpe?g|png)$/i.test(url.pathname)) return [];
+        url.pathname = url.pathname.replace(/\.(?:jpe?g|png)$/i, (extension) => extension.toLowerCase());
         url.search = "";
         url.hash = "";
-        return [url.toString()];
+        return [url.toString().replaceAll("$", "%24")];
       } catch {
         return [];
       }
     })
     .slice(0, 5)
-    .join(",");
+    .join(", ");
 }
 
 function isGenericEbayFeedback(row: ReviewRow) {

@@ -49,6 +49,6 @@ test("cleans eBay image query strings for Judge.me picture URLs", () => {
   const second = "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/U~AAAeSwg2pqUnz7/$_1.JPG?set_id=2";
   assert.equal(
     judgeMePictureUrls(`${first},${second}`),
-    "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/drwAAeSw~LpqUnz1/$_1.JPG,https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/U~AAAeSwg2pqUnz7/$_1.JPG"
+    "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/drwAAeSw~LpqUnz1/%24_1.jpg, https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/U~AAAeSwg2pqUnz7/%24_1.jpg"
   );
 });
