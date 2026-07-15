@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reviewDate, toCsv } from "../src/client/EbayReviewsPage";
+import { judgeMePictureUrls, reviewDate, toCsv } from "../src/client/EbayReviewsPage";
 
 test("formats ISO and marketplace dates for Judge.me CSV imports", () => {
   assert.equal(reviewDate("2026-07-10T14:30:00.000Z"), "10/07/2026");
@@ -42,4 +42,13 @@ test("omits generic eBay delivery filler from review CSV exports", () => {
   ]);
   assert.doesNotMatch(csv, /Order delivered on time/i);
   assert.match(csv, /Exactly what I needed/);
+});
+
+test("cleans eBay image query strings for Judge.me picture URLs", () => {
+  const first = "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/drwAAeSw~LpqUnz1/$_1.JPG?set_id=2";
+  const second = "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/U~AAAeSwg2pqUnz7/$_1.JPG?set_id=2";
+  assert.equal(
+    judgeMePictureUrls(`${first},${second}`),
+    "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/drwAAeSw~LpqUnz1/$_1.JPG,https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/U~AAAeSwg2pqUnz7/$_1.JPG"
+  );
 });

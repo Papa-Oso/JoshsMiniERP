@@ -377,10 +377,30 @@ function directImportValue(row: ReviewRow, column: string) {
     product_handle: row.product_handle || row.product_sku || "",
     product_sku: row.product_sku || "",
     reply: "",
-    picture_urls: row.feedback_image_urls || ""
+    picture_urls: judgeMePictureUrls(row.feedback_image_urls)
   };
 
   return values[column];
+}
+
+export function judgeMePictureUrls(value = "") {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .flatMap((entry) => {
+      try {
+        const url = new URL(entry);
+        if (!/^https?:$/.test(url.protocol) || !/\.(?:jpe?g|png)$/i.test(url.pathname)) return [];
+        url.search = "";
+        url.hash = "";
+        return [url.toString()];
+      } catch {
+        return [];
+      }
+    })
+    .slice(0, 5)
+    .join(",");
 }
 
 function isGenericEbayFeedback(row: ReviewRow) {
