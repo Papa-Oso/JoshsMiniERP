@@ -68,6 +68,7 @@ type ReviewResult = {
   rows?: ReviewRow[];
   latestRows?: ReviewRow[];
   exportRows?: ReviewRow[];
+  exportKeys?: string[];
   warnings?: string[];
   history?: ReviewHistory;
 };
@@ -126,23 +127,28 @@ export function EbayReviewsPage() {
     }
   }
 
-  async function refreshAndDownload(scope: ExportScope) {
+  async function exportSavedReviews(scope: ExportScope) {
     setExportLoading(scope);
     setError("");
-    setLog(["Refreshing eBay and Etsy reviews through their official APIs"]);
+    setLog([`Preparing the ${scope} CSV from saved review history`]);
 
     try {
-      const payload = await request<ReviewResult>("/api/ebay-reviews/refresh", {
+      const payload = await request<ReviewResult>("/api/ebay-reviews/export", {
         method: "POST",
-        body: JSON.stringify({ exportMode: scope, maxPages: 100 })
+        body: JSON.stringify({ exportMode: scope })
       });
       setResult(payload);
       setLog([
-        `Database refreshed: ${payload.history?.new_rows ?? 0} new review${payload.history?.new_rows === 1 ? "" : "s"}`,
-        `${payload.history?.rows_exported ?? 0} review${payload.history?.rows_exported === 1 ? "" : "s"} selected for the ${scope} CSV`
+        `${payload.history?.rows_exported ?? 0} saved review${payload.history?.rows_exported === 1 ? "" : "s"} selected for the ${scope} CSV`
       ]);
       if (payload.exportRows?.length) downloadCsv(payload.exportRows, scope, payload);
-      else setLog((entries) => [...entries, "No new reviews found. No incremental CSV was created."]);
+      else setLog((entries) => [...entries, scope === "incremental"
+        ? "No reviews have been added since the last CSV download."
+        : "No eligible saved reviews are available for a CSV."]);
+      await request("/api/ebay-reviews/export/mark", {
+        method: "POST",
+        body: JSON.stringify({ feedbackKeys: payload.exportKeys ?? [] })
+      });
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -188,13 +194,13 @@ export function EbayReviewsPage() {
 
         <div className="review-form">
           <div className="review-action-row">
-            <button className="icon-button primary" type="button" disabled={loading || historyLoading} onClick={() => void refreshAndDownload("incremental")}>
+            <button className="icon-button primary" type="button" disabled={loading || historyLoading} onClick={() => void exportSavedReviews("incremental")}>
               {exportLoading === "incremental" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {exportLoading === "incremental" ? "Refreshing reviews" : "Incremental CSV"}
+              {exportLoading === "incremental" ? "Preparing CSV" : "Incremental CSV"}
             </button>
-            <button className="icon-button" type="button" disabled={loading || historyLoading} onClick={() => void refreshAndDownload("full")}>
+            <button className="icon-button" type="button" disabled={loading || historyLoading} onClick={() => void exportSavedReviews("full")}>
               {exportLoading === "full" ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-              {exportLoading === "full" ? "Refreshing reviews" : "Full CSV"}
+              {exportLoading === "full" ? "Preparing CSV" : "Full CSV"}
             </button>
             <button className="icon-button danger-button" type="button" disabled={loading || historyLoading} onClick={() => void resetIncrementalExport()}>
               Reset incremental
@@ -327,13 +333,18 @@ function Badge({ value }: { value?: string }) {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {})
+      }
+    });
+  } catch {
+    throw new Error("The local ERP server is unavailable. Start it with Start ERP.cmd and try again.");
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(typeof payload?.error === "string" ? payload.error : response.statusText);

@@ -36,6 +36,14 @@ const refreshHistorySchema = z.object({
   maxPages: z.coerce.number().int().min(1).max(100).default(100)
 });
 
+const exportSchema = z.object({
+  exportMode: z.enum(["incremental", "full"]).default("incremental")
+});
+
+const markExportSchema = z.object({
+  feedbackKeys: z.array(z.string().min(1)).max(10000)
+});
+
 ebayReviewsRouter.get("/feedback-history", asyncHandler(async (_req, res) => {
   const rows = await enrichReviewRows(await loadFeedbackHistory());
   const payload = {
@@ -120,27 +128,52 @@ ebayReviewsRouter.post("/refresh", asyncHandler(async (req, res) => {
   const refreshed = await refreshMarketplaceReviewHistory(input.maxPages);
   const { warnings, newRows, rowsSeen, skippedRows } = refreshed;
   const newlyDiscoveredRows = await enrichReviewRows(newRows);
-  const allRows = await enrichReviewRows(await loadFeedbackHistory());
-  const selectedRows = input.exportMode === "full"
-    ? allRows
-    : await enrichReviewRows(await loadUnexportedFeedbackHistory());
-  const exportRows = dedupeFeedbackRows(selectedRows).filter(isCsvEligibleReview);
-  const latestKeys = new Set(exportRows.map((row: Record<string, unknown>) => row.feedback_key).filter(Boolean));
-  await markFeedbackExported(selectedRows.map((row: Record<string, unknown>) => row.feedback_key));
+  const prepared = await prepareReviewExport(input.exportMode);
+  await markFeedbackExported(prepared.exportKeys);
   const result: Record<string, unknown> & { rows: Record<string, unknown>[] } = {
     mode: "marketplaces",
     listings: [],
     exportMode: input.exportMode,
-    exportRows,
-    latestRows: exportRows.map((row: Record<string, unknown>) => ({ ...row, is_latest: true })),
-    rows: allRows.map((row: Record<string, unknown>) => ({ ...row, is_latest: latestKeys.has(row.feedback_key) })),
+    exportRows: prepared.exportRows,
+    exportKeys: prepared.exportKeys,
+    latestRows: prepared.latestRows,
+    rows: prepared.rows,
     warnings,
     history: {
       scan_mode: "incremental",
       rows_seen: rowsSeen,
-      rows_exported: exportRows.length,
+      rows_exported: prepared.exportRows.length,
       new_rows: newlyDiscoveredRows.length,
       skipped_existing_rows: skippedRows
+    }
+  };
+  await appendCatalogWarning(result);
+  res.json(result);
+}));
+
+ebayReviewsRouter.post("/export/mark", asyncHandler(async (req, res) => {
+  const input = markExportSchema.parse(req.body ?? {});
+  res.json(await markFeedbackExported(input.feedbackKeys));
+}));
+
+ebayReviewsRouter.post("/export", asyncHandler(async (req, res) => {
+  const input = exportSchema.parse(req.body ?? {});
+  const prepared = await prepareReviewExport(input.exportMode);
+  const result: Record<string, unknown> & { rows: Record<string, unknown>[] } = {
+    mode: "saved-history",
+    listings: [],
+    exportMode: input.exportMode,
+    exportRows: prepared.exportRows,
+    exportKeys: prepared.exportKeys,
+    latestRows: prepared.latestRows,
+    rows: prepared.rows,
+    warnings: [],
+    history: {
+      scan_mode: "history",
+      rows_seen: prepared.rows.length,
+      rows_exported: prepared.exportRows.length,
+      new_rows: 0,
+      skipped_existing_rows: 0
     }
   };
   await appendCatalogWarning(result);
@@ -196,6 +229,21 @@ async function refreshMarketplaceReviewHistory(maxPages: number) {
 
   if (!successfulPlatforms) throw new Error(warnings.join(" "));
   return { warnings, newRows, rowsSeen, skippedRows };
+}
+
+async function prepareReviewExport(exportMode: "incremental" | "full") {
+  const allRows = await enrichReviewRows(await loadFeedbackHistory());
+  const selectedRows = exportMode === "full"
+    ? allRows
+    : await enrichReviewRows(await loadUnexportedFeedbackHistory());
+  const exportRows = dedupeFeedbackRows(selectedRows).filter(isCsvEligibleReview);
+  const latestKeys = new Set(exportRows.map((row: Record<string, unknown>) => row.feedback_key).filter(Boolean));
+  return {
+    exportRows,
+    exportKeys: selectedRows.map((row: Record<string, unknown>) => String(row.feedback_key ?? "")).filter(Boolean),
+    latestRows: exportRows.map((row: Record<string, unknown>) => ({ ...row, is_latest: true })),
+    rows: allRows.map((row: Record<string, unknown>) => ({ ...row, is_latest: latestKeys.has(row.feedback_key) }))
+  };
 }
 
 function ebaySellerUsername(savedRows: Array<Record<string, unknown>>) {
