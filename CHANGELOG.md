@@ -65,6 +65,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ### Marketplace reviews
 
+- Omit the optional `picture_urls` column from image-free Judge.me CSV exports so empty URL values do not block imports.
 - Show review dates without timestamps across Review Center and marketplace review tables.
 - Add source-review links and clickable customer-photo thumbnails to Recent Feedback and Marketplace Reviews.
 - Deduplicate legacy and official-API copies of the same marketplace review in Recent Feedback and CSV exports without deleting raw source history.

@@ -8,7 +8,7 @@ test("formats ISO and marketplace dates for Judge.me CSV imports", () => {
   assert.match(reviewDate(""), /^\d{2}\/\d{2}\/\d{4}$/);
 });
 
-test("includes an explicit product SKU column in review CSV exports", () => {
+test("includes product SKU and omits an unused picture URL column", () => {
   const csv = toCsv([
     {
       feedback_text: "Great product",
@@ -20,7 +20,9 @@ test("includes an explicit product SKU column in review CSV exports", () => {
   ]);
   const [header, row] = csv.split("\n");
   assert.match(header, /product_handle,product_sku/);
+  assert.doesNotMatch(header, /picture_urls/);
   assert.match(row, /kayak-seat-clip,KAYAK-CLIP-001/);
+  assert.equal(header.split(",").length, row.split(",").length);
 });
 
 test("omits generic eBay delivery filler from review CSV exports", () => {
@@ -51,4 +53,32 @@ test("cleans eBay image query strings for Judge.me picture URLs", () => {
     judgeMePictureUrls(`${first},${second}`),
     "https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/drwAAeSw~LpqUnz1/%24_1.jpg, https://i.ebayimg.com/00/s/OTAxWDE2MDA=/z/U~AAAeSwg2pqUnz7/%24_1.jpg"
   );
+});
+
+test("includes the picture URL column when an export has a valid review image", () => {
+  const csv = toCsv([
+    {
+      feedback_text: "Great product",
+      feedback_date: "2026-07-10T14:30:00.000Z",
+      star_rating: 5,
+      product_sku: "SKU-001",
+      feedback_image_urls: "https://images.example/review.JPG?size=large"
+    }
+  ]);
+  const [header, row] = csv.split("\n");
+  assert.match(header, /,picture_urls$/);
+  assert.match(row, /https:\/\/images\.example\/review\.jpg$/);
+});
+
+test("omits the picture URL column when all image values are invalid", () => {
+  const csv = toCsv([
+    {
+      feedback_text: "Great product",
+      feedback_date: "2026-07-10T14:30:00.000Z",
+      star_rating: 5,
+      product_sku: "SKU-001",
+      feedback_image_urls: "not-a-url"
+    }
+  ]);
+  assert.doesNotMatch(csv.split("\n")[0], /picture_urls/);
 });

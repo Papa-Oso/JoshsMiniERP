@@ -20,9 +20,9 @@ const columns = [
   "product_id",
   "product_handle",
   "product_sku",
-  "reply",
-  "picture_urls"
+  "reply"
 ];
+const pictureUrlsColumn = "picture_urls";
 
 type ExportScope = "incremental" | "full";
 
@@ -354,13 +354,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function toCsv(rows: ReviewRow[]) {
   const importableRows = rows.filter((row) => row.feedback_text?.trim() && !isGenericEbayFeedback(row));
+  const exportColumns = importableRows.some((row) => judgeMePictureUrls(row.feedback_image_urls))
+    ? [...columns, pictureUrlsColumn]
+    : columns;
   const escape = (value: unknown) => {
     const text = String(value ?? "");
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   };
   return [
-    columns.join(","),
-    ...importableRows.map((row) => columns.map((column) => escape(directImportValue(row, column))).join(","))
+    exportColumns.join(","),
+    ...importableRows.map((row) => exportColumns.map((column) => escape(directImportValue(row, column))).join(","))
   ].join("\n");
 }
 
