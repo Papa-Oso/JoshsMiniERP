@@ -4,6 +4,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
+- Standardize the Sales UI across Etsy, eBay, and Shopify with equal marketplace performance cards, normalized platform/status badges, a last-updated indicator, and clearer provider-specific eBay payout labeling.
 - Treat marketplace refunds without a component split as full comparable-sales deductions, capped at each order's product-plus-shipping value.
 - Correct Sales financial-completeness classification for authoritative Shopify, eBay, and Etsy order pulls, request eBay tax breakdowns, and exclude account-level eBay financial rows from unmatched-order warnings.
 

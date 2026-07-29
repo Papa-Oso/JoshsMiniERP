@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { numericToAlpha2 } from "i18n-iso-countries";
-import { BarChart3, Globe2, PackageOpen, RefreshCw, ShoppingCart, TrendingUp } from "lucide-react";
+import { BarChart3, Clock3, Globe2, PackageOpen, RefreshCw, ShoppingCart, Store, TrendingUp } from "lucide-react";
 import { feature } from "topojson-client";
 import type { FeatureCollection, Geometry } from "geojson";
 import world from "world-atlas/countries-110m.json";
 import { api } from "./api";
 import { Metric, Panel } from "./ui";
-import type { Platform, SalesDashboardPayload } from "../shared/types";
-import { platformLabels } from "../shared/types";
+import type { Platform, SalesDashboardPayload, SalesOrder } from "../shared/types";
+import { platformLabels, platforms } from "../shared/types";
 
 const empty: SalesDashboardPayload = {
   generatedAt: "",
@@ -86,16 +86,24 @@ export function SalesPage() {
             Platform
             <select value={platform} onChange={(event) => setPlatform(event.target.value as Platform | "all")}>
               <option value="all">All platforms</option>
-              <option value="shopify">Shopify</option>
-              <option value="ebay">eBay</option>
-              <option value="etsy">Etsy</option>
+              {platforms.map((source) => (
+                <option value={source} key={source}>
+                  {platformLabels[source]}
+                </option>
+              ))}
             </select>
           </label>
         </div>
-        <button className="icon-button primary" type="button" onClick={refresh} disabled={busy}>
-          <RefreshCw size={17} className={busy ? "spin" : ""} />
-          {busy ? "Pulling sales" : "Pull sales"}
-        </button>
+        <div className="sales-refresh">
+          <span>
+            <Clock3 size={14} />
+            {data.lastPulledAt ? `Updated ${formatDateTime(data.lastPulledAt)}` : "Not pulled yet"}
+          </span>
+          <button className="icon-button primary" type="button" onClick={refresh} disabled={busy}>
+            <RefreshCw size={17} className={busy ? "spin" : ""} />
+            {busy ? "Pulling all marketplaces…" : "Pull sales"}
+          </button>
+        </div>
       </section>
       {error ? <p className="notice danger">{error}</p> : null}
       {data.warnings.map((warning) => (
@@ -129,11 +137,20 @@ export function SalesPage() {
           </p>
         </div>
       </details>
+      <Panel title="Marketplace performance" icon={<Store size={17} />}>
+        <MarketplacePerformance
+          rows={data.platforms.filter((row) => platform === "all" || row.platform === platform)}
+          money={money}
+        />
+      </Panel>
       {data.ebayFinancials ? (
-        <Panel title="eBay financials" icon={<BarChart3 size={17} />}>
+        <Panel title="eBay payout details" icon={<BarChart3 size={17} />}>
+          <p className="sales-panel-note">
+            Provider-specific fees, shipping labels, and proceeds from imported eBay transaction reports.
+          </p>
           <section className="sales-metrics ebay-financial-metrics">
-            <Metric label="Gross eBay sales" value={money(data.ebayFinancials.grossSales)} />
-            <Metric label="eBay fees" value={money(data.ebayFinancials.fees)} tone="warn" />
+            <Metric label="Gross sales" value={money(data.ebayFinancials.grossSales)} />
+            <Metric label="Fees" value={money(data.ebayFinancials.fees)} tone="warn" />
             <Metric label="Refunds" value={money(data.ebayFinancials.refunds)} tone="warn" />
             <Metric label="Shipping labels" value={money(data.ebayFinancials.shippingLabels)} />
             <Metric label="Net proceeds" value={money(data.ebayFinancials.netProceeds)} />
@@ -153,15 +170,10 @@ export function SalesPage() {
           </p>
         </Panel>
       </section>
-      <section className="sales-secondary-grid">
-        <Panel title="Marketplace mix" icon={<BarChart3 size={17} />}>
-          <PlatformMix rows={data.platforms} money={money} />
-        </Panel>
-        <Panel title="Top products" icon={<PackageOpen size={17} />}>
-          <ProductTable rows={data.products.slice(0, 10)} money={money} />
-        </Panel>
-      </section>
-      <Panel title="Recent orders" icon={<ShoppingCart size={17} />}>
+      <Panel title="Top products" icon={<PackageOpen size={17} />}>
+        <ProductTable rows={data.products.slice(0, 10)} money={money} />
+      </Panel>
+      <Panel title="Recent orders" icon={<ShoppingCart size={17} />} className="recent-orders-panel">
         <div className="sales-table-wrap">
           <table>
             <thead>
@@ -179,7 +191,9 @@ export function SalesPage() {
               {data.recentOrders.map((order) => (
                 <tr key={`${order.platform}:${order.orderId}`}>
                   <td>{formatDate(order.createdAt)}</td>
-                  <td>{platformLabels[order.platform]}</td>
+                  <td>
+                    <span className="sales-platform-badge">{platformLabels[order.platform]}</span>
+                  </td>
                   <td>
                     {order.sourceUrl ? (
                       <a href={order.sourceUrl} target="_blank" rel="noreferrer">
@@ -192,7 +206,9 @@ export function SalesPage() {
                   <td>{order.countryCode || "Unknown"}</td>
                   <td>{order.itemCount}</td>
                   <td>{money(order.grossAmount)}</td>
-                  <td>{order.status}</td>
+                  <td>
+                    <OrderStatus order={order} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -403,23 +419,56 @@ function CountryList({
     </div>
   );
 }
-function PlatformMix({ rows, money }: { rows: SalesDashboardPayload["platforms"]; money: (value: number) => string }) {
-  const max = Math.max(1, ...rows.map((r) => r.revenue));
+function MarketplacePerformance({
+  rows,
+  money
+}: {
+  rows: SalesDashboardPayload["platforms"];
+  money: (value: number) => string;
+}) {
   return (
-    <div className="platform-mix">
+    <div className="marketplace-performance">
       {rows.map((row) => (
-        <div key={row.platform}>
+        <article key={row.platform}>
+          <header>
+            <span className="sales-platform-badge">{platformLabels[row.platform]}</span>
+            <strong>{money(row.revenue)}</strong>
+          </header>
           <div>
-            <strong>{platformLabels[row.platform]}</strong>
             <span>
-              {row.orders} orders · {money(row.revenue)}
+              <strong>{row.orders}</strong>
+              Orders
+            </span>
+            <span>
+              <strong>{row.units}</strong>
+              Units
             </span>
           </div>
-          <progress max={max} value={row.revenue} />
-        </div>
+        </article>
       ))}
     </div>
   );
+}
+function OrderStatus({ order }: { order: SalesOrder }) {
+  const status = order.status.toLowerCase();
+  const canceled = Boolean(order.canceledAt) || status.includes("cancel");
+  const refunded = status.includes("refund");
+  const paid = status.includes("paid") || status.includes("complete");
+  const fulfilled =
+    status.includes("fulfilled") && !status.includes("unfulfilled") && !status.includes("not_started");
+  const label = canceled
+    ? "Canceled"
+    : refunded
+      ? "Refunded"
+      : paid && fulfilled
+        ? "Paid · Fulfilled"
+        : paid
+          ? "Paid"
+          : fulfilled
+            ? "Fulfilled"
+            : "Open";
+  const tone = canceled ? "danger" : refunded ? "warn" : paid ? "ok" : "";
+  return <span className={`sales-status-badge ${tone}`}>{label}</span>;
 }
 function ProductTable({ rows, money }: { rows: SalesDashboardPayload["products"]; money: (value: number) => string }) {
   return (
@@ -463,4 +512,15 @@ function formatDate(value: string) {
   return Number.isNaN(date.valueOf())
     ? value
     : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf())
+    ? value
+    : new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(date);
 }
