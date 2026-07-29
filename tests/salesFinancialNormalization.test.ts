@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ebayRefunds, etsyRefunds, fetchEtsyPayments, toEbayOrder, toEtsyOrder } from "../src/server/salesImporters";
+import {
+  ebayOrdersUrl,
+  ebayRefunds,
+  etsyRefunds,
+  fetchEtsyPayments,
+  toEbayOrder,
+  toEtsyOrder,
+  toShopifyOrder
+} from "../src/server/salesImporters";
+
+test("requests eBay collect-and-remit tax breakdowns", () => {
+  assert.equal(new URL(ebayOrdersUrl()).searchParams.get("fieldGroups"), "TAX_BREAKDOWN");
+});
 
 test("normalizes eBay product, discounted shipping, tax, and comparable sales", () => {
   const order = toEbayOrder({
@@ -23,6 +35,47 @@ test("normalizes eBay product, discounted shipping, tax, and comparable sales", 
   assert.equal(order.productAmount, 29);
   assert.equal(order.taxAmount, 4);
   assert.equal(order.comparableSalesAmount, 37);
+  assert.equal(order.financialsComplete, true);
+  assert.equal(order.reconciliationState, "complete");
+});
+
+test("treats an omitted eBay tax object as a complete tax-free breakdown", () => {
+  const order = toEbayOrder({
+    orderId: "tax-free",
+    creationDate: "2026-07-10T00:00:00.000Z",
+    pricingSummary: {
+      total: { value: "38", currency: "USD" },
+      priceSubtotal: { value: "30", currency: "USD" },
+      deliveryCost: { value: "8", currency: "USD" }
+    }
+  });
+  assert.equal(order.taxAmount, 0);
+  assert.equal(order.financialsComplete, true);
+  assert.equal(order.reconciliationState, "complete");
+});
+
+test("normalizes Shopify current order components as an authoritative breakdown", () => {
+  const order = toShopifyOrder({
+    id: "gid://shopify/Order/1",
+    legacyResourceId: "1",
+    name: "#1",
+    createdAt: "2026-07-10T00:00:00.000Z",
+    updatedAt: "2026-07-10T01:00:00.000Z",
+    displayFinancialStatus: "PAID",
+    displayFulfillmentStatus: "FULFILLED",
+    currentTotalPriceSet: { shopMoney: { amount: "41", currencyCode: "USD" } },
+    currentSubtotalPriceSet: { shopMoney: { amount: "30", currencyCode: "USD" } },
+    currentTotalShippingPriceSet: { shopMoney: { amount: "8", currencyCode: "USD" } },
+    currentTotalDiscountsSet: { shopMoney: { amount: "2", currencyCode: "USD" } },
+    currentTotalTaxSet: { shopMoney: { amount: "3", currencyCode: "USD" } },
+    shippingAddress: null,
+    lineItems: { nodes: [] }
+  });
+  assert.equal(order.productAmount, 30);
+  assert.equal(order.shippingAmount, 8);
+  assert.equal(order.taxAmount, 3);
+  assert.equal(order.comparableSalesAmount, 38);
+  assert.equal(order.reconciliationState, "complete");
 });
 
 test("keeps authoritative eBay refund totals unresolved when components are unavailable", () => {
@@ -104,6 +157,7 @@ test("normalizes Etsy buyer-paid shipping while excluding tax from comparable sa
   assert.equal(order.taxAmount, 3);
   assert.equal(order.discountAmount, 1);
   assert.equal(order.comparableSalesAmount, 38);
+  assert.equal(order.reconciliationState, "complete");
 });
 
 test("keeps Etsy seller discounts separate from the already-discounted subtotal", () => {

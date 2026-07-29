@@ -203,6 +203,9 @@ function shopifyPage(orderId: string, hasNextPage: boolean) {
           displayFulfillmentStatus: "UNFULFILLED",
           currentTotalPriceSet: { shopMoney: { amount: "10", currencyCode: "USD" } },
           currentSubtotalPriceSet: { shopMoney: { amount: "10", currencyCode: "USD" } },
+          currentTotalShippingPriceSet: { shopMoney: { amount: "0", currencyCode: "USD" } },
+          currentTotalDiscountsSet: { shopMoney: { amount: "0", currencyCode: "USD" } },
+          currentTotalTaxSet: { shopMoney: { amount: "0", currencyCode: "USD" } },
           shippingAddress: null,
           lineItems: { nodes: [] }
         }

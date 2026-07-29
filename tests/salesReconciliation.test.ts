@@ -198,7 +198,7 @@ test("reconciles only exact eBay financial matches and reports unresolved record
   assert.equal(payload.rows[0].shippingLabels, 4);
   assert.equal(payload.rows[0].netProceeds, 23);
   assert.equal(payload.warnings.find((warning) => warning.code === "duplicate_financial_transaction")?.count, 1);
-  assert.equal(payload.warnings.find((warning) => warning.code === "unmatched_financial_transaction")?.count, 2);
+  assert.equal(payload.warnings.find((warning) => warning.code === "unmatched_financial_transaction")?.count, 1);
   assert.equal(payload.warnings.find((warning) => warning.code === "financial_currency_conflict")?.count, 1);
   assert.ok(payload.warnings.some((warning) => warning.code === "api_report_disagreement"));
 });

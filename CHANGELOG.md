@@ -4,6 +4,8 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
+- Correct Sales financial-completeness classification for authoritative Shopify, eBay, and Etsy order pulls, request eBay tax breakdowns, and exclude account-level eBay financial rows from unmatched-order warnings.
+
 ### Sales, safety, and operations
 
 - Added a `This year` Sales period that uses the current local calendar year across dashboard and reconciliation reporting.

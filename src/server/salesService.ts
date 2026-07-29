@@ -252,13 +252,13 @@ export function reconcileSales({
       "Order-linked financial transactions with conflicting currencies were excluded."
     );
     const unmatchedFinancials = uniqueFinancialRows.filter(
-      (row) => !row.orderId || (!importedById.has(row.orderId) && !currencyConflicts.includes(row))
+      (row) => row.orderId && !importedById.has(row.orderId) && !currencyConflicts.includes(row)
     );
     addWarning(
       warnings,
       "unmatched_financial_transaction",
       unmatchedFinancials.length,
-      "Financial transactions without an exact saved-order match were excluded."
+      "Order-linked financial transactions without an exact saved-order match were excluded."
     );
     const financialOrderIds = new Set(
       uniqueFinancialRows

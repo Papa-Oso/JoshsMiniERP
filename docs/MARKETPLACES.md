@@ -93,9 +93,11 @@ The local Sales page reads official order APIs and stores normalized reporting t
 
 Sales refresh also reads authoritative refund data. eBay supplies order- and line-level refund totals through Fulfillment order payment details. Etsy supplies payment adjustments through bounded, read-only payment-account ledger windows and their associated payments. When a provider does not expose a provable product/shipping/tax split, the ERP stores the authoritative refund total as unresolved and does not guess a pre-tax comparable-sales deduction.
 
+Current order pulls store authoritative product, buyer-paid shipping, discount, and tax components when the marketplace exposes them. The eBay pull requests `TAX_BREAKDOWN`; because eBay omits the tax object when no tax applies, an order with authoritative subtotal and delivery-cost fields remains complete with zero tax. Shopify current totals and complete Etsy receipt components are likewise marked complete rather than left in the reconciliation queue.
+
 `GET /api/sales/reconciliation` requires a marketplace and accepts the normal range plus an optional three-letter currency. It returns aggregate-only financial components and categorized integrity counts. Currencies remain separate, tax is excluded from comparable sales, and no order or refund identifiers are returned.
 
-For eBay, fees, purchased shipping labels, and net proceeds are included only from financial-report rows whose order ID and currency exactly match a saved order in the selected period. Exact duplicate transaction keys are counted once. Unmatched rows and currency conflicts are excluded rather than guessed and appear only as aggregate warnings.
+For eBay, fees, purchased shipping labels, and net proceeds are included only from financial-report rows whose order ID and currency exactly match a saved order in the selected period. Exact duplicate transaction keys are counted once. Order-linked unmatched rows and currency conflicts are excluded rather than guessed and appear only as aggregate warnings. Account-level rows without an order ID, such as payouts and general fees, are not mislabeled as unmatched orders.
 
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 

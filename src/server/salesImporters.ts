@@ -28,6 +28,9 @@ interface ShopifyOrdersPage {
       displayFulfillmentStatus: string;
       currentTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
       currentSubtotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+      currentTotalShippingPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+      currentTotalDiscountsSet: { shopMoney: { amount: string; currencyCode: string } };
+      currentTotalTaxSet: { shopMoney: { amount: string; currencyCode: string } };
       shippingAddress: { countryCodeV2: string | null; provinceCode: string | null } | null;
       lineItems: {
         nodes: Array<{
@@ -57,6 +60,9 @@ async function importShopifySales() {
             id legacyResourceId name createdAt updatedAt displayFinancialStatus displayFulfillmentStatus
             currentTotalPriceSet { shopMoney { amount currencyCode } }
             currentSubtotalPriceSet { shopMoney { amount currencyCode } }
+            currentTotalShippingPriceSet { shopMoney { amount currencyCode } }
+            currentTotalDiscountsSet { shopMoney { amount currencyCode } }
+            currentTotalTaxSet { shopMoney { amount currencyCode } }
             shippingAddress { countryCodeV2 provinceCode }
             lineItems(first: 100) {
               nodes { id sku name quantity currentQuantity discountedTotalSet { shopMoney { amount } } }
@@ -73,8 +79,12 @@ async function importShopifySales() {
   return orders;
 }
 
-function toShopifyOrder(order: ShopifyOrdersPage["orders"]["nodes"][number]): SalesOrder {
+export function toShopifyOrder(order: ShopifyOrdersPage["orders"]["nodes"][number]): SalesOrder {
   const currency = order.currentTotalPriceSet.shopMoney.currencyCode;
+  const productAmount = number(order.currentSubtotalPriceSet.shopMoney.amount);
+  const shippingAmount = number(order.currentTotalShippingPriceSet.shopMoney.amount);
+  const discountAmount = number(order.currentTotalDiscountsSet.shopMoney.amount);
+  const taxAmount = number(order.currentTotalTaxSet.shopMoney.amount);
   const lineItems = order.lineItems.nodes.map((line) => ({
     platform: "shopify" as const,
     orderId: order.legacyResourceId,
@@ -93,7 +103,18 @@ function toShopifyOrder(order: ShopifyOrdersPage["orders"]["nodes"][number]): Sa
     status: [order.displayFinancialStatus, order.displayFulfillmentStatus].filter(Boolean).join(" / "),
     currency,
     grossAmount: number(order.currentTotalPriceSet.shopMoney.amount),
-    netAmount: number(order.currentSubtotalPriceSet.shopMoney.amount),
+    netAmount: productAmount,
+    productAmount,
+    shippingAmount,
+    discountAmount,
+    taxAmount,
+    refundedAmount: 0,
+    comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
+    financialStatus: order.displayFinancialStatus ?? "",
+    financialsComplete: true,
+    financialsSource: "order_api",
+    financialsUpdatedAt: order.updatedAt,
+    reconciliationState: "complete",
     countryCode: order.shippingAddress?.countryCodeV2 ?? "",
     regionCode: order.shippingAddress?.provinceCode ?? "",
     itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
@@ -153,7 +174,7 @@ async function importEbaySales() {
   const token = await getEbayAccessToken(ebayFulfillmentScope);
   const orders: SalesOrder[] = [];
   const refunds: SalesRefund[] = [];
-  let next: string | null = `${ebayBaseUrl()}/sell/fulfillment/v1/order?limit=200&offset=0`;
+  let next: string | null = ebayOrdersUrl();
   while (next) {
     const response = await fetch(next, {
       headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId }
@@ -221,6 +242,7 @@ export function toEbayOrder(order: EbayOrder): SalesOrder {
     quantity: line.quantity ?? 0,
     amount: number(line.total?.value)
   }));
+  const financialsComplete = Boolean(order.pricingSummary?.priceSubtotal && order.pricingSummary?.deliveryCost);
   return {
     platform: "ebay",
     orderId: order.orderId,
@@ -241,12 +263,10 @@ export function toEbayOrder(order: EbayOrder): SalesOrder {
     comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
     financialStatus: order.orderPaymentStatus ?? "",
     canceledAt: canceled,
-    financialsComplete: Boolean(
-      order.pricingSummary?.priceSubtotal && order.pricingSummary?.deliveryCost && order.pricingSummary?.tax
-    ),
+    financialsComplete,
     financialsSource: "order_api",
     financialsUpdatedAt: order.lastModifiedDate ?? order.creationDate,
-    reconciliationState: "incomplete",
+    reconciliationState: financialsComplete ? "complete" : "incomplete",
     countryCode: address?.countryCode ?? "",
     regionCode: address?.stateOrProvince ?? "",
     itemCount: lineItems.reduce((sum, line) => sum + line.quantity, 0),
@@ -483,6 +503,7 @@ export function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
     quantity: line.quantity ?? 0,
     amount: money(line.price).amount * (line.quantity ?? 0)
   }));
+  const financialsComplete = Boolean(receipt.subtotal && receipt.total_shipping_cost && receipt.total_tax_cost);
   return {
     platform: "etsy",
     orderId: String(receipt.receipt_id),
@@ -501,10 +522,10 @@ export function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
     comparableSalesAmount: Math.max(0, productAmount + shippingAmount),
     financialStatus: receipt.status ?? "",
     canceledAt: canceled,
-    financialsComplete: Boolean(receipt.subtotal && receipt.total_shipping_cost && receipt.total_tax_cost),
+    financialsComplete,
     financialsSource: "order_api",
     financialsUpdatedAt: iso(receipt.update_timestamp ?? receipt.create_timestamp),
-    reconciliationState: "incomplete",
+    reconciliationState: financialsComplete ? "complete" : "incomplete",
     countryCode: receipt.country_iso ?? "",
     regionCode: receipt.state ?? "",
     itemCount: lines.reduce((sum, line) => sum + line.quantity, 0),
@@ -532,6 +553,13 @@ function cleanDomain(value: string) {
 function ebayBaseUrl() {
   return config.ebay.environment === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
 }
+export function ebayOrdersUrl() {
+  const url = new URL("/sell/fulfillment/v1/order", ebayBaseUrl());
+  url.searchParams.set("limit", "200");
+  url.searchParams.set("offset", "0");
+  url.searchParams.set("fieldGroups", "TAX_BREAKDOWN");
+  return url.toString();
+}
 
 function validateShopifyOrdersPage(payload: ShopifyOrdersPage) {
   const orders = payload?.orders;
@@ -549,6 +577,10 @@ function validateShopifyOrdersPage(payload: ShopifyOrdersPage) {
       !validDate(order.createdAt) ||
       !validDate(order.updatedAt) ||
       !order.currentTotalPriceSet?.shopMoney?.currencyCode ||
+      !order.currentSubtotalPriceSet?.shopMoney ||
+      !order.currentTotalShippingPriceSet?.shopMoney ||
+      !order.currentTotalDiscountsSet?.shopMoney ||
+      !order.currentTotalTaxSet?.shopMoney ||
       !Array.isArray(order.lineItems?.nodes)
     ) {
       throw new Error("Shopify orders returned a malformed order.");
