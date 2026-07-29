@@ -8,7 +8,14 @@ import type { SalesOrder } from "../src/shared/types";
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), "joshs-erp-sales-"));
 process.env.DATABASE_FILE = path.join(directory, "inventory.sqlite");
 process.env.SALES_DATABASE_FILE = path.join(directory, "legacy-sales.sqlite");
-const { applySalesImport, loadSalesOrders, loadSalesRefunds, upsertSalesOrders, upsertSalesRefunds } = await import("../src/server/salesStore.ts");
+const {
+  applySalesImport,
+  loadSalesOrders,
+  loadSalesRefunds,
+  upsertEbayTransactions,
+  upsertSalesOrders,
+  upsertSalesRefunds
+} = await import("../src/server/salesStore.ts");
 const { getSalesDashboard } = await import("../src/server/salesService.ts");
 const { SQLiteInventoryStore } = await import("../src/server/sqliteStore.ts");
 const { replaceReviewProductAliases } = await import("../src/server/ebayReviews/feedbackStore.ts");
@@ -36,6 +43,66 @@ test("sales dashboard aggregates revenue, geography, products, and platform cove
   assert.equal(dashboard.products[0].title, "Product");
   assert.equal(dashboard.platforms.find((row) => row.platform === "shopify")?.orders, 1);
   assert.ok(dashboard.warnings.some((warning) => /1 included order does not yet have/.test(warning)));
+});
+
+test("eBay transaction summary includes other fees and reports its coverage boundary", async () => {
+  const financial = (overrides: Partial<Parameters<typeof upsertEbayTransactions>[0][number]> = {}) => ({
+    transactionKey: "financial-order",
+    transactionDate: "2026-07-10T12:00:00.000Z",
+    type: "Order",
+    orderId: "financial-order",
+    legacyOrderId: "",
+    transactionId: "",
+    referenceId: "",
+    payoutId: "",
+    payoutDate: "",
+    payoutStatus: "",
+    itemId: "",
+    title: "",
+    sku: "",
+    quantity: 1,
+    itemSubtotal: 100,
+    shippingAmount: 0,
+    taxAmount: 0,
+    feeAmount: -10,
+    grossAmount: 100,
+    netAmount: 90,
+    currency: "USD",
+    ...overrides
+  });
+  await upsertEbayTransactions([
+    financial(),
+    financial({
+      transactionKey: "other-fee",
+      transactionDate: "2026-07-11T12:00:00.000Z",
+      type: "Other fee",
+      feeAmount: 0,
+      grossAmount: -4,
+      netAmount: -4
+    }),
+    financial({
+      transactionKey: "fee-credit",
+      transactionDate: "2026-07-12T12:00:00.000Z",
+      type: "Refund",
+      feeAmount: 2,
+      grossAmount: -20,
+      netAmount: -18
+    }),
+    financial({
+      transactionKey: "shipping-label",
+      transactionDate: "2026-07-13T12:00:00.000Z",
+      type: "Shipping label",
+      feeAmount: 0,
+      grossAmount: -3,
+      netAmount: -3
+    })
+  ]);
+  const dashboard = await getSalesDashboard({ range: "all", platform: "all" });
+  assert.equal(dashboard.ebayFinancials?.fees, 12);
+  assert.equal(dashboard.ebayFinancials?.shippingLabels, 3);
+  assert.equal(dashboard.ebayFinancials?.netProceeds, 65);
+  assert.equal(dashboard.ebayFinancials?.coverageStart, "2026-07-10T12:00:00.000Z");
+  assert.equal(dashboard.ebayFinancials?.coverageEnd, "2026-07-13T12:00:00.000Z");
 });
 
 test("inventory and sales share one SQLite file without overwriting each other", async () => {

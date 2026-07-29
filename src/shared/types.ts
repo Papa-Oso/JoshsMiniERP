@@ -80,6 +80,8 @@ export interface SalesDashboardPayload {
     shippingLabels: number;
     netProceeds: number;
     transactionCount: number;
+    coverageStart: string;
+    coverageEnd: string;
   } | null;
   trend: Array<{ date: string; revenue: number; orders: number; units: number }>;
   platforms: Array<{ platform: Platform; revenue: number; orders: number; units: number }>;

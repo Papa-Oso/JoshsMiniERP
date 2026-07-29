@@ -55,6 +55,11 @@ export async function getSalesDashboard({
   const currency = currencies[0] ?? "USD";
   const revenue = sum(orders.map(revenueAmount));
   const units = sum(orders.map((order) => order.itemCount));
+  const ebayFinancialRows =
+    platform === "etsy" || platform === "shopify"
+      ? []
+      : allEbayFinancials.filter((row) => !start || Date.parse(row.transactionDate) >= start);
+  const ebayFinancials = ebayFinancialRows.length ? summarizeEbayFinancials(ebayFinancialRows) : null;
   const warnings: string[] = [];
   if (currencies.length > 1) warnings.push("Multiple currencies are shown without exchange-rate conversion.");
   const unresolvedOrders = orders.filter((order) => order.reconciliationState === "unresolved").length;
@@ -75,6 +80,15 @@ export async function getSalesDashboard({
     const latest = pulls.find((pull) => pull.platform === source);
     if (latest?.status === "error") warnings.push(`${label(source)} sales pull needs attention: ${latest.message}`);
   }
+  if ((platform === "all" || platform === "ebay") && orders.some((order) => order.platform === "ebay")) {
+    if (!ebayFinancials) {
+      warnings.push("No imported eBay transaction report covers this selection.");
+    } else if (Date.now() - Date.parse(ebayFinancials.coverageEnd) > 48 * 3_600_000) {
+      warnings.push(
+        `eBay costs are partial: the imported transaction report ends ${formatShortDate(ebayFinancials.coverageEnd)}. Pull sales does not update transaction reports.`
+      );
+    }
+  }
 
   return {
     generatedAt: new Date().toISOString(),
@@ -88,12 +102,7 @@ export async function getSalesDashboard({
       averageOrderValue: orders.length ? revenue / orders.length : 0,
       currency
     },
-    ebayFinancials:
-      platform === "etsy" || platform === "shopify"
-        ? null
-        : summarizeEbayFinancials(
-            allEbayFinancials.filter((row) => !start || Date.parse(row.transactionDate) >= start)
-          ),
+    ebayFinancials,
     trend: aggregateTrend(orders),
     platforms: platforms.map((source) => aggregatePlatform(orders, source)),
     countries: aggregateCountries(orders),
@@ -378,13 +387,22 @@ function addWarning(
 function summarizeEbayFinancials(rows: Awaited<ReturnType<typeof loadEbayFinancialTransactions>>) {
   const operational = rows.filter((row) => !["payout", "hold", "transfer", "reserve"].includes(row.type.toLowerCase()));
   const byType = (type: string) => rows.filter((row) => row.type.toLowerCase() === type);
+  const dates = rows.map((row) => row.transactionDate).sort();
   return {
     grossSales: sum(byType("order").map((row) => row.grossAmount)),
-    fees: Math.abs(sum(operational.map((row) => row.feeAmount))),
+    fees: Math.abs(
+      sum(
+        operational.map((row) =>
+          row.type.toLowerCase() === "other fee" ? row.feeAmount || row.netAmount : row.feeAmount
+        )
+      )
+    ),
     refunds: Math.abs(sum(byType("refund").map((row) => row.netAmount))),
     shippingLabels: Math.abs(sum(byType("shipping label").map((row) => row.netAmount))),
     netProceeds: sum(operational.map((row) => row.netAmount)),
-    transactionCount: rows.length
+    transactionCount: rows.length,
+    coverageStart: dates[0] ?? "",
+    coverageEnd: dates.at(-1) ?? ""
   };
 }
 
@@ -508,4 +526,10 @@ function sum(values: number[]) {
 }
 function label(platform: Platform) {
   return platform === "ebay" ? "eBay" : platform[0].toUpperCase() + platform.slice(1);
+}
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf())
+    ? value
+    : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }

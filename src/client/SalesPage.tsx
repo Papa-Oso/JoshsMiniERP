@@ -144,16 +144,17 @@ export function SalesPage() {
         />
       </Panel>
       {data.ebayFinancials ? (
-        <Panel title="eBay payout details" icon={<BarChart3 size={17} />}>
+        <Panel title="Imported eBay transaction report" icon={<BarChart3 size={17} />}>
           <p className="sales-panel-note">
-            Provider-specific fees, shipping labels, and proceeds from imported eBay transaction reports.
+            Report coverage: {formatDate(data.ebayFinancials.coverageStart)}–{formatDate(data.ebayFinancials.coverageEnd)}.
+            Pull sales does not update this report.
           </p>
           <section className="sales-metrics ebay-financial-metrics">
             <Metric label="Gross sales" value={money(data.ebayFinancials.grossSales)} />
-            <Metric label="Fees" value={money(data.ebayFinancials.fees)} tone="warn" />
-            <Metric label="Refunds" value={money(data.ebayFinancials.refunds)} tone="warn" />
-            <Metric label="Shipping labels" value={money(data.ebayFinancials.shippingLabels)} />
-            <Metric label="Net proceeds" value={money(data.ebayFinancials.netProceeds)} />
+            <Metric label="eBay fees & charges" value={money(data.ebayFinancials.fees)} tone="warn" />
+            <Metric label="Refund activity" value={money(data.ebayFinancials.refunds)} tone="warn" />
+            <Metric label="eBay label charges" value={money(data.ebayFinancials.shippingLabels)} />
+            <Metric label="Net transaction activity" value={money(data.ebayFinancials.netProceeds)} />
           </section>
         </Panel>
       ) : null}

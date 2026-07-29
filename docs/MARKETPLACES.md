@@ -99,6 +99,8 @@ Current order pulls store authoritative product, buyer-paid shipping, discount, 
 
 For eBay, fees, purchased shipping labels, and net proceeds are included only from financial-report rows whose order ID and currency exactly match a saved order in the selected period. Exact duplicate transaction keys are counted once. Order-linked unmatched rows and currency conflicts are excluded rather than guessed and appear only as aggregate warnings. Account-level rows without an order ID, such as payouts and general fees, are not mislabeled as unmatched orders.
 
+The Sales page's imported eBay transaction-report panel is separate from the live order pull. It shows its exact coverage dates and warns when the report is stale because `Pull sales` does not download a new Payments report. `eBay fees & charges` includes fee columns on sale/refund rows plus `Other fee` charges and credits; `eBay label charges` includes only labels billed by eBay and present in the imported report. `Net transaction activity` excludes payout, hold, transfer, and reserve rows and must not be read as a confirmed bank-payout total.
+
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 
 ## Legacy eBay Listings
