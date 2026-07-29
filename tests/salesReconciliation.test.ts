@@ -62,7 +62,7 @@ test("reconciles comparable sales without tax or canceled orders", () => {
   assert.equal(payload.rows[0].comparableNetSales, 32);
 });
 
-test("applies full and partial Etsy refunds once and leaves unresolved totals excluded", () => {
+test("applies full, partial, and assumed-full unresolved Etsy refunds once", () => {
   const orders = [
     order({ orderId: "full", productAmount: 20, shippingAmount: 5, comparableSalesAmount: 25 }),
     order({ orderId: "partial", productAmount: 30, shippingAmount: 4, comparableSalesAmount: 34 })
@@ -88,9 +88,29 @@ test("applies full and partial Etsy refunds once and leaves unresolved totals ex
     platform: "etsy",
     now
   });
-  assert.equal(payload.rows[0].refunds, 31);
-  assert.equal(payload.rows[0].comparableNetSales, 28);
+  assert.equal(payload.rows[0].refunds, 34);
+  assert.equal(payload.rows[0].comparableNetSales, 25);
   assert.equal(payload.warnings.find((warning) => warning.code === "unresolved_refund")?.count, 1);
+});
+
+test("caps assumed full refunds at each order's comparable value", () => {
+  const payload = reconcileSales({
+    orders: [
+      order({ orderId: "taxed", productAmount: 20, shippingAmount: 5, comparableSalesAmount: 25 }),
+      order({ orderId: "other", productAmount: 10, shippingAmount: 0, comparableSalesAmount: 10 })
+    ],
+    refunds: [
+      refund({ orderId: "taxed", totalAmount: 27, componentsComplete: false }),
+      refund({ orderId: "other", refundId: "other-refund", totalAmount: 4, componentsComplete: false })
+    ],
+    pulls: [{ platform: "etsy", pulled_at: "2026-07-10T11:00:00.000Z" }],
+    financials: [],
+    range: "30d",
+    platform: "etsy",
+    now
+  });
+  assert.equal(payload.rows[0].refunds, 29);
+  assert.equal(payload.rows[0].comparableNetSales, 6);
 });
 
 test("applies duplicate refund identities exactly once while retaining the warning", () => {
@@ -181,7 +201,7 @@ test("separates currencies and reports unresolved integrity categories without i
   assert.ok(payload.warnings.some((warning) => warning.code === "stale_pull"));
   assert.equal("orderId" in payload.rows[0], false);
   assert.equal("refundId" in payload.warnings[0], false);
-  assert.equal(payload.rows.find((row) => row.currency === "USD")?.refunds, 0);
+  assert.equal(payload.rows.find((row) => row.currency === "USD")?.refunds, 4);
 });
 
 test("reconciles only exact eBay financial matches and reports unresolved records", () => {

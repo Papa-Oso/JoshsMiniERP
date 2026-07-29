@@ -395,8 +395,8 @@ function upsertRefund(db: Database, refund: SalesRefund) {
 function updateRefundTotals(db: Database, platform: Platform, orderIds: string[]) {
   for (const orderId of orderIds)
     db.run(
-      `UPDATE sales_orders SET refunded_amount=COALESCE((SELECT SUM(product_amount+shipping_amount) FROM sales_refunds WHERE platform=? AND order_id=? AND components_complete=1 AND lower(status) NOT IN ('failed','canceled')),0), reconciliation_state=CASE WHEN EXISTS(SELECT 1 FROM sales_refunds WHERE platform=? AND order_id=? AND components_complete=0 AND lower(status) NOT IN ('failed','canceled')) THEN 'unresolved' ELSE reconciliation_state END WHERE platform=? AND order_id=?`,
-      [platform, orderId, platform, orderId, platform, orderId]
+      `UPDATE sales_orders SET refunded_amount=MIN(comparable_sales_amount, COALESCE((SELECT SUM(CASE WHEN components_complete=1 THEN product_amount+shipping_amount ELSE total_amount END) FROM sales_refunds WHERE platform=? AND order_id=? AND lower(status) NOT IN ('failed','canceled','cancelled')),0)), reconciliation_state=CASE WHEN financials_complete=1 THEN 'complete' ELSE 'incomplete' END WHERE platform=? AND order_id=?`,
+      [platform, orderId, platform, orderId]
     );
 }
 

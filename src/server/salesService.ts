@@ -202,7 +202,7 @@ export function reconcileSales({
     warnings,
     "unresolved_refund",
     applicableRefunds.filter((refund) => !refund.componentsComplete && !failedRefund(refund)).length,
-    "Refund totals with unresolved product, shipping, or tax components are excluded from comparable sales."
+    "Refunds without a component split were treated as full comparable-sales deductions and capped at the order value."
   );
   addWarning(
     warnings,
@@ -303,11 +303,26 @@ function reconciliationRow(
   platformFinancials: FinancialRow[]
 ): SalesReconciliationPayload["rows"][number] {
   const included = orders.filter((order) => !canceledOrder(order));
-  const completeRefunds = refunds.filter((refund) => refund.componentsComplete && !failedRefund(refund));
   const productRevenue = sum(included.map((order) => order.productAmount ?? 0));
   const shippingRevenue = sum(included.map((order) => order.shippingAmount ?? 0));
   const discounts = sum(included.map((order) => order.discountAmount ?? 0));
-  const refundAmount = sum(completeRefunds.map((refund) => refund.productAmount + refund.shippingAmount));
+  const refundsByOrder = new Map<string, SalesRefund[]>();
+  for (const refund of refunds.filter((row) => !failedRefund(row))) {
+    const rows = refundsByOrder.get(refund.orderId) ?? [];
+    rows.push(refund);
+    refundsByOrder.set(refund.orderId, rows);
+  }
+  const refundAmount = sum(
+    included.map((order) => {
+      const orderRefunds = refundsByOrder.get(order.orderId) ?? [];
+      const assumedComparableRefund = sum(
+        orderRefunds.map((refund) =>
+          refund.componentsComplete ? refund.productAmount + refund.shippingAmount : refund.totalAmount
+        )
+      );
+      return Math.min((order.productAmount ?? 0) + (order.shippingAmount ?? 0), assumedComparableRefund);
+    })
+  );
   const operational = platformFinancials.filter(
     (row) => !["payout", "hold", "transfer", "reserve"].includes(row.type.toLowerCase())
   );

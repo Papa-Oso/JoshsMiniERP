@@ -157,13 +157,13 @@ test("sales financial upserts preserve authoritative values and fill only missin
   assert.equal(saved?.reconciliationState, "complete");
 });
 
-test("atomic sales imports apply only complete pre-tax refund components to orders", async () => {
-  const base = { ...order(), platform: "etsy" as const, orderId: "etsy-refunds", productAmount: 30, shippingAmount: 8, comparableSalesAmount: 38 };
+test("atomic sales imports apply unresolved totals as capped full refunds", async () => {
+  const base = { ...order(), platform: "etsy" as const, orderId: "etsy-refunds", productAmount: 30, shippingAmount: 8, comparableSalesAmount: 38, financialsComplete: true, reconciliationState: "complete" as const };
   const refund = { platform: "etsy" as const, orderId: base.orderId, refundedAt: "2026-07-10T14:00:00.000Z", status: "completed", currency: "USD", source: "payment_api", sourceUpdatedAt: "2026-07-10T14:00:00.000Z" };
   await applySalesImport("etsy", [base], [{ ...refund, refundId: "complete", productAmount: 5, shippingAmount: 2, taxAmount: 1, totalAmount: 8, componentsComplete: true }, { ...refund, refundId: "unresolved", productAmount: 0, shippingAmount: 0, taxAmount: 0, totalAmount: 4, componentsComplete: false }]);
   const saved = (await loadSalesOrders()).find((row) => row.orderId === base.orderId);
-  assert.equal(saved?.refundedAmount, 7);
-  assert.equal(saved?.reconciliationState, "unresolved");
+  assert.equal(saved?.refundedAmount, 11);
+  assert.equal(saved?.reconciliationState, "complete");
 });
 
 test("Top Products treats marketplace placeholder SKUs as missing instead of merging unrelated titles", async () => {
