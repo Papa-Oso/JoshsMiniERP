@@ -44,6 +44,8 @@ npm run inv -- etsy-refresh
 
 Etsy inventory updates require a unique product match and a single offering for the mapped SKU. Give each sellable variation its own unique SKU before enabling sync.
 
+Quantity updates follow Etsy's full-inventory replacement contract: the ERP reads and returns the listing's complete product and variation set while changing only the targeted offering quantity. The outgoing request omits Etsy-managed response fields (`product_id`, `offering_id`, `scale_name`, `is_deleted`, and `value_pairs`), converts offering Money objects to decimal prices, and preserves property selectors and processing-profile `readiness_state_id` values.
+
 ### Etsy reviews
 
 Marketplace Reviews imports Etsy reviews through the official `GET /v3/application/shops/{shop_id}/reviews` API. Etsy prohibits screen scraping, so this workflow must not be replaced with a browser scraper.

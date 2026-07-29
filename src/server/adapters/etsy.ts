@@ -12,13 +12,26 @@ interface EtsyOffering {
   price?: unknown;
   quantity?: number;
   is_enabled?: boolean;
+  readiness_state_id?: number;
   is_deleted?: boolean;
+  [key: string]: unknown;
+}
+
+interface EtsyPropertyValue {
+  property_id?: number;
+  property_name?: string;
+  scale_id?: number | null;
+  scale_name?: string | null;
+  value_ids?: number[];
+  values?: string[];
+  value_pairs?: unknown;
   [key: string]: unknown;
 }
 
 interface EtsyProduct {
   sku?: string;
   offerings?: EtsyOffering[];
+  property_values?: EtsyPropertyValue[];
   [key: string]: unknown;
 }
 
@@ -77,16 +90,7 @@ export class EtsyAdapter implements PlatformAdapter {
     const offering = this.findSingleOffering(product, sku);
     offering.quantity = quantity;
 
-    const payload: EtsyInventory = {
-      products: inventory.products ?? [],
-      price_on_property: inventory.price_on_property ?? [],
-      quantity_on_property: inventory.quantity_on_property ?? [],
-      sku_on_property: inventory.sku_on_property ?? []
-    };
-
-    if (inventory.readiness_state_on_property) {
-      payload.readiness_state_on_property = inventory.readiness_state_on_property;
-    }
+    const payload = buildEtsyInventoryUpdatePayload(inventory);
 
     const result = await readJson(
       await fetch(`${baseUrl}/listings/${encodeURIComponent(mapping.listingId!)}/inventory`, {
@@ -139,4 +143,47 @@ export class EtsyAdapter implements PlatformAdapter {
 
 function etsyHasToken() {
   return Boolean(config.etsy.accessToken || config.etsy.refreshToken || fs.existsSync(config.etsy.tokenFile));
+}
+
+export function buildEtsyInventoryUpdatePayload(inventory: EtsyInventory): EtsyInventory {
+  const payload: EtsyInventory = {
+    products: (inventory.products ?? []).map((product) => ({
+      sku: product.sku,
+      offerings: (product.offerings ?? []).map((offering) => ({
+        quantity: offering.quantity,
+        price: etsyOfferingPrice(offering.price),
+        is_enabled: offering.is_enabled,
+        ...(typeof offering.readiness_state_id === "number"
+          ? { readiness_state_id: offering.readiness_state_id }
+          : {})
+      })),
+      property_values: (product.property_values ?? []).map((propertyValue) => ({
+        property_id: propertyValue.property_id,
+        property_name: propertyValue.property_name,
+        scale_id: propertyValue.scale_id,
+        value_ids: propertyValue.value_ids,
+        values: propertyValue.values
+      }))
+    })),
+    price_on_property: inventory.price_on_property ?? [],
+    quantity_on_property: inventory.quantity_on_property ?? [],
+    sku_on_property: inventory.sku_on_property ?? []
+  };
+
+  if (inventory.readiness_state_on_property) {
+    payload.readiness_state_on_property = inventory.readiness_state_on_property;
+  }
+
+  return payload;
+}
+
+function etsyOfferingPrice(price: unknown) {
+  if (typeof price === "number" && Number.isFinite(price)) return price;
+  if (!price || typeof price !== "object") throw new Error("Etsy returned an invalid offering price.");
+  const amount = Number((price as { amount?: unknown }).amount);
+  const divisor = Number((price as { divisor?: unknown }).divisor);
+  if (!Number.isFinite(amount) || !Number.isFinite(divisor) || divisor <= 0) {
+    throw new Error("Etsy returned an invalid offering price.");
+  }
+  return amount / divisor;
 }

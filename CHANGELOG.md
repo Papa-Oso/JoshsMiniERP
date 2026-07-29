@@ -6,6 +6,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ### Sales, safety, and operations
 
+- Fixed Etsy inventory quantity updates to preserve listing products, variations, prices, and processing profiles while omitting provider-managed response fields that Etsy rejects in update requests.
 - Corrected eBay account-deletion notification verification to use eBay's ECDSA P-256/SHA-1 signature format instead of RSA, with a regression test covering the DER signature encoding delivered by eBay; the deployed endpoint subsequently accepted eBay's synthetic test and left no unprocessed notice.
 - Required structural manifest validation before a backup can be considered restorable or trigger automatic cleanup, added stage-safe backup errors, and covered copy, retained-manifest, and mocked Windows Task Scheduler command failures.
 - Rejected malformed or incomplete Shopify, eBay, and Etsy sales pages before persistence, with timeout and later-page failure coverage proving prior sales, refunds, and inventory remain intact.
