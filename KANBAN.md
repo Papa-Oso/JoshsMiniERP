@@ -32,4 +32,4 @@ Resume only after SALES-03 completes with reviewed reconciliation results. Then 
 
 ### EBAY-NOTIFY-02 — Observe eBay's delayed test delivery
 
-The protected Worker is deployed, paginated, authenticated, and healthy, and the retained signed-notice backlog is processed. Resume only when eBay delivers the accepted synthetic test or exposes a delivery failure. Verify the exact returned notification identity is stored once and that repeated delivery does not increase the namespace count.
+eBay's July 29 synthetic delivery exposed an incorrect RSA signature verifier and returned HTTP 412. The Worker fix now verifies eBay's ECDSA P-256/SHA-1 signature format and has focused regression coverage. Deploy the reviewed fix, resend the eBay test, then verify the returned notification identity is stored once and that repeated delivery does not increase the namespace count.

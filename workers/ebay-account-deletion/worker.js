@@ -139,18 +139,19 @@ async function verifyEbaySignature(rawBody, signatureHeader, env) {
   try {
     const envelope = JSON.parse(decodeBase64Text(signatureHeader));
     if (!isNonEmptyString(envelope.kid, 512) || !isNonEmptyString(envelope.signature, 4096)) return false;
+    if (String(envelope.alg).toUpperCase() !== "ECDSA" || String(envelope.digest).toUpperCase() !== "SHA1") return false;
     const publicKey = await ebayPublicKey(envelope.kid, env);
     const cryptoKey = await crypto.subtle.importKey(
       "spki",
       pemBytes(publicKey),
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-1" },
+      { name: "ECDSA", namedCurve: "P-256" },
       false,
       ["verify"]
     );
     return crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
+      { name: "ECDSA", hash: "SHA-1" },
       cryptoKey,
-      decodeBase64Bytes(envelope.signature),
+      ecdsaDerToP1363(decodeBase64Bytes(envelope.signature), 32),
       new TextEncoder().encode(rawBody)
     );
   } catch {
@@ -197,6 +198,45 @@ function decodeBase64Text(value) {
 function decodeBase64Bytes(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function ecdsaDerToP1363(signature, componentLength) {
+  let offset = 0;
+  if (signature[offset++] !== 0x30) throw new Error("Invalid ECDSA signature sequence");
+  const sequenceLength = readDerLength(signature, offset);
+  offset = sequenceLength.offset;
+  if (sequenceLength.length !== signature.length - offset) throw new Error("Invalid ECDSA signature length");
+
+  const components = [];
+  for (let index = 0; index < 2; index += 1) {
+    if (signature[offset++] !== 0x02) throw new Error("Invalid ECDSA signature integer");
+    const integerLength = readDerLength(signature, offset);
+    offset = integerLength.offset;
+    const integer = signature.slice(offset, offset + integerLength.length);
+    offset += integerLength.length;
+    const unsigned = integer[0] === 0 ? integer.slice(1) : integer;
+    if (unsigned.length > componentLength) throw new Error("ECDSA signature component is too large");
+    const component = new Uint8Array(componentLength);
+    component.set(unsigned, componentLength - unsigned.length);
+    components.push(component);
+  }
+
+  if (offset !== signature.length) throw new Error("Invalid trailing ECDSA signature data");
+  const result = new Uint8Array(componentLength * 2);
+  result.set(components[0], 0);
+  result.set(components[1], componentLength);
+  return result;
+}
+
+function readDerLength(bytes, offset) {
+  const first = bytes[offset++];
+  if (first === undefined) throw new Error("Missing DER length");
+  if ((first & 0x80) === 0) return { length: first, offset };
+  const byteCount = first & 0x7f;
+  if (byteCount === 0 || byteCount > 2 || offset + byteCount > bytes.length) throw new Error("Invalid DER length");
+  let length = 0;
+  for (let index = 0; index < byteCount; index += 1) length = length * 256 + bytes[offset++];
+  return { length, offset };
 }
 
 function encodeBase64Text(value) {

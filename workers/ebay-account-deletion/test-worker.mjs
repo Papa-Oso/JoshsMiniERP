@@ -8,7 +8,7 @@ const challengeCode = "test-challenge-code";
 const verificationToken = "Token_abcdefghijklmnopqrstuvwxyz123456";
 const adminToken = "Admin_abcdefghijklmnopqrstuvwxyz123456";
 const kv = fakeKv();
-const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const originalFetch = globalThis.fetch;
 globalThis.fetch = fakeEbayFetch(publicKey.export({ type: "spki", format: "pem" }));
 const env = {
@@ -188,7 +188,7 @@ globalThis.fetch = originalFetch;
 
 function signatureHeader(body, kid = "test-key") {
   const signature = sign("sha1", Buffer.from(body), privateKey).toString("base64");
-  return Buffer.from(JSON.stringify({ kid, signature })).toString("base64");
+  return Buffer.from(JSON.stringify({ alg: "ecdsa", kid, signature, digest: "SHA1" })).toString("base64");
 }
 
 function signedRequest(body, signature) {
