@@ -133,6 +133,24 @@ test("includes an order exactly on the date boundary and excludes one millisecon
   assert.equal(payload.rows[0].importedOrders, 1);
 });
 
+test("this year starts at the local calendar-year boundary", () => {
+  const current = new Date(now);
+  const boundary = new Date(current.getFullYear(), 0, 1).getTime();
+  const payload = reconcileSales({
+    orders: [
+      order({ orderId: "at-year-start", createdAt: new Date(boundary).toISOString() }),
+      order({ orderId: "previous-year", createdAt: new Date(boundary - 1).toISOString() })
+    ],
+    refunds: [],
+    pulls: [{ platform: "etsy", pulled_at: "2026-07-10T11:00:00.000Z" }],
+    financials: [],
+    range: "ytd",
+    platform: "etsy",
+    now
+  });
+  assert.equal(payload.rows[0].importedOrders, 1);
+});
+
 test("separates currencies and reports unresolved integrity categories without identifiers", () => {
   const orders = [
     order({ orderId: "usd", financialsComplete: false, reconciliationState: "unresolved" }),

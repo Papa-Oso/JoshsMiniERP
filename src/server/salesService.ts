@@ -475,6 +475,10 @@ function coverage(orders: SalesOrder[], platform: Platform) {
 
 function rangeStart(range: string, now = Date.now()) {
   if (range === "all") return null;
+  if (range === "ytd") {
+    const current = new Date(now);
+    return new Date(current.getFullYear(), 0, 1).getTime();
+  }
   const days = Number(range.replace(/d$/, ""));
   return Number.isFinite(days) && days > 0 ? now - days * 86_400_000 : now - 90 * 86_400_000;
 }

@@ -5,11 +5,11 @@ import { getSalesDashboard, getSalesReconciliation, refreshSales } from "./sales
 
 export const salesRouter = express.Router();
 const querySchema = z.object({
-  range: z.enum(["30d", "90d", "365d", "all"]).default("90d"),
+  range: z.enum(["30d", "90d", "ytd", "365d", "all"]).default("90d"),
   platform: z.enum(["all", "etsy", "ebay", "shopify"]).default("all")
 });
 const refreshSchema = z.object({ platforms: z.array(z.enum(["etsy", "ebay", "shopify"])).optional() });
-const reconciliationSchema = z.object({ range: z.enum(["30d", "90d", "365d", "all"]).default("90d"), platform: z.enum(["etsy", "ebay", "shopify"]), currency: z.string().trim().min(3).max(3).transform((value) => value.toUpperCase()).optional() });
+const reconciliationSchema = z.object({ range: z.enum(["30d", "90d", "ytd", "365d", "all"]).default("90d"), platform: z.enum(["etsy", "ebay", "shopify"]), currency: z.string().trim().min(3).max(3).transform((value) => value.toUpperCase()).optional() });
 
 salesRouter.get("/", asyncHandler(async (req, res) => {
   const query = querySchema.parse(req.query);

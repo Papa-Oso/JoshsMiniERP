@@ -77,6 +77,7 @@ export function SalesPage() {
             <select value={range} onChange={(event) => setRange(event.target.value)}>
               <option value="30d">30 days</option>
               <option value="90d">90 days</option>
+              <option value="ytd">This year</option>
               <option value="365d">1 year</option>
               <option value="all">All saved</option>
             </select>
