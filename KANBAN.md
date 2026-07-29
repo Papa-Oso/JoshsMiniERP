@@ -29,7 +29,3 @@ Resume only after SALES-03A produces an `APPROVED` evidence record. Create and i
 ### SALES-04 — Switch the dashboard to comparable net sales
 
 Resume only after SALES-03 completes with reviewed reconciliation results. Then switch headline revenue, trends, marketplace mix, geography, and product reporting to currency-separated comparable net sales; update the existing disclosure, focused tests, and desktop/mobile UI smoke coverage.
-
-### EBAY-NOTIFY-02 — Observe eBay's delayed test delivery
-
-eBay's July 29 synthetic delivery exposed an incorrect RSA signature verifier and returned HTTP 412. The Worker fix now verifies eBay's ECDSA P-256/SHA-1 signature format and has focused regression coverage. Deploy the reviewed fix, resend the eBay test, then verify the returned notification identity is stored once and that repeated delivery does not increase the namespace count.
