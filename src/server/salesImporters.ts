@@ -28,7 +28,7 @@ interface ShopifyOrdersPage {
       displayFulfillmentStatus: string;
       currentTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
       currentSubtotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
-      currentTotalShippingPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+      currentShippingPriceSet: { shopMoney: { amount: string; currencyCode: string } };
       currentTotalDiscountsSet: { shopMoney: { amount: string; currencyCode: string } };
       currentTotalTaxSet: { shopMoney: { amount: string; currencyCode: string } };
       shippingAddress: { countryCodeV2: string | null; provinceCode: string | null } | null;
@@ -60,7 +60,7 @@ async function importShopifySales() {
             id legacyResourceId name createdAt updatedAt displayFinancialStatus displayFulfillmentStatus
             currentTotalPriceSet { shopMoney { amount currencyCode } }
             currentSubtotalPriceSet { shopMoney { amount currencyCode } }
-            currentTotalShippingPriceSet { shopMoney { amount currencyCode } }
+            currentShippingPriceSet { shopMoney { amount currencyCode } }
             currentTotalDiscountsSet { shopMoney { amount currencyCode } }
             currentTotalTaxSet { shopMoney { amount currencyCode } }
             shippingAddress { countryCodeV2 provinceCode }
@@ -82,7 +82,7 @@ async function importShopifySales() {
 export function toShopifyOrder(order: ShopifyOrdersPage["orders"]["nodes"][number]): SalesOrder {
   const currency = order.currentTotalPriceSet.shopMoney.currencyCode;
   const productAmount = number(order.currentSubtotalPriceSet.shopMoney.amount);
-  const shippingAmount = number(order.currentTotalShippingPriceSet.shopMoney.amount);
+  const shippingAmount = number(order.currentShippingPriceSet.shopMoney.amount);
   const discountAmount = number(order.currentTotalDiscountsSet.shopMoney.amount);
   const taxAmount = number(order.currentTotalTaxSet.shopMoney.amount);
   const lineItems = order.lineItems.nodes.map((line) => ({
@@ -578,7 +578,7 @@ function validateShopifyOrdersPage(payload: ShopifyOrdersPage) {
       !validDate(order.updatedAt) ||
       !order.currentTotalPriceSet?.shopMoney?.currencyCode ||
       !order.currentSubtotalPriceSet?.shopMoney ||
-      !order.currentTotalShippingPriceSet?.shopMoney ||
+      !order.currentShippingPriceSet?.shopMoney ||
       !order.currentTotalDiscountsSet?.shopMoney ||
       !order.currentTotalTaxSet?.shopMoney ||
       !Array.isArray(order.lineItems?.nodes)

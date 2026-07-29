@@ -65,7 +65,7 @@ test("normalizes Shopify current order components as an authoritative breakdown"
     displayFulfillmentStatus: "FULFILLED",
     currentTotalPriceSet: { shopMoney: { amount: "41", currencyCode: "USD" } },
     currentSubtotalPriceSet: { shopMoney: { amount: "30", currencyCode: "USD" } },
-    currentTotalShippingPriceSet: { shopMoney: { amount: "8", currencyCode: "USD" } },
+    currentShippingPriceSet: { shopMoney: { amount: "8", currencyCode: "USD" } },
     currentTotalDiscountsSet: { shopMoney: { amount: "2", currencyCode: "USD" } },
     currentTotalTaxSet: { shopMoney: { amount: "3", currencyCode: "USD" } },
     shippingAddress: null,
