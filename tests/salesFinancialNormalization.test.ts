@@ -5,8 +5,13 @@ import {
   ebayRefunds,
   etsyRefunds,
   fetchEtsyPayments,
+  toEbayFinancialTransaction,
   toEbayOrder,
+  toEtsyFinancialTransaction,
+  toEtsyLedgerFinancialTransaction,
   toEtsyOrder,
+  toShopifyFinancialTransaction,
+  toShopifyShippingLabelTransaction,
   toShopifyOrder
 } from "../src/server/salesImporters";
 
@@ -76,6 +81,111 @@ test("normalizes Shopify current order components as an authoritative breakdown"
   assert.equal(order.taxAmount, 3);
   assert.equal(order.comparableSalesAmount, 38);
   assert.equal(order.reconciliationState, "complete");
+});
+
+test("normalizes automated eBay Finances debits, fees, and gross basis", () => {
+  const transaction = toEbayFinancialTransaction({
+    transactionId: "sale-1",
+    transactionDate: "2026-07-10T00:00:00.000Z",
+    transactionType: "SALE",
+    bookingEntry: "CREDIT",
+    orderId: "order-1",
+    amount: { value: "86.50", currency: "USD" },
+    totalFeeAmount: { value: "13.50", currency: "USD" },
+    totalFeeBasisAmount: { value: "100.00", currency: "USD" }
+  });
+  assert.equal(transaction.grossAmount, 100);
+  assert.equal(transaction.feeAmount, -13.5);
+  assert.equal(transaction.netAmount, 86.5);
+
+  const label = toEbayFinancialTransaction({
+    transactionId: "label-1",
+    transactionDate: "2026-07-11T00:00:00.000Z",
+    transactionType: "SHIPPING_LABEL",
+    bookingEntry: "DEBIT",
+    amount: { value: "8.25", currency: "USD" }
+  });
+  assert.equal(label.shippingLabelAmount, -8.25);
+  assert.equal(label.netAmount, -8.25);
+});
+
+test("normalizes automated Etsy payment fees, refunds, labels, and standalone charges", () => {
+  const money = (amount: number) => ({ amount, divisor: 100, currency_code: "USD" });
+  const payment = toEtsyFinancialTransaction({
+    payment_id: 1,
+    receipt_id: 2,
+    update_timestamp: 1_752_105_600,
+    amount_gross: money(5_000),
+    adjusted_gross: money(4_000),
+    adjusted_fees: money(600),
+    adjusted_net: money(3_400)
+  });
+  assert.equal(payment.grossAmount, 40);
+  assert.equal(payment.feeAmount, -6);
+  assert.equal(payment.refundAmount, -10);
+  assert.equal(payment.netAmount, 34);
+
+  const [label] = toEtsyLedgerFinancialTransaction({
+    entry_id: 3,
+    amount: -825,
+    currency: "USD",
+    created_timestamp: 1_752_105_600,
+    ledger_type: "shipping_labels"
+  });
+  assert.equal(label.shippingLabelAmount, -8.25);
+
+  const [listingFee] = toEtsyLedgerFinancialTransaction({
+    entry_id: 4,
+    amount: -20,
+    currency: "USD",
+    created_timestamp: 1_752_105_600,
+    ledger_type: "listing_fee"
+  });
+  assert.equal(listingFee.feeAmount, -0.2);
+});
+
+test("normalizes automated Shopify Payments and Shopify Shipping activity", () => {
+  const payment = toShopifyFinancialTransaction({
+    id: "gid://shopify/ShopifyPaymentsBalanceTransaction/1",
+    transactionDate: "2026-07-10T00:00:00.000Z",
+    type: "CHARGE",
+    amount: { amount: "50.00", currencyCode: "USD" },
+    fee: { amount: "1.75", currencyCode: "USD" },
+    net: { amount: "48.25", currencyCode: "USD" },
+    associatedOrder: { id: "gid://shopify/Order/2" }
+  });
+  assert.equal(payment.grossAmount, 50);
+  assert.equal(payment.feeAmount, -1.75);
+  assert.equal(payment.netAmount, 48.25);
+
+  const accountLabel = toShopifyFinancialTransaction({
+    id: "gid://shopify/ShopifyPaymentsBalanceTransaction/2",
+    transactionDate: "2026-07-10T00:00:00.000Z",
+    type: "SHIPPING_LABEL",
+    amount: { amount: "-7.50", currencyCode: "USD" },
+    fee: { amount: "0", currencyCode: "USD" },
+    net: { amount: "-7.50", currencyCode: "USD" }
+  });
+  assert.equal(accountLabel.shippingLabelAmount, -7.5);
+  assert.equal(accountLabel.netAmount, -7.5);
+
+  const billingCharge = toShopifyFinancialTransaction({
+    id: "gid://shopify/ShopifyPaymentsBalanceTransaction/3",
+    transactionDate: "2026-07-10T00:00:00.000Z",
+    type: "BILLING_DEBIT",
+    amount: { amount: "-4.00", currencyCode: "USD" },
+    fee: { amount: "0", currencyCode: "USD" },
+    net: { amount: "-4.00", currencyCode: "USD" }
+  });
+  assert.equal(billingCharge.feeAmount, -4);
+
+  const fallbackLabel = toShopifyShippingLabelTransaction({
+    day: "2026-07-10",
+    shipping_label_currency: "USD",
+    shipping_label_costs: "7.50"
+  });
+  assert.equal(fallbackLabel.shippingLabelAmount, -7.5);
+  assert.equal(fallbackLabel.netAmount, 0);
 });
 
 test("keeps authoritative eBay refund totals unresolved when components are unavailable", () => {

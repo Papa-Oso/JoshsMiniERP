@@ -4,7 +4,8 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
-- Correct imported eBay cost reporting to include `Other fee` charges, expose exact report coverage, warn when the report is stale, and avoid labeling partial transaction activity as current payout details.
+- Replace the Sales page's manual eBay cost panel with provider-generic financial activity refreshed automatically by `Pull sales`: eBay Finances, Etsy Payments/ledger, and Shopify Payments/ShopifyQL where their optional scopes are granted. Unsupported label totals remain unavailable instead of displaying a misleading zero.
+- Correct imported eBay transaction-report reconciliation to include `Other fee` charges and retain exact source coverage without presenting the manual report as current payout data.
 - Standardize the Sales UI across Etsy, eBay, and Shopify with equal marketplace performance cards, normalized platform/status badges, a last-updated indicator, and clearer provider-specific eBay transaction-report labeling.
 - Treat marketplace refunds without a component split as full comparable-sales deductions, capped at each order's product-plus-shipping value.
 - Correct Sales financial-completeness classification for authoritative Shopify, eBay, and Etsy order pulls, request eBay tax breakdowns, and exclude account-level eBay financial rows from unmatched-order warnings.

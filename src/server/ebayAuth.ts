@@ -7,7 +7,13 @@ import { config } from "./config";
 export const ebayInventoryScopes = ["https://api.ebay.com/oauth/api_scope/sell.inventory"];
 export const ebayFeedbackScope = "https://api.ebay.com/oauth/api_scope/commerce.feedback";
 export const ebayFulfillmentScope = "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
-export const ebayAuthorizationScopes = [...ebayInventoryScopes, ebayFeedbackScope, ebayFulfillmentScope];
+export const ebayFinancesScope = "https://api.ebay.com/oauth/api_scope/sell.finances";
+export const ebayAuthorizationScopes = [
+  ...ebayInventoryScopes,
+  ebayFeedbackScope,
+  ebayFulfillmentScope,
+  ebayFinancesScope
+];
 
 const refreshSkewMs = 5 * 60_000;
 

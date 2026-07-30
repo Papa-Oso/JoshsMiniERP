@@ -34,6 +34,29 @@ export type EbayFinancialTransaction = {
   currency: string;
 };
 
+export type MarketplaceFinancialTransaction = {
+  platform: Platform;
+  transactionKey: string;
+  transactionDate: string;
+  type: string;
+  orderId: string;
+  grossAmount: number;
+  feeAmount: number;
+  refundAmount: number;
+  shippingLabelAmount: number | null;
+  netAmount: number;
+  currency: string;
+};
+
+export type MarketplaceFinancialPull = {
+  status: "success" | "partial" | "error";
+  message: string;
+  coverageStart: string;
+  coverageEnd: string;
+  accountActivityAvailable: boolean;
+  shippingLabelsAvailable: boolean;
+};
+
 export async function upsertEbayTransactions(rows: EbayFinancialTransaction[]) {
   await ensureLegacySalesMigrated();
   await database.write((db) => {
@@ -96,7 +119,13 @@ export async function upsertSalesOrders(platform: Platform, orders: SalesOrder[]
   return { platform, ordersSeen: orders.length, pulledAt: seenAt };
 }
 
-export async function applySalesImport(platform: Platform, orders: SalesOrder[], refunds: SalesRefund[]) {
+export async function applySalesImport(
+  platform: Platform,
+  orders: SalesOrder[],
+  refunds: SalesRefund[],
+  financialTransactions: MarketplaceFinancialTransaction[] = [],
+  financialPull?: MarketplaceFinancialPull
+) {
   await ensureLegacySalesMigrated();
   const seenAt = new Date().toISOString();
   await database.write((db) => {
@@ -105,6 +134,7 @@ export async function applySalesImport(platform: Platform, orders: SalesOrder[],
     try {
       for (const order of orders) upsertOrder(db, platform, order, seenAt);
       for (const refund of refunds) upsertRefund(db, refund);
+      for (const transaction of financialTransactions) upsertMarketplaceFinancialTransaction(db, transaction);
       updateRefundTotals(
         db,
         platform,
@@ -114,13 +144,37 @@ export async function applySalesImport(platform: Platform, orders: SalesOrder[],
         `INSERT INTO sales_pulls (platform, pulled_at, orders_seen, status, message) VALUES (?, ?, ?, 'success', '')`,
         [platform, seenAt, orders.length]
       );
+      if (financialPull) {
+        db.run(
+          `INSERT INTO marketplace_financial_pulls (platform, pulled_at, transactions_seen, status, message, coverage_start, coverage_end, account_activity_available, shipping_labels_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            platform,
+            seenAt,
+            financialTransactions.length,
+            financialPull.status,
+            financialPull.message.slice(0, 500),
+            financialPull.coverageStart,
+            financialPull.coverageEnd,
+            financialPull.accountActivityAvailable ? 1 : 0,
+            financialPull.shippingLabelsAvailable ? 1 : 0
+          ]
+        );
+      }
       db.run("COMMIT");
     } catch (error) {
       db.run("ROLLBACK");
       throw error;
     }
   });
-  return { platform, ordersSeen: orders.length, refundsSeen: refunds.length, pulledAt: seenAt };
+  return {
+    platform,
+    ordersSeen: orders.length,
+    refundsSeen: refunds.length,
+    financialTransactionsSeen: financialTransactions.length,
+    financialStatus: financialPull?.status,
+    financialMessage: financialPull?.message ?? "",
+    pulledAt: seenAt
+  };
 }
 
 export async function upsertSalesRefunds(refunds: SalesRefund[]) {
@@ -198,6 +252,52 @@ export async function loadSalesOrders() {
       byOrder.set(key, collection);
     }
     return orders.map((order) => ({ ...order, lineItems: byOrder.get(`${order.platform}:${order.orderId}`) ?? [] }));
+  });
+}
+
+export async function loadMarketplaceFinancialTransactions() {
+  await ensureLegacySalesMigrated();
+  return database.read((db) => {
+    ensureSchema(db);
+    return queryRows(
+      db,
+      "SELECT platform, transaction_key, transaction_date, type, order_id, gross_amount, fee_amount, refund_amount, shipping_label_amount, net_amount, currency FROM marketplace_financial_transactions ORDER BY transaction_date DESC"
+    ).map((row): MarketplaceFinancialTransaction => ({
+      platform: String(row.platform) as Platform,
+      transactionKey: String(row.transaction_key),
+      transactionDate: String(row.transaction_date),
+      type: String(row.type),
+      orderId: String(row.order_id ?? ""),
+      grossAmount: Number(row.gross_amount ?? 0),
+      feeAmount: Number(row.fee_amount ?? 0),
+      refundAmount: Number(row.refund_amount ?? 0),
+      shippingLabelAmount: row.shipping_label_amount === null ? null : Number(row.shipping_label_amount ?? 0),
+      netAmount: Number(row.net_amount ?? 0),
+      currency: String(row.currency ?? "USD")
+    }));
+  });
+}
+
+export async function loadMarketplaceFinancialPulls() {
+  await ensureLegacySalesMigrated();
+  return database.read((db) => {
+    ensureSchema(db);
+    return queryRows(
+      db,
+      `SELECT pulls.*, coverage.available_coverage_start, coverage.available_coverage_end
+       FROM marketplace_financial_pulls pulls
+       JOIN (SELECT platform, MAX(id) AS id FROM marketplace_financial_pulls GROUP BY platform) latest
+       ON pulls.id = latest.id
+       JOIN (
+         SELECT
+           platform,
+           MIN(CASE WHEN status <> 'error' THEN NULLIF(coverage_start, '') END) AS available_coverage_start,
+           MAX(CASE WHEN status <> 'error' THEN NULLIF(coverage_end, '') END) AS available_coverage_end
+         FROM marketplace_financial_pulls
+         GROUP BY platform
+       ) coverage ON coverage.platform = pulls.platform
+       ORDER BY pulls.pulled_at DESC`
+    );
   });
 }
 
@@ -392,6 +492,28 @@ function upsertRefund(db: Database, refund: SalesRefund) {
     ]
   );
 }
+
+function upsertMarketplaceFinancialTransaction(db: Database, transaction: MarketplaceFinancialTransaction) {
+  db.run(
+    `INSERT INTO marketplace_financial_transactions (platform, transaction_key, transaction_date, type, order_id, gross_amount, fee_amount, refund_amount, shipping_label_amount, net_amount, currency)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(platform, transaction_key) DO UPDATE SET transaction_date=excluded.transaction_date, type=excluded.type, order_id=excluded.order_id, gross_amount=excluded.gross_amount, fee_amount=excluded.fee_amount, refund_amount=excluded.refund_amount, shipping_label_amount=excluded.shipping_label_amount, net_amount=excluded.net_amount, currency=excluded.currency`,
+    [
+      transaction.platform,
+      transaction.transactionKey,
+      transaction.transactionDate,
+      transaction.type,
+      transaction.orderId,
+      transaction.grossAmount,
+      transaction.feeAmount,
+      transaction.refundAmount,
+      transaction.shippingLabelAmount,
+      transaction.netAmount,
+      transaction.currency
+    ]
+  );
+}
+
 function updateRefundTotals(db: Database, platform: Platform, orderIds: string[]) {
   for (const orderId of orderIds)
     db.run(
@@ -418,6 +540,12 @@ function ensureSchema(db: Database) {
   ensureColumn(db, "sales_refunds", "components_complete", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "sales_refunds", "source", "TEXT NOT NULL DEFAULT 'legacy'");
   ensureColumn(db, "sales_refunds", "source_updated_at", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(
+    db,
+    "marketplace_financial_pulls",
+    "account_activity_available",
+    "INTEGER NOT NULL DEFAULT 0"
+  );
 }
 function ensureColumn(db: Database, table: string, column: string, definition: string) {
   const columns = db.exec(`PRAGMA table_info(${table})`)[0]?.values ?? [];
@@ -507,4 +635,6 @@ CREATE TABLE IF NOT EXISTS sales_line_items (platform TEXT NOT NULL, order_id TE
 CREATE TABLE IF NOT EXISTS sales_pulls (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL, pulled_at TEXT NOT NULL, orders_seen INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS sales_refunds (platform TEXT NOT NULL, order_id TEXT NOT NULL, refund_id TEXT NOT NULL, refunded_at TEXT NOT NULL, product_amount REAL NOT NULL DEFAULT 0, shipping_amount REAL NOT NULL DEFAULT 0, tax_amount REAL NOT NULL DEFAULT 0, total_amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '', currency TEXT NOT NULL DEFAULT 'USD', PRIMARY KEY (platform, order_id, refund_id));
 CREATE TABLE IF NOT EXISTS ebay_financial_transactions (transaction_key TEXT PRIMARY KEY, transaction_date TEXT NOT NULL, type TEXT NOT NULL, order_id TEXT NOT NULL DEFAULT '', legacy_order_id TEXT NOT NULL DEFAULT '', transaction_id TEXT NOT NULL DEFAULT '', reference_id TEXT NOT NULL DEFAULT '', payout_id TEXT NOT NULL DEFAULT '', payout_date TEXT NOT NULL DEFAULT '', payout_status TEXT NOT NULL DEFAULT '', item_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', sku TEXT NOT NULL DEFAULT '', quantity REAL NOT NULL DEFAULT 0, item_subtotal REAL NOT NULL DEFAULT 0, shipping_amount REAL NOT NULL DEFAULT 0, tax_amount REAL NOT NULL DEFAULT 0, fee_amount REAL NOT NULL DEFAULT 0, gross_amount REAL NOT NULL DEFAULT 0, net_amount REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USD');
-CREATE INDEX IF NOT EXISTS idx_sales_orders_created ON sales_orders(created_at DESC); CREATE INDEX IF NOT EXISTS idx_sales_orders_country ON sales_orders(country_code); CREATE INDEX IF NOT EXISTS idx_sales_lines_sku ON sales_line_items(sku); CREATE INDEX IF NOT EXISTS idx_sales_refunds_date ON sales_refunds(refunded_at DESC);`;
+CREATE TABLE IF NOT EXISTS marketplace_financial_transactions (platform TEXT NOT NULL, transaction_key TEXT NOT NULL, transaction_date TEXT NOT NULL, type TEXT NOT NULL, order_id TEXT NOT NULL DEFAULT '', gross_amount REAL NOT NULL DEFAULT 0, fee_amount REAL NOT NULL DEFAULT 0, refund_amount REAL NOT NULL DEFAULT 0, shipping_label_amount REAL, net_amount REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USD', PRIMARY KEY (platform, transaction_key));
+CREATE TABLE IF NOT EXISTS marketplace_financial_pulls (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL, pulled_at TEXT NOT NULL, transactions_seen INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', coverage_start TEXT NOT NULL DEFAULT '', coverage_end TEXT NOT NULL DEFAULT '', account_activity_available INTEGER NOT NULL DEFAULT 0, shipping_labels_available INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_sales_orders_created ON sales_orders(created_at DESC); CREATE INDEX IF NOT EXISTS idx_sales_orders_country ON sales_orders(country_code); CREATE INDEX IF NOT EXISTS idx_sales_lines_sku ON sales_line_items(sku); CREATE INDEX IF NOT EXISTS idx_sales_refunds_date ON sales_refunds(refunded_at DESC); CREATE INDEX IF NOT EXISTS idx_marketplace_financial_date ON marketplace_financial_transactions(platform, transaction_date DESC); CREATE INDEX IF NOT EXISTS idx_marketplace_financial_pulls ON marketplace_financial_pulls(platform, pulled_at DESC);`;

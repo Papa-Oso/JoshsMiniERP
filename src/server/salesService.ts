@@ -1,4 +1,5 @@
 import type {
+  MarketplaceFinancialSummary,
   Platform,
   SalesDashboardPayload,
   SalesIntegrityWarningCode,
@@ -12,6 +13,8 @@ import {
   applySalesImport,
   loadCanonicalProducts,
   loadEbayFinancialTransactions,
+  loadMarketplaceFinancialPulls,
+  loadMarketplaceFinancialTransactions,
   loadSalesOrders,
   loadSalesPulls,
   loadSalesRefunds,
@@ -19,12 +22,30 @@ import {
 } from "./salesStore";
 
 export async function refreshSales(selected: Platform[] = platforms) {
-  const results: Array<{ platform: Platform; ok: boolean; ordersSeen: number; message: string }> = [];
+  const results: Array<{
+    platform: Platform;
+    ok: boolean;
+    ordersSeen: number;
+    message: string;
+    financialStatus?: "success" | "partial" | "error";
+  }> = [];
   for (const platform of selected) {
     try {
       const batch = await importPlatformSales(platform);
-      await applySalesImport(platform, batch.orders, batch.refunds);
-      results.push({ platform, ok: true, ordersSeen: batch.orders.length, message: "" });
+      await applySalesImport(
+        platform,
+        batch.orders,
+        batch.refunds,
+        batch.financialTransactions,
+        batch.financialPull
+      );
+      results.push({
+        platform,
+        ok: true,
+        ordersSeen: batch.orders.length,
+        message: batch.financialPull.message,
+        financialStatus: batch.financialPull.status
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await recordSalesPullFailure(platform, message);
@@ -38,10 +59,11 @@ export async function getSalesDashboard({
   range = "90d",
   platform = "all"
 }: { range?: string; platform?: Platform | "all" } = {}): Promise<SalesDashboardPayload> {
-  const [allOrders, pulls, allEbayFinancials, products] = await Promise.all([
+  const [allOrders, pulls, allFinancials, financialPulls, products] = await Promise.all([
     loadSalesOrders(),
     loadSalesPulls(),
-    loadEbayFinancialTransactions(),
+    loadMarketplaceFinancialTransactions(),
+    loadMarketplaceFinancialPulls(),
     loadCanonicalProducts()
   ]);
   const start = rangeStart(range);
@@ -55,11 +77,12 @@ export async function getSalesDashboard({
   const currency = currencies[0] ?? "USD";
   const revenue = sum(orders.map(revenueAmount));
   const units = sum(orders.map((order) => order.itemCount));
-  const ebayFinancialRows =
-    platform === "etsy" || platform === "shopify"
-      ? []
-      : allEbayFinancials.filter((row) => !start || Date.parse(row.transactionDate) >= start);
-  const ebayFinancials = ebayFinancialRows.length ? summarizeEbayFinancials(ebayFinancialRows) : null;
+  const financialRows = allFinancials.filter(
+    (row) =>
+      (platform === "all" || row.platform === platform) &&
+      (!start || Date.parse(row.transactionDate) >= start)
+  );
+  const financialSummaries = summarizeMarketplaceFinancials(financialRows, financialPulls);
   const warnings: string[] = [];
   if (currencies.length > 1) warnings.push("Multiple currencies are shown without exchange-rate conversion.");
   const unresolvedOrders = orders.filter((order) => order.reconciliationState === "unresolved").length;
@@ -80,13 +103,30 @@ export async function getSalesDashboard({
     const latest = pulls.find((pull) => pull.platform === source);
     if (latest?.status === "error") warnings.push(`${label(source)} sales pull needs attention: ${latest.message}`);
   }
-  if ((platform === "all" || platform === "ebay") && orders.some((order) => order.platform === "ebay")) {
-    if (!ebayFinancials) {
-      warnings.push("No imported eBay transaction report covers this selection.");
-    } else if (Date.now() - Date.parse(ebayFinancials.coverageEnd) > 48 * 3_600_000) {
-      warnings.push(
-        `eBay costs are partial: the imported transaction report ends ${formatShortDate(ebayFinancials.coverageEnd)}. Pull sales does not update transaction reports.`
-      );
+  for (const source of platforms.filter((source) => platform === "all" || source === platform)) {
+    const sourceOrders = orders.filter((order) => order.platform === source);
+    if (!sourceOrders.length) continue;
+    const financialPull = financialPulls.find((pull) => pull.platform === source);
+    if (!financialPull) {
+      warnings.push(`${label(source)} automated cost data has not been pulled yet.`);
+    } else if (financialPull.status === "error") {
+      warnings.push(`${label(source)} automated cost pull needs attention: ${financialPull.message}`);
+    } else {
+      if (financialPull.status === "partial" && financialPull.message) {
+        warnings.push(`${label(source)} automated costs are partial: ${financialPull.message}`);
+      }
+      const availableCoverageStart = Date.parse(String(financialPull.available_coverage_start ?? ""));
+      const earliestSelectedOrder = Math.min(...sourceOrders.map((order) => Date.parse(order.createdAt)));
+      if (Number.isFinite(availableCoverageStart) && earliestSelectedOrder < availableCoverageStart) {
+        warnings.push(
+          `${label(source)} automated costs begin ${formatShortDate(String(financialPull.available_coverage_start))}; earlier orders in this selection are not included in the cost totals.`
+        );
+      }
+      if (Date.now() - Date.parse(String(financialPull.coverage_end)) > 48 * 3_600_000) {
+        warnings.push(
+          `${label(source)} automated cost data is stale; it was last refreshed ${formatShortDate(String(financialPull.pulled_at))}.`
+        );
+      }
     }
   }
 
@@ -102,7 +142,7 @@ export async function getSalesDashboard({
       averageOrderValue: orders.length ? revenue / orders.length : 0,
       currency
     },
-    ebayFinancials,
+    financialSummaries,
     trend: aggregateTrend(orders),
     platforms: platforms.map((source) => aggregatePlatform(orders, source)),
     countries: aggregateCountries(orders),
@@ -384,26 +424,42 @@ function addWarning(
   if (count > 0) warnings.push({ code, count, message });
 }
 
-function summarizeEbayFinancials(rows: Awaited<ReturnType<typeof loadEbayFinancialTransactions>>) {
-  const operational = rows.filter((row) => !["payout", "hold", "transfer", "reserve"].includes(row.type.toLowerCase()));
-  const byType = (type: string) => rows.filter((row) => row.type.toLowerCase() === type);
-  const dates = rows.map((row) => row.transactionDate).sort();
-  return {
-    grossSales: sum(byType("order").map((row) => row.grossAmount)),
-    fees: Math.abs(
-      sum(
-        operational.map((row) =>
-          row.type.toLowerCase() === "other fee" ? row.feeAmount || row.netAmount : row.feeAmount
-        )
-      )
-    ),
-    refunds: Math.abs(sum(byType("refund").map((row) => row.netAmount))),
-    shippingLabels: Math.abs(sum(byType("shipping label").map((row) => row.netAmount))),
-    netProceeds: sum(operational.map((row) => row.netAmount)),
-    transactionCount: rows.length,
-    coverageStart: dates[0] ?? "",
-    coverageEnd: dates.at(-1) ?? ""
-  };
+function summarizeMarketplaceFinancials(
+  rows: Awaited<ReturnType<typeof loadMarketplaceFinancialTransactions>>,
+  pulls: Awaited<ReturnType<typeof loadMarketplaceFinancialPulls>>
+) {
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.platform}:${row.currency}`;
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map((group): MarketplaceFinancialSummary => {
+      const source = group[0].platform;
+      const pull = pulls.find((row) => row.platform === source);
+      const accountActivityAvailable = Number(pull?.account_activity_available ?? 0) === 1;
+      const shippingLabelsAvailable = Number(pull?.shipping_labels_available ?? 0) === 1;
+      return {
+        platform: source,
+        currency: group[0].currency,
+        grossSales: sum(group.map((row) => row.grossAmount)),
+        fees: Math.abs(sum(group.map((row) => row.feeAmount))),
+        refunds: Math.abs(sum(group.map((row) => row.refundAmount))),
+        shippingLabels: shippingLabelsAvailable
+          ? Math.abs(sum(group.map((row) => row.shippingLabelAmount ?? 0)))
+          : null,
+        netActivity: sum(group.map((row) => row.netAmount)),
+        transactionCount: group.length,
+        coverageStart: String(pull?.available_coverage_start ?? pull?.coverage_start ?? ""),
+        coverageEnd: String(pull?.available_coverage_end ?? pull?.coverage_end ?? ""),
+        lastPulledAt: String(pull?.pulled_at ?? ""),
+        accountActivityAvailable,
+        limitations: pull?.message ? [String(pull.message)] : []
+      };
+    })
+    .sort((left, right) => platforms.indexOf(left.platform) - platforms.indexOf(right.platform));
 }
 
 function aggregateTrend(orders: SalesOrder[]) {

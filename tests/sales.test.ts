@@ -12,7 +12,6 @@ const {
   applySalesImport,
   loadSalesOrders,
   loadSalesRefunds,
-  upsertEbayTransactions,
   upsertSalesOrders,
   upsertSalesRefunds
 } = await import("../src/server/salesStore.ts");
@@ -42,67 +41,135 @@ test("sales dashboard aggregates revenue, geography, products, and platform cove
   assert.equal(dashboard.products[0].sku, "SKU-1");
   assert.equal(dashboard.products[0].title, "Product");
   assert.equal(dashboard.platforms.find((row) => row.platform === "shopify")?.orders, 1);
+  assert.equal(dashboard.financialSummaries.length, 0);
   assert.ok(dashboard.warnings.some((warning) => /1 included order does not yet have/.test(warning)));
+  assert.ok(dashboard.warnings.some((warning) => /Shopify automated cost data has not been pulled yet/.test(warning)));
 });
 
-test("eBay transaction summary includes other fees and reports its coverage boundary", async () => {
-  const financial = (overrides: Partial<Parameters<typeof upsertEbayTransactions>[0][number]> = {}) => ({
+test("automated marketplace financial summary includes fees, labels, and API coverage", async () => {
+  const financial = (
+    overrides: Partial<Parameters<typeof applySalesImport>[3][number]> = {}
+  ): Parameters<typeof applySalesImport>[3][number] => ({
+    platform: "ebay",
     transactionKey: "financial-order",
     transactionDate: "2026-07-10T12:00:00.000Z",
-    type: "Order",
+    type: "SALE",
     orderId: "financial-order",
-    legacyOrderId: "",
-    transactionId: "",
-    referenceId: "",
-    payoutId: "",
-    payoutDate: "",
-    payoutStatus: "",
-    itemId: "",
-    title: "",
-    sku: "",
-    quantity: 1,
-    itemSubtotal: 100,
-    shippingAmount: 0,
-    taxAmount: 0,
     feeAmount: -10,
     grossAmount: 100,
+    refundAmount: 0,
+    shippingLabelAmount: null,
     netAmount: 90,
     currency: "USD",
     ...overrides
   });
-  await upsertEbayTransactions([
-    financial(),
-    financial({
-      transactionKey: "other-fee",
-      transactionDate: "2026-07-11T12:00:00.000Z",
-      type: "Other fee",
-      feeAmount: 0,
-      grossAmount: -4,
-      netAmount: -4
-    }),
-    financial({
-      transactionKey: "fee-credit",
-      transactionDate: "2026-07-12T12:00:00.000Z",
-      type: "Refund",
-      feeAmount: 2,
-      grossAmount: -20,
-      netAmount: -18
-    }),
-    financial({
-      transactionKey: "shipping-label",
-      transactionDate: "2026-07-13T12:00:00.000Z",
-      type: "Shipping label",
-      feeAmount: 0,
-      grossAmount: -3,
-      netAmount: -3
-    })
-  ]);
+  await applySalesImport(
+    "ebay",
+    [
+      {
+        ...order(),
+        platform: "ebay",
+        orderId: "ebay-before-financial-coverage",
+        createdAt: "2026-07-09T12:00:00.000Z",
+        updatedAt: "2026-07-09T12:00:00.000Z"
+      }
+    ],
+    [],
+    [
+      financial(),
+      financial({
+        transactionKey: "other-fee",
+        transactionDate: "2026-07-11T12:00:00.000Z",
+        type: "NON_SALE_CHARGE",
+        feeAmount: -4,
+        grossAmount: 0,
+        netAmount: -4
+      }),
+      financial({
+        transactionKey: "fee-credit",
+        transactionDate: "2026-07-12T12:00:00.000Z",
+        type: "REFUND",
+        feeAmount: 2,
+        grossAmount: 0,
+        refundAmount: -18,
+        netAmount: -18
+      }),
+      financial({
+        transactionKey: "shipping-label",
+        transactionDate: "2026-07-13T12:00:00.000Z",
+        type: "SHIPPING_LABEL",
+        feeAmount: 0,
+        grossAmount: 0,
+        shippingLabelAmount: -3,
+        netAmount: -3
+      })
+    ],
+    {
+      status: "partial",
+      message: "PayPal-funded labels are excluded.",
+      coverageStart: "2026-07-10T00:00:00.000Z",
+      coverageEnd: "2026-07-14T00:00:00.000Z",
+      accountActivityAvailable: true,
+      shippingLabelsAvailable: true
+    }
+  );
+  await applySalesImport("ebay", [], [], [], {
+    status: "partial",
+    message: "PayPal-funded labels are excluded.",
+    coverageStart: "2026-07-11T00:00:00.000Z",
+    coverageEnd: "2026-07-15T00:00:00.000Z",
+    accountActivityAvailable: true,
+    shippingLabelsAvailable: true
+  });
   const dashboard = await getSalesDashboard({ range: "all", platform: "all" });
-  assert.equal(dashboard.ebayFinancials?.fees, 12);
-  assert.equal(dashboard.ebayFinancials?.shippingLabels, 3);
-  assert.equal(dashboard.ebayFinancials?.netProceeds, 65);
-  assert.equal(dashboard.ebayFinancials?.coverageStart, "2026-07-10T12:00:00.000Z");
-  assert.equal(dashboard.ebayFinancials?.coverageEnd, "2026-07-13T12:00:00.000Z");
+  const summary = dashboard.financialSummaries.find((row) => row.platform === "ebay");
+  assert.equal(summary?.fees, 12);
+  assert.equal(summary?.shippingLabels, 3);
+  assert.equal(summary?.netActivity, 65);
+  assert.equal(summary?.coverageStart, "2026-07-10T00:00:00.000Z");
+  assert.equal(summary?.coverageEnd, "2026-07-15T00:00:00.000Z");
+  assert.equal(summary?.accountActivityAvailable, true);
+  assert.deepEqual(summary?.limitations, ["PayPal-funded labels are excluded."]);
+  assert.ok(
+    dashboard.warnings.some((warning) =>
+      /eBay automated costs begin .+; earlier orders in this selection/.test(warning)
+    ),
+    dashboard.warnings.join("\n")
+  );
+});
+
+test("automated financial availability distinguishes labels from account activity", async () => {
+  await applySalesImport(
+    "shopify",
+    [],
+    [],
+    [
+      {
+        platform: "shopify",
+        transactionKey: "label-only",
+        transactionDate: "2026-07-10T12:00:00.000Z",
+        type: "SHIPPING_LABEL",
+        orderId: "",
+        grossAmount: 0,
+        feeAmount: 0,
+        refundAmount: 0,
+        shippingLabelAmount: -7,
+        netAmount: -7,
+        currency: "USD"
+      }
+    ],
+    {
+      status: "partial",
+      message: "Shopify Payments activity is unavailable.",
+      coverageStart: "2026-01-01T06:00:00.000Z",
+      coverageEnd: "2026-07-29T12:00:00.000Z",
+      accountActivityAvailable: false,
+      shippingLabelsAvailable: true
+    }
+  );
+  const dashboard = await getSalesDashboard({ range: "all", platform: "shopify" });
+  assert.equal(dashboard.financialSummaries[0]?.accountActivityAvailable, false);
+  assert.equal(dashboard.financialSummaries[0]?.shippingLabels, 7);
 });
 
 test("inventory and sales share one SQLite file without overwriting each other", async () => {

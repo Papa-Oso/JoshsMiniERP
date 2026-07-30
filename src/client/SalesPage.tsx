@@ -16,7 +16,7 @@ const empty: SalesDashboardPayload = {
   range: "90d",
   platform: "all",
   summary: { revenue: 0, orders: 0, units: 0, averageOrderValue: 0, currency: "USD" },
-  ebayFinancials: null,
+  financialSummaries: [],
   trend: [],
   platforms: [],
   countries: [],
@@ -61,10 +61,10 @@ export function SalesPage() {
       setBusy(false);
     }
   }
-  const money = (value: number) =>
+  const money = (value: number, currency = data.summary.currency) =>
     new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: data.summary.currency,
+      currency,
       maximumFractionDigits: 0
     }).format(value);
 
@@ -143,21 +143,53 @@ export function SalesPage() {
           money={money}
         />
       </Panel>
-      {data.ebayFinancials ? (
-        <Panel title="Imported eBay transaction report" icon={<BarChart3 size={17} />}>
+      {data.financialSummaries.map((summary) => (
+        <Panel
+          title={`Automated ${platformLabels[summary.platform]} financial activity`}
+          icon={<BarChart3 size={17} />}
+          key={`${summary.platform}:${summary.currency}`}
+        >
           <p className="sales-panel-note">
-            Report coverage: {formatDate(data.ebayFinancials.coverageStart)}–{formatDate(data.ebayFinancials.coverageEnd)}.
-            Pull sales does not update this report.
+            Refreshed by Pull sales. Source coverage: {formatDate(summary.coverageStart)}–
+            {formatDate(summary.coverageEnd)}.
           </p>
-          <section className="sales-metrics ebay-financial-metrics">
-            <Metric label="Gross sales" value={money(data.ebayFinancials.grossSales)} />
-            <Metric label="eBay fees & charges" value={money(data.ebayFinancials.fees)} tone="warn" />
-            <Metric label="Refund activity" value={money(data.ebayFinancials.refunds)} tone="warn" />
-            <Metric label="eBay label charges" value={money(data.ebayFinancials.shippingLabels)} />
-            <Metric label="Net transaction activity" value={money(data.ebayFinancials.netProceeds)} />
+          <section className="sales-metrics marketplace-financial-metrics">
+            <Metric
+              label="Gross sales"
+              value={
+                summary.accountActivityAvailable ? money(summary.grossSales, summary.currency) : "Unavailable"
+              }
+            />
+            <Metric
+              label={`${platformLabels[summary.platform]} fees & charges`}
+              value={summary.accountActivityAvailable ? money(summary.fees, summary.currency) : "Unavailable"}
+              tone="warn"
+            />
+            <Metric
+              label="Refund activity"
+              value={summary.accountActivityAvailable ? money(summary.refunds, summary.currency) : "Unavailable"}
+              tone="warn"
+            />
+            <Metric
+              label="Captured label charges"
+              value={
+                summary.shippingLabels === null ? "Unavailable" : money(summary.shippingLabels, summary.currency)
+              }
+            />
+            <Metric
+              label="Net account activity"
+              value={
+                summary.accountActivityAvailable ? money(summary.netActivity, summary.currency) : "Unavailable"
+              }
+            />
           </section>
+          {summary.limitations.map((limitation) => (
+            <p className="sales-panel-note" key={limitation}>
+              Limitation: {limitation}
+            </p>
+          ))}
         </Panel>
-      ) : null}
+      ))}
       <section className="sales-primary-grid">
         <Panel title="Sales trend" icon={<TrendingUp size={17} />}>
           <TrendChart data={data.trend} money={money} />

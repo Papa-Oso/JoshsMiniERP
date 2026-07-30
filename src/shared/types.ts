@@ -67,22 +67,29 @@ export interface SalesRefund {
   sourceUpdatedAt: string;
 }
 
+export interface MarketplaceFinancialSummary {
+  platform: Platform;
+  currency: string;
+  grossSales: number;
+  fees: number;
+  refunds: number;
+  shippingLabels: number | null;
+  netActivity: number;
+  transactionCount: number;
+  coverageStart: string;
+  coverageEnd: string;
+  lastPulledAt: string;
+  accountActivityAvailable: boolean;
+  limitations: string[];
+}
+
 export interface SalesDashboardPayload {
   generatedAt: string;
   lastPulledAt: string | null;
   range: string;
   platform: Platform | "all";
   summary: { revenue: number; orders: number; units: number; averageOrderValue: number; currency: string };
-  ebayFinancials: {
-    grossSales: number;
-    fees: number;
-    refunds: number;
-    shippingLabels: number;
-    netProceeds: number;
-    transactionCount: number;
-    coverageStart: string;
-    coverageEnd: string;
-  } | null;
+  financialSummaries: MarketplaceFinancialSummary[];
   trend: Array<{ date: string; revenue: number; orders: number; units: number }>;
   platforms: Array<{ platform: Platform; revenue: number; orders: number; units: number }>;
   countries: Array<{ countryCode: string; revenue: number; orders: number; units: number }>;

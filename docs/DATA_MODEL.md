@@ -6,15 +6,15 @@ JSON files are export, backup, or migration formats. Timestamped `*.sqlite.migra
 
 ## Table Groups
 
-| Module         | Primary tables                                                                                                | Stable identity                                                             |
-| -------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Inventory      | `inventory_items`, `platform_mappings`, `inventory_events`                                                    | Internal item ID; case-insensitive SKU uniqueness                           |
-| Sync           | `sync_runs`, `sync_run_messages`, `schedule_settings`                                                         | Run ID                                                                      |
-| Imports        | `import_batches`, `import_batch_rows`                                                                         | Batch ID and row position                                                   |
-| Reconciliation | `reconcile_runs`, `reconcile_rows`                                                                            | Run ID and row position                                                     |
-| Printing       | `print_settings`, `print_instructions`, `print_instruction_events`, `sku_instruction_matches`, `print_assets` | Instruction, SKU, and asset IDs                                             |
-| Reviews        | `scanned_feedback`, `feedback_scan_runs`, `review_product_aliases`                                            | Platform plus marketplace feedback ID, hashed into `feedback_key`           |
-| Sales          | `sales_orders`, `sales_line_items`, `sales_refunds`, `sales_pulls`, `ebay_financial_transactions`             | Platform plus marketplace order/line/refund ID; hashed eBay financial event |
+| Module         | Primary tables                                                                                                                                                         | Stable identity                                                   |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Inventory      | `inventory_items`, `platform_mappings`, `inventory_events`                                                                                                             | Internal item ID; case-insensitive SKU uniqueness                 |
+| Sync           | `sync_runs`, `sync_run_messages`, `schedule_settings`                                                                                                                  | Run ID                                                            |
+| Imports        | `import_batches`, `import_batch_rows`                                                                                                                                  | Batch ID and row position                                         |
+| Reconciliation | `reconcile_runs`, `reconcile_rows`                                                                                                                                     | Run ID and row position                                           |
+| Printing       | `print_settings`, `print_instructions`, `print_instruction_events`, `sku_instruction_matches`, `print_assets`                                                          | Instruction, SKU, and asset IDs                                   |
+| Reviews        | `scanned_feedback`, `feedback_scan_runs`, `review_product_aliases`                                                                                                     | Platform plus marketplace feedback ID, hashed into `feedback_key` |
+| Sales          | `sales_orders`, `sales_line_items`, `sales_refunds`, `sales_pulls`, `marketplace_financial_transactions`, `marketplace_financial_pulls`, `ebay_financial_transactions` | Platform plus marketplace order/line/refund/financial-event ID    |
 
 ## Data Practices
 
@@ -24,6 +24,8 @@ JSON files are export, backup, or migration formats. Timestamped `*.sqlite.migra
 - Sales geography is limited to country and region. Customer names, emails, phone numbers, street addresses, cities, and postal codes are discarded during import.
 - Comparable net sales are product revenue after seller discounts, plus buyer-paid shipping, minus refunded pre-tax product and shipping revenue. Discounts remain separately reportable but are already reflected in normalized product revenue. Canceled orders and marketplace-collected tax/VAT contribute zero.
 - Marketplace fees and purchased shipping labels remain separate from comparable sales and contribute only to expense and net-proceeds reporting.
+- Automated provider financial activity is normalized into `marketplace_financial_transactions`. Each provider pull records its status, limitations, API coverage, and whether account-activity and shipping-label totals are independently available; cumulative successful coverage remains visible when later pulls use rolling windows.
+- `ebay_financial_transactions` retains manually imported eBay reports for historical reconciliation and backfill. Manual report rows do not drive the current automated financial-activity panels.
 - eBay financial transactions contribute to reconciliation aggregates only when their order ID and currency exactly match a saved eBay order. Duplicate transaction keys are counted once; unmatched and currency-conflicting rows remain excluded and are reported as aggregate integrity warnings.
 - Financial completeness, source, source update time, reconciliation state, and the set of supplied financial fields are stored explicitly. Field presence distinguishes a legitimate zero from a missing value.
 - Financial sources follow the ADR precedence order. Higher-priority sources replace supplied components; equal-priority newer pulls refresh them; lower-priority sources may fill only components not supplied by the authoritative source.

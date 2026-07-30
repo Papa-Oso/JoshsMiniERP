@@ -1,16 +1,23 @@
 import type { Platform, SalesOrder, SalesRefund } from "../shared/types";
 import { ShopifyAdapter } from "./adapters/shopify";
 import { config } from "./config";
-import { ebayFulfillmentScope, getEbayAccessToken } from "./ebayAuth";
+import { ebayFinancesScope, ebayFulfillmentScope, getEbayAccessToken } from "./ebayAuth";
 import { getEtsyAccessToken } from "./etsyAuth";
 import { resolveEtsyShopId } from "./etsyReviews";
+import type { MarketplaceFinancialPull, MarketplaceFinancialTransaction } from "./salesStore";
 
 export interface SalesImportBatch {
   orders: SalesOrder[];
   refunds: SalesRefund[];
+  financialTransactions: MarketplaceFinancialTransaction[];
+  financialPull: MarketplaceFinancialPull;
 }
 export async function importPlatformSales(platform: Platform): Promise<SalesImportBatch> {
-  if (platform === "shopify") return { orders: await importShopifySales(), refunds: [] };
+  if (platform === "shopify") {
+    const orders = await importShopifySales();
+    const financial = await optionalFinancialPull(importShopifyFinancials);
+    return { orders, refunds: [], financialTransactions: financial.transactions, financialPull: financial.pull };
+  }
   if (platform === "ebay") return importEbaySales();
   return importEtsySales();
 }
@@ -46,6 +53,36 @@ interface ShopifyOrdersPage {
   };
 }
 
+interface ShopifyPaymentsPage {
+  shopifyPaymentsAccount: {
+    balanceTransactions: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: Array<{
+        id: string;
+        transactionDate: string;
+        type: string;
+        amount: { amount: string; currencyCode: string };
+        fee: { amount: string; currencyCode: string };
+        net: { amount: string; currencyCode: string };
+        associatedOrder?: { id?: string } | null;
+      }>;
+    };
+  } | null;
+}
+
+interface ShopifyQlPayload {
+  shopifyqlQuery: {
+    tableData?: {
+      rows?: Array<{
+        day?: string;
+        shipping_label_currency?: string;
+        shipping_label_costs?: string;
+      }>;
+    } | null;
+    parseErrors: string[];
+  };
+}
+
 async function importShopifySales() {
   const adapter = new ShopifyAdapter();
   if (!adapter.isConfigured()) throw new Error(`Shopify is missing: ${adapter.missingEnv().join(", ")}.`);
@@ -77,6 +114,156 @@ async function importShopifySales() {
     after = payload.orders.pageInfo.hasNextPage ? payload.orders.pageInfo.endCursor : null;
   } while (after);
   return orders;
+}
+
+async function importShopifyFinancials() {
+  const adapter = new ShopifyAdapter();
+  const { start, end } = financialWindow();
+  const transactions: MarketplaceFinancialTransaction[] = [];
+  const limitations: string[] = [];
+  let completedSources = 0;
+  let accountActivityAvailable = false;
+  let shippingLabelsAvailable = false;
+
+  try {
+    const paymentTransactions: MarketplaceFinancialTransaction[] = [];
+    let paymentsAccountAvailable = true;
+    let after: string | null = null;
+    do {
+      const payload: ShopifyPaymentsPage = await adapter.runGraphql<ShopifyPaymentsPage>(
+        `query ShopifyPaymentsActivity($after: String, $query: String!) {
+          shopifyPaymentsAccount {
+            balanceTransactions(first: 250, after: $after, hideTransfers: true, query: $query, sortKey: PROCESSED_AT, reverse: true) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id transactionDate type
+                amount { amount currencyCode }
+                fee { amount currencyCode }
+                net { amount currencyCode }
+                associatedOrder { id }
+              }
+            }
+          }
+        }`,
+        { after, query: `processed_at:>=${start}` }
+      );
+      if (!payload.shopifyPaymentsAccount) {
+        limitations.push("Shopify Payments is not active for this shop, so payment fees and net activity are unavailable.");
+        paymentsAccountAvailable = false;
+        break;
+      }
+      validateShopifyPaymentsPage(payload);
+      paymentTransactions.push(
+        ...payload.shopifyPaymentsAccount.balanceTransactions.nodes.map(toShopifyFinancialTransaction)
+      );
+      after = payload.shopifyPaymentsAccount.balanceTransactions.pageInfo.hasNextPage
+        ? payload.shopifyPaymentsAccount.balanceTransactions.pageInfo.endCursor
+        : null;
+    } while (after);
+    if (paymentsAccountAvailable) {
+      transactions.push(...paymentTransactions);
+      accountActivityAvailable = true;
+      shippingLabelsAvailable = true;
+      completedSources += 1;
+    }
+  } catch (error) {
+    limitations.push(
+      `Shopify Payments activity is unavailable: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  if (!shippingLabelsAvailable) {
+    try {
+      const payload = await adapter.runGraphql<ShopifyQlPayload>(
+        `query ShopifyShippingLabelCosts($query: String!) {
+          shopifyqlQuery(query: $query) {
+            tableData { rows }
+            parseErrors
+          }
+        }`,
+        {
+          query: `FROM shipping_labels
+SHOW shipping_label_costs
+GROUP BY shipping_label_currency
+TIMESERIES day
+SINCE ${start.slice(0, 10)} UNTIL ${end.slice(0, 10)}
+ORDER BY day ASC`
+        }
+      );
+      if (payload.shopifyqlQuery.parseErrors.length) {
+        throw new Error(payload.shopifyqlQuery.parseErrors.join("; "));
+      }
+      const rows = payload.shopifyqlQuery.tableData?.rows;
+      if (!Array.isArray(rows)) throw new Error("Shopify shipping-label reporting returned malformed data.");
+      transactions.push(...rows.map(toShopifyShippingLabelTransaction));
+      completedSources += 1;
+      shippingLabelsAvailable = true;
+    } catch (error) {
+      limitations.push(
+        `Shopify Shipping label costs are unavailable: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  if (!completedSources) throw new Error(limitations.join(" "));
+  return {
+    transactions,
+    pull: {
+      status: limitations.length ? ("partial" as const) : ("success" as const),
+      message: limitations.join(" "),
+      coverageStart: start,
+      coverageEnd: end,
+      accountActivityAvailable,
+      shippingLabelsAvailable
+    }
+  };
+}
+
+export function toShopifyFinancialTransaction(
+  row: NonNullable<ShopifyPaymentsPage["shopifyPaymentsAccount"]>["balanceTransactions"]["nodes"][number]
+): MarketplaceFinancialTransaction {
+  const type = row.type.toUpperCase();
+  const amount = number(row.amount.amount);
+  const net = number(row.net.amount);
+  const isSale = type === "CHARGE";
+  const isRefund = type.startsWith("REFUND");
+  const isShippingLabel = type.startsWith("SHIPPING_");
+  const isProviderCharge = /(FEE|BILLING|CUSTOMS_DUTY|IMPORT_TAX)/.test(type);
+  return {
+    platform: "shopify",
+    transactionKey: row.id,
+    transactionDate: row.transactionDate,
+    type,
+    orderId: row.associatedOrder?.id?.split("/").at(-1) ?? "",
+    grossAmount: isSale ? Math.max(0, amount) : 0,
+    feeAmount: isSale || isRefund ? net - amount : isProviderCharge ? net : 0,
+    refundAmount: isRefund ? amount : 0,
+    shippingLabelAmount: isShippingLabel ? net : null,
+    netAmount: net,
+    currency: row.net.currencyCode || row.amount.currencyCode
+  };
+}
+
+export function toShopifyShippingLabelTransaction(
+  row: { day?: string; shipping_label_currency?: string; shipping_label_costs?: string }
+): MarketplaceFinancialTransaction {
+  if (!row.day || Number.isNaN(Date.parse(`${row.day}T00:00:00.000Z`)) || !Number.isFinite(Number(row.shipping_label_costs))) {
+    throw new Error("Shopify shipping-label reporting returned a malformed row.");
+  }
+  const cost = Math.abs(number(row.shipping_label_costs));
+  return {
+    platform: "shopify",
+    transactionKey: `shipping-label:${row.day}:${row.shipping_label_currency ?? "USD"}`,
+    transactionDate: `${row.day}T00:00:00.000Z`,
+    type: "SHIPPING_LABEL",
+    orderId: "",
+    grossAmount: 0,
+    feeAmount: 0,
+    refundAmount: 0,
+    shippingLabelAmount: -cost,
+    netAmount: 0,
+    currency: row.shipping_label_currency ?? "USD"
+  };
 }
 
 export function toShopifyOrder(order: ShopifyOrdersPage["orders"]["nodes"][number]): SalesOrder {
@@ -170,6 +357,23 @@ interface EbayRefund {
   amount?: Money;
 }
 
+interface EbayFinancePage {
+  total?: number;
+  transactions?: EbayFinanceTransaction[];
+  errors?: Array<{ message?: string; longMessage?: string }>;
+}
+
+interface EbayFinanceTransaction {
+  transactionId?: string;
+  transactionDate?: string;
+  transactionType?: string;
+  bookingEntry?: string;
+  orderId?: string;
+  amount?: Money;
+  totalFeeAmount?: Money;
+  totalFeeBasisAmount?: Money;
+}
+
 async function importEbaySales() {
   const token = await getEbayAccessToken(ebayFulfillmentScope);
   const orders: SalesOrder[] = [];
@@ -193,7 +397,83 @@ async function importEbaySales() {
     refunds.push(...payload.orders!.flatMap(ebayRefunds));
     next = payload.next ? new URL(payload.next, ebayBaseUrl()).toString() : null;
   }
-  return { orders, refunds };
+  const financial = await optionalFinancialPull(importEbayFinancials);
+  return { orders, refunds, financialTransactions: financial.transactions, financialPull: financial.pull };
+}
+
+async function importEbayFinancials() {
+  const token = await getEbayAccessToken(ebayFinancesScope);
+  const { start, end } = financialWindow();
+  const transactions: MarketplaceFinancialTransaction[] = [];
+  let offset = 0;
+  const limit = 1000;
+  let total = Number.POSITIVE_INFINITY;
+  while (offset < total) {
+    const url = new URL("/sell/finances/v1/transaction", ebayFinancesBaseUrl());
+    url.searchParams.set("filter", `transactionDate:[${start}..${end}]`);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": config.ebay.marketplaceId }
+    });
+    if (response.status === 204) break;
+    const payload = (await response.json().catch(() => ({}))) as EbayFinancePage;
+    if (!response.ok) {
+      throw new Error(
+        payload.errors?.[0]?.longMessage ||
+          payload.errors?.[0]?.message ||
+          `eBay Finances failed with ${response.status}.`
+      );
+    }
+    validateEbayFinancePage(payload);
+    transactions.push(...payload.transactions!.map(toEbayFinancialTransaction));
+    total = Number(payload.total);
+    offset += payload.transactions!.length;
+    if (!payload.transactions!.length && offset < total) {
+      throw new Error("eBay Finances returned an incomplete page.");
+    }
+  }
+  return {
+    transactions,
+    pull: {
+      status: "partial" as const,
+      message:
+        "eBay excludes shipping labels paid through PayPal or another non-eBay payment method from Finances API totals.",
+      coverageStart: start,
+      coverageEnd: end,
+      accountActivityAvailable: true,
+      shippingLabelsAvailable: true
+    }
+  };
+}
+
+export function toEbayFinancialTransaction(row: EbayFinanceTransaction): MarketplaceFinancialTransaction {
+  const type = (row.transactionType ?? "").toUpperCase();
+  const signedAmount = signedMoney(row.amount, row.bookingEntry);
+  const fee = Math.abs(number(row.totalFeeAmount?.value));
+  const currency =
+    row.amount?.currency ?? row.totalFeeAmount?.currency ?? row.totalFeeBasisAmount?.currency ?? "USD";
+  return {
+    platform: "ebay",
+    transactionKey: `${type}:${row.transactionId}`,
+    transactionDate: row.transactionDate!,
+    type,
+    orderId: row.orderId ?? "",
+    grossAmount:
+      type === "SALE" ? Math.abs(number(row.totalFeeBasisAmount?.value || row.amount?.value)) : 0,
+    feeAmount:
+      type === "NON_SALE_CHARGE"
+        ? signedAmount
+        : type === "REFUND"
+          ? fee
+          : type === "SALE"
+            ? -fee
+            : 0,
+    refundAmount: type === "REFUND" || type === "DISPUTE" ? signedAmount : 0,
+    shippingLabelAmount: type === "SHIPPING_LABEL" ? signedAmount : null,
+    netAmount: signedAmount,
+    currency
+  };
 }
 
 export function ebayRefunds(order: EbayOrder): SalesRefund[] {
@@ -314,16 +594,36 @@ interface EtsyPaymentPage {
 }
 interface EtsyLedgerPage {
   count?: number;
-  results?: Array<{ entry_id?: number }>;
+  results?: EtsyLedgerEntry[];
   error?: string;
+}
+interface EtsyLedgerEntry {
+  entry_id?: number;
+  amount?: number;
+  currency?: string;
+  create_date?: number;
+  created_timestamp?: number;
+  ledger_type?: string;
+  reference_type?: string;
+  reference_id?: string;
 }
 interface EtsyPayment {
   payment_id: number;
   receipt_id: number;
   status?: string;
   currency?: string;
+  shop_currency?: string;
   update_timestamp?: number;
   create_timestamp?: number;
+  amount_gross?: EtsyMoney;
+  amount_fees?: EtsyMoney;
+  amount_net?: EtsyMoney;
+  posted_gross?: EtsyMoney;
+  posted_fees?: EtsyMoney;
+  posted_net?: EtsyMoney;
+  adjusted_gross?: EtsyMoney;
+  adjusted_fees?: EtsyMoney;
+  adjusted_net?: EtsyMoney;
   payment_adjustments?: EtsyAdjustment[];
 }
 interface EtsyAdjustment {
@@ -365,24 +665,28 @@ async function importEtsySales() {
   const earliestCreated = orders.length
     ? Math.min(...orders.map((order) => Math.floor(Date.parse(order.createdAt) / 1000)))
     : null;
+  const latestCreated = Math.floor(Date.now() / 1000);
+  const financial =
+    earliestCreated === null
+      ? { payments: [] as EtsyPayment[], ledgerEntries: [] as EtsyLedgerEntry[] }
+      : await fetchEtsyFinancialData(shopId, token, apiKey, earliestCreated, latestCreated);
   return {
     orders,
-    refunds:
-      earliestCreated === null
-        ? []
-        : await importEtsyRefunds(shopId, token, apiKey, earliestCreated, Math.floor(Date.now() / 1000))
+    refunds: financial.payments.flatMap(etsyRefunds),
+    financialTransactions: [
+      ...financial.payments.map(toEtsyFinancialTransaction),
+      ...financial.ledgerEntries.flatMap(toEtsyLedgerFinancialTransaction)
+    ],
+    financialPull: {
+      status: "partial" as const,
+      message:
+        "Etsy Payments and identified ledger charges are included; unrecognized account-ledger categories are excluded.",
+      coverageStart: earliestCreated === null ? "" : iso(earliestCreated),
+      coverageEnd: iso(latestCreated),
+      accountActivityAvailable: true,
+      shippingLabelsAvailable: true
+    }
   };
-}
-
-async function importEtsyRefunds(
-  shopId: string,
-  token: string,
-  apiKey: string,
-  minCreated: number,
-  maxCreated: number
-) {
-  const payments = await fetchEtsyPayments(shopId, token, apiKey, minCreated, maxCreated);
-  return payments.flatMap(etsyRefunds);
 }
 
 export async function fetchEtsyPayments(
@@ -393,7 +697,19 @@ export async function fetchEtsyPayments(
   maxCreated: number,
   fetchImpl: typeof fetch = fetch
 ) {
+  return (await fetchEtsyFinancialData(shopId, token, apiKey, minCreated, maxCreated, fetchImpl)).payments;
+}
+
+async function fetchEtsyFinancialData(
+  shopId: string,
+  token: string,
+  apiKey: string,
+  minCreated: number,
+  maxCreated: number,
+  fetchImpl: typeof fetch = fetch
+) {
   const entryIds = new Set<number>();
+  const ledgerEntries = new Map<number, EtsyLedgerEntry>();
   const limit = 100;
   const maxWindowSeconds = 2_678_400;
   for (let windowStart = minCreated; windowStart <= maxCreated; windowStart += maxWindowSeconds + 1) {
@@ -415,7 +731,10 @@ export async function fetchEtsyPayments(
       const rows = payload.results!;
       for (const row of rows) {
         const id = Number(row.entry_id);
-        if (Number.isSafeInteger(id) && id > 0) entryIds.add(id);
+        if (Number.isSafeInteger(id) && id > 0) {
+          entryIds.add(id);
+          ledgerEntries.set(id, row);
+        }
       }
       total = Number(payload.count);
       offset += rows.length;
@@ -438,7 +757,7 @@ export async function fetchEtsyPayments(
     for (const payment of payload.results!)
       if (Number.isSafeInteger(payment.payment_id)) payments.set(payment.payment_id, payment);
   }
-  return [...payments.values()];
+  return { payments: [...payments.values()], ledgerEntries: [...ledgerEntries.values()] };
 }
 
 export function etsyRefunds(payment: EtsyPayment): SalesRefund[] {
@@ -484,6 +803,53 @@ export function etsyRefunds(payment: EtsyPayment): SalesRefund[] {
         sourceUpdatedAt: iso(updated)
       };
     });
+}
+
+export function toEtsyFinancialTransaction(payment: EtsyPayment): MarketplaceFinancialTransaction {
+  const gross = firstMoney(payment.adjusted_gross, payment.posted_gross, payment.amount_gross);
+  const originalGross = firstMoney(payment.amount_gross, payment.posted_gross, payment.adjusted_gross);
+  const fees = firstMoney(payment.adjusted_fees, payment.posted_fees, payment.amount_fees);
+  const net = firstMoney(payment.adjusted_net, payment.posted_net, payment.amount_net);
+  const updated =
+    payment.update_timestamp ?? payment.create_timestamp ?? payment.payment_adjustments?.[0]?.update_timestamp ?? 0;
+  return {
+    platform: "etsy",
+    transactionKey: `payment:${payment.payment_id}`,
+    transactionDate: iso(updated),
+    type: "PAYMENT",
+    orderId: String(payment.receipt_id),
+    grossAmount: gross.amount,
+    feeAmount: -Math.abs(fees.amount),
+    refundAmount: -Math.max(0, originalGross.amount - gross.amount),
+    shippingLabelAmount: null,
+    netAmount: net.amount,
+    currency: net.currency || gross.currency || payment.shop_currency || payment.currency || "USD"
+  };
+}
+
+export function toEtsyLedgerFinancialTransaction(
+  row: EtsyLedgerEntry
+): MarketplaceFinancialTransaction[] {
+  const type = (row.ledger_type ?? "").trim().toUpperCase();
+  const amount = number(row.amount) / 100;
+  const transactionDate = iso(row.created_timestamp ?? row.create_date ?? 0);
+  const base = {
+    platform: "etsy" as const,
+    transactionKey: `ledger:${row.entry_id}`,
+    transactionDate,
+    type,
+    orderId: row.reference_type?.toLowerCase().includes("receipt") ? (row.reference_id ?? "") : "",
+    grossAmount: 0,
+    refundAmount: 0,
+    currency: row.currency ?? "USD"
+  };
+  if (isEtsyShippingLabel(type)) {
+    return [{ ...base, feeAmount: 0, shippingLabelAmount: amount, netAmount: amount }];
+  }
+  if (isEtsyStandaloneCharge(type, row.reference_type, amount)) {
+    return [{ ...base, feeAmount: amount, shippingLabelAmount: null, netAmount: amount }];
+  }
+  return [];
 }
 
 export function toEtsyOrder(receipt: EtsyReceipt): SalesOrder {
@@ -540,6 +906,9 @@ function money(value?: EtsyMoney) {
     currency: value?.currency_code ?? "USD"
   };
 }
+function firstMoney(...values: Array<EtsyMoney | undefined>) {
+  return money(values.find((value) => value?.amount !== undefined));
+}
 function iso(timestamp: number) {
   return new Date(timestamp * 1000).toISOString();
 }
@@ -553,12 +922,104 @@ function cleanDomain(value: string) {
 function ebayBaseUrl() {
   return config.ebay.environment === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
 }
+function ebayFinancesBaseUrl() {
+  return config.ebay.environment === "sandbox" ? "https://apiz.sandbox.ebay.com" : "https://apiz.ebay.com";
+}
+function financialWindow(now = Date.now()) {
+  const current = new Date(now);
+  return {
+    start: new Date(current.getFullYear(), 0, 1).toISOString(),
+    end: current.toISOString()
+  };
+}
+function signedMoney(value: Money | undefined, bookingEntry: string | undefined) {
+  const amount = Math.abs(number(value?.value));
+  return bookingEntry?.toUpperCase() === "DEBIT" ? -amount : amount;
+}
+function isEtsyShippingLabel(type: string) {
+  return type.includes("SHIPPING") && (type.includes("LABEL") || type.includes("POSTAGE"));
+}
+function isEtsyStandaloneCharge(type: string, referenceType: string | undefined, amount: number) {
+  if (amount >= 0) return false;
+  const combined = `${type} ${(referenceType ?? "").toUpperCase()}`;
+  if (/(PAYMENT|SALE|TRANSACTION|REFUND|TAX|VAT|DEPOSIT|PAYOUT|RESERVE|HOLD)/.test(combined)) return false;
+  return /(FEE|LISTING|ADVERT|MARKETING|SUBSCRIPTION|REGULATORY|ETSY_PLUS|PATTERN)/.test(combined);
+}
+async function optionalFinancialPull(
+  importer: () => Promise<{
+    transactions: MarketplaceFinancialTransaction[];
+    pull: MarketplaceFinancialPull;
+  }>
+) {
+  try {
+    return await importer();
+  } catch (error) {
+    const { start, end } = financialWindow();
+    return {
+      transactions: [],
+      pull: {
+        status: "error" as const,
+        message: error instanceof Error ? error.message : String(error),
+        coverageStart: start,
+        coverageEnd: end,
+        accountActivityAvailable: false,
+        shippingLabelsAvailable: false
+      }
+    };
+  }
+}
 export function ebayOrdersUrl() {
   const url = new URL("/sell/fulfillment/v1/order", ebayBaseUrl());
   url.searchParams.set("limit", "200");
   url.searchParams.set("offset", "0");
   url.searchParams.set("fieldGroups", "TAX_BREAKDOWN");
   return url.toString();
+}
+
+function validateEbayFinancePage(payload: EbayFinancePage) {
+  if (!nonnegativeCount(payload.total) || !Array.isArray(payload.transactions)) {
+    throw new Error("eBay Finances returned a malformed page.");
+  }
+  if (
+    payload.transactions.some(
+      (row) =>
+        !row.transactionId ||
+        !row.transactionType ||
+        !validDate(row.transactionDate) ||
+        !row.amount?.currency ||
+        !Number.isFinite(Number(row.amount.value))
+    )
+  ) {
+    throw new Error("eBay Finances returned a malformed transaction.");
+  }
+}
+
+function validateShopifyPaymentsPage(payload: ShopifyPaymentsPage) {
+  const transactions = payload.shopifyPaymentsAccount?.balanceTransactions;
+  if (
+    !transactions ||
+    !Array.isArray(transactions.nodes) ||
+    typeof transactions.pageInfo?.hasNextPage !== "boolean" ||
+    (transactions.pageInfo.hasNextPage && !transactions.pageInfo.endCursor)
+  ) {
+    throw new Error("Shopify Payments returned a malformed page.");
+  }
+  if (
+    transactions.nodes.some(
+      (row) =>
+        !row.id ||
+        !row.type ||
+        !validDate(row.transactionDate) ||
+        !row.amount?.currencyCode ||
+        !row.fee?.currencyCode ||
+        !row.net?.currencyCode ||
+        !Number.isFinite(Number(row.amount.amount)) ||
+        !Number.isFinite(Number(row.fee.amount)) ||
+        !Number.isFinite(Number(row.net.amount))
+    )
+  ) {
+    throw new Error("Shopify Payments returned a malformed transaction.");
+  }
 }
 
 function validateShopifyOrdersPage(payload: ShopifyOrdersPage) {

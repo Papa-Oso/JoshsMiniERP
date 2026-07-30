@@ -46,6 +46,19 @@ Copy the exported shop domain and access token into the ignored root `.env`. Nev
 read_inventory,write_inventory,read_products,read_locations,read_orders
 ```
 
+Optional Sales financial-reporting scopes:
+
+```text
+read_shopify_payments_payouts,read_reports
+```
+
+The root ERP keeps normal order pulls working when these optional scopes are not granted. Grant
+`read_shopify_payments_payouts` to automate Shopify Payments gross, fee, refund, net, and
+Shopify-billed shipping-label activity. Grant `read_reports` to use ShopifyQL as a label-cost
+fallback when Shopify Payments is unavailable. ShopifyQL also requires Shopify's reporting and
+protected-customer-data approval. After granting either scope, create/export a fresh offline
+session token for the root ERP.
+
 ## Checks
 
 ```powershell

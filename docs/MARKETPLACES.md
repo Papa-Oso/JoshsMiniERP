@@ -85,11 +85,21 @@ The import is paginated and upserts the complete API response into shared review
 The local Sales page reads official order APIs and stores normalized reporting tables in `data/inventory.sqlite`. Pulling sales is read-only and does not change inventory or marketplace quantities.
 
 - Shopify requires `read_orders`. Without approved `read_all_orders`, Shopify normally limits order access to the most recent 60 days.
-- eBay requires `https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly`. Re-run the documented eBay authorization flow after adding this scope.
+- eBay orders require `https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly`; automated financial activity requires `https://api.ebay.com/oauth/api_scope/sell.finances`. Re-run the documented eBay authorization flow after either scope is added.
 - The Fulfillment API supplies the ongoing 90-day eBay window. Backfill older Seller Hub order-report CSV files with `npm run inv -- ebay-sales-import <file.csv> --dry-run`, then rerun without `--dry-run`; the apply path creates and inspects an operational backup before mutation, and stable eBay order IDs make the import repeat-safe.
 - Import overlapping Payments transaction reports with `npm run inv -- ebay-transactions-import <directory> --dry-run`. The apply path creates and inspects an operational backup before mutation. Exact financial events are deduplicated by a stable content key, while order rows are grouped by eBay order number; customer names and street-level details are not stored.
 - Historical order and transaction reports preserve their legacy gross and subtotal values but remain financially incomplete until an authoritative source proves the product, shipping, discount, tax, and refund components. The ERP does not manufacture comparable-sales components from missing report fields.
 - Etsy requires `transactions_r`. Re-run the Etsy authorization flow after adding this scope.
+
+`Pull sales` also refreshes a provider-generic, API-only financial ledger:
+
+- eBay Finances supplies current-calendar-year selling fees, non-sale charges, refunds, account activity, and eBay-billed shipping labels. eBay explicitly excludes labels paid through PayPal or another non-eBay payment method, so the UI calls these `Captured label charges`, not total shipping cost.
+- Etsy's payment and shop-ledger APIs supply payment gross, adjusted fees and net, refunds, recognizable account-level charges, and Etsy shipping-label debits. The existing `transactions_r` scope covers this read-only data.
+- Shopify Payments balance transactions supply gross, fees, refunds, net activity, and Shopify-billed shipping-label transactions when the optional `read_shopify_payments_payouts` scope is granted. Transfers are excluded so bank payouts do not cancel the activity totals. If Shopify Payments is unavailable, ShopifyQL can supply label costs as a fallback when `read_reports` and Shopify's reporting/protected-data approval are granted.
+
+The automated eBay and Shopify cost pulls start at the local calendar-year boundary so the `This year` period is covered; later successful pulls retain cumulative prior coverage in SQLite. The Sales page warns when an older selected order predates that automated coverage.
+
+The Sales page never uses a manually imported report as current provider-cost data. Existing eBay transaction-report imports remain available for historical backfill and reconciliation, but only successfully automated API pulls feed the provider financial-activity panels. Each panel shows source coverage and limitations; unavailable fields remain `Unavailable` instead of being shown as `$0`.
 
 Sales refresh also reads authoritative refund data. eBay supplies order- and line-level refund totals through Fulfillment order payment details. Etsy supplies payment adjustments through bounded, read-only payment-account ledger windows and their associated payments. When a provider does not expose a product/shipping/tax split, the ERP assumes the authoritative total is a full comparable-sales refund. The deduction is capped at that order's product-plus-buyer-paid-shipping value so tax and over-refund amounts cannot make comparable sales negative. Detailed reconciliation retains an aggregate warning that this assumption was used.
 
@@ -98,8 +108,6 @@ Current order pulls store authoritative product, buyer-paid shipping, discount, 
 `GET /api/sales/reconciliation` requires a marketplace and accepts the normal range plus an optional three-letter currency. It returns aggregate-only financial components and categorized integrity counts. Currencies remain separate, tax is excluded from comparable sales, and no order or refund identifiers are returned.
 
 For eBay, fees, purchased shipping labels, and net proceeds are included only from financial-report rows whose order ID and currency exactly match a saved order in the selected period. Exact duplicate transaction keys are counted once. Order-linked unmatched rows and currency conflicts are excluded rather than guessed and appear only as aggregate warnings. Account-level rows without an order ID, such as payouts and general fees, are not mislabeled as unmatched orders.
-
-The Sales page's imported eBay transaction-report panel is separate from the live order pull. It shows its exact coverage dates and warns when the report is stale because `Pull sales` does not download a new Payments report. `eBay fees & charges` includes fee columns on sale/refund rows plus `Other fee` charges and credits; `eBay label charges` includes only labels billed by eBay and present in the imported report. `Net transaction activity` excludes payout, hold, transfer, and reserve rows and must not be read as a confirmed bank-payout total.
 
 The ledger stores country and region for geographic reporting, but discards names, email addresses, phone numbers, street addresses, cities, and postal codes.
 
