@@ -80,6 +80,8 @@ Marketplace Reviews imports seller feedback through eBay's official `GET /commer
 
 The import is paginated and upserts the complete API response into shared review history. It stores stable feedback IDs, buyer public IDs, listing IDs/titles, rating type, comment text, dates, and `images[].url` values. Browser scraping is no longer part of the supported workflow. Incremental behavior applies to the CSV export checkpoint, not to whether the database is refreshed.
 
+Review CSV product matching prefers an exact local marketplace listing mapping, then an unambiguous exact title-to-SKU pair already saved in local sales history or the review product catalog. Fuzzy title matching requires compatible identifying brand/model terms; shared generic wording such as helmet type, adapter type, or communicator family must not assign a conflicting SKU.
+
 ## Sales Reporting
 
 The local Sales page reads official order APIs and stores normalized reporting tables in `data/inventory.sqlite`. Pulling sales is read-only and does not change inventory or marketplace quantities.
