@@ -673,14 +673,11 @@ async function importEtsySales() {
   return {
     orders,
     refunds: financial.payments.flatMap(etsyRefunds),
-    financialTransactions: [
-      ...financial.payments.map(toEtsyFinancialTransaction),
-      ...financial.ledgerEntries.flatMap(toEtsyLedgerFinancialTransaction)
-    ],
+    financialTransactions: financial.ledgerEntries.flatMap(toEtsyLedgerFinancialTransaction),
     financialPull: {
       status: "partial" as const,
       message:
-        "Etsy Payments and identified ledger charges are included; unrecognized account-ledger categories are excluded.",
+        "Etsy's USD payment-account ledger is included; transfers and unrecognized ledger categories are excluded.",
       coverageStart: earliestCreated === null ? "" : iso(earliestCreated),
       coverageEnd: iso(latestCreated),
       accountActivityAvailable: true,
@@ -805,28 +802,6 @@ export function etsyRefunds(payment: EtsyPayment): SalesRefund[] {
     });
 }
 
-export function toEtsyFinancialTransaction(payment: EtsyPayment): MarketplaceFinancialTransaction {
-  const gross = firstMoney(payment.adjusted_gross, payment.posted_gross, payment.amount_gross);
-  const originalGross = firstMoney(payment.amount_gross, payment.posted_gross, payment.adjusted_gross);
-  const fees = firstMoney(payment.adjusted_fees, payment.posted_fees, payment.amount_fees);
-  const net = firstMoney(payment.adjusted_net, payment.posted_net, payment.amount_net);
-  const updated =
-    payment.update_timestamp ?? payment.create_timestamp ?? payment.payment_adjustments?.[0]?.update_timestamp ?? 0;
-  return {
-    platform: "etsy",
-    transactionKey: `payment:${payment.payment_id}`,
-    transactionDate: iso(updated),
-    type: "PAYMENT",
-    orderId: String(payment.receipt_id),
-    grossAmount: gross.amount,
-    feeAmount: -Math.abs(fees.amount),
-    refundAmount: -Math.max(0, originalGross.amount - gross.amount),
-    shippingLabelAmount: null,
-    netAmount: net.amount,
-    currency: net.currency || gross.currency || payment.shop_currency || payment.currency || "USD"
-  };
-}
-
 export function toEtsyLedgerFinancialTransaction(
   row: EtsyLedgerEntry
 ): MarketplaceFinancialTransaction[] {
@@ -843,6 +818,12 @@ export function toEtsyLedgerFinancialTransaction(
     refundAmount: 0,
     currency: row.currency ?? "USD"
   };
+  if (type === "PAYMENT_GROSS" && amount >= 0) {
+    return [{ ...base, grossAmount: amount, feeAmount: 0, shippingLabelAmount: null, netAmount: amount }];
+  }
+  if (type === "REFUND_GROSS" && amount <= 0) {
+    return [{ ...base, feeAmount: 0, refundAmount: amount, shippingLabelAmount: null, netAmount: amount }];
+  }
   if (isEtsyShippingLabel(type)) {
     return [{ ...base, feeAmount: 0, shippingLabelAmount: amount, netAmount: amount }];
   }
@@ -906,9 +887,6 @@ function money(value?: EtsyMoney) {
     currency: value?.currency_code ?? "USD"
   };
 }
-function firstMoney(...values: Array<EtsyMoney | undefined>) {
-  return money(values.find((value) => value?.amount !== undefined));
-}
 function iso(timestamp: number) {
   return new Date(timestamp * 1000).toISOString();
 }
@@ -940,10 +918,12 @@ function isEtsyShippingLabel(type: string) {
   return type.includes("SHIPPING") && (type.includes("LABEL") || type.includes("POSTAGE"));
 }
 function isEtsyStandaloneCharge(type: string, referenceType: string | undefined, amount: number) {
-  if (amount >= 0) return false;
+  if (amount === 0) return false;
   const combined = `${type} ${(referenceType ?? "").toUpperCase()}`;
-  if (/(PAYMENT|SALE|TRANSACTION|REFUND|TAX|VAT|DEPOSIT|PAYOUT|RESERVE|HOLD)/.test(combined)) return false;
-  return /(FEE|LISTING|ADVERT|MARKETING|SUBSCRIPTION|REGULATORY|ETSY_PLUS|PATTERN)/.test(combined);
+  if (/(DISBURSE|DEPOSIT|PAYOUT|TRANSFER|RESERVE|HOLD)/.test(combined)) return false;
+  return /(FEE|LISTING|RENEW|TRANSACTION|TAX|VAT|ADVERT|MARKETING|SUBSCRIPTION|REGULATORY|ETSY_PLUS|PATTERN|CREDIT|RECOUP|MISC_)/.test(
+    combined
+  );
 }
 async function optionalFinancialPull(
   importer: () => Promise<{

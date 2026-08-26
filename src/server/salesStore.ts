@@ -134,6 +134,9 @@ export async function applySalesImport(
     try {
       for (const order of orders) upsertOrder(db, platform, order, seenAt);
       for (const refund of refunds) upsertRefund(db, refund);
+      if (platform === "etsy") {
+        db.run("DELETE FROM marketplace_financial_transactions WHERE platform = 'etsy' AND transaction_key LIKE 'payment:%'");
+      }
       for (const transaction of financialTransactions) upsertMarketplaceFinancialTransaction(db, transaction);
       updateRefundTotals(
         db,

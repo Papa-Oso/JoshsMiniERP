@@ -172,6 +172,31 @@ test("automated financial availability distinguishes labels from account activit
   assert.equal(dashboard.financialSummaries[0]?.shippingLabels, 7);
 });
 
+test("Etsy ledger refresh removes legacy buyer-currency payment rows", async () => {
+  const pull = {
+    status: "partial" as const,
+    message: "Transfers are excluded.",
+    coverageStart: "2026-01-01T00:00:00.000Z",
+    coverageEnd: "2026-08-26T00:00:00.000Z",
+    accountActivityAvailable: true,
+    shippingLabelsAvailable: true
+  };
+  await applySalesImport("etsy", [], [], [{
+    platform: "etsy", transactionKey: "payment:legacy-buyer-currency", transactionDate: "2026-08-25T00:00:00.000Z",
+    type: "PAYMENT", orderId: "", grossAmount: 50, feeAmount: -3, refundAmount: 0,
+    shippingLabelAmount: null, netAmount: 47, currency: "CAD"
+  }], pull);
+  await applySalesImport("etsy", [], [], [{
+    platform: "etsy", transactionKey: "ledger:usd-payment", transactionDate: "2026-08-25T00:00:00.000Z",
+    type: "PAYMENT_GROSS", orderId: "", grossAmount: 36, feeAmount: 0, refundAmount: 0,
+    shippingLabelAmount: null, netAmount: 36, currency: "USD"
+  }], pull);
+
+  const dashboard = await getSalesDashboard({ range: "all", platform: "etsy" });
+  assert.deepEqual(dashboard.financialSummaries.map((row) => row.currency), ["USD"]);
+  assert.equal(dashboard.financialSummaries[0]?.grossSales, 36);
+});
+
 test("inventory and sales share one SQLite file without overwriting each other", async () => {
   const inventory = new SQLiteInventoryStore(process.env.DATABASE_FILE);
   await inventory.mutate((data) => {

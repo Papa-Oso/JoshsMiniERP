@@ -7,7 +7,6 @@ import {
   fetchEtsyPayments,
   toEbayFinancialTransaction,
   toEbayOrder,
-  toEtsyFinancialTransaction,
   toEtsyLedgerFinancialTransaction,
   toEtsyOrder,
   toShopifyFinancialTransaction,
@@ -109,24 +108,39 @@ test("normalizes automated eBay Finances debits, fees, and gross basis", () => {
   assert.equal(label.netAmount, -8.25);
 });
 
-test("normalizes automated Etsy payment fees, refunds, labels, and standalone charges", () => {
-  const money = (amount: number) => ({ amount, divisor: 100, currency_code: "USD" });
-  const payment = toEtsyFinancialTransaction({
-    payment_id: 1,
-    receipt_id: 2,
-    update_timestamp: 1_752_105_600,
-    amount_gross: money(5_000),
-    adjusted_gross: money(4_000),
-    adjusted_fees: money(600),
-    adjusted_net: money(3_400)
+test("normalizes automated Etsy account-ledger payments, refunds, labels, and charges", () => {
+  const [payment] = toEtsyLedgerFinancialTransaction({
+    entry_id: 1,
+    amount: 4_000,
+    currency: "USD",
+    created_timestamp: 1_752_105_600,
+    ledger_type: "payment_gross"
   });
   assert.equal(payment.grossAmount, 40);
-  assert.equal(payment.feeAmount, -6);
-  assert.equal(payment.refundAmount, -10);
-  assert.equal(payment.netAmount, 34);
+  assert.equal(payment.netAmount, 40);
+
+  const [processingFee] = toEtsyLedgerFinancialTransaction({
+    entry_id: 2,
+    amount: -600,
+    currency: "USD",
+    created_timestamp: 1_752_105_600,
+    ledger_type: "payment_processing_fee"
+  });
+  assert.equal(processingFee.feeAmount, -6);
+  assert.equal(processingFee.netAmount, -6);
+
+  const [refund] = toEtsyLedgerFinancialTransaction({
+    entry_id: 3,
+    amount: -1_000,
+    currency: "USD",
+    created_timestamp: 1_752_105_600,
+    ledger_type: "refund_gross"
+  });
+  assert.equal(refund.refundAmount, -10);
+  assert.equal(refund.netAmount, -10);
 
   const [label] = toEtsyLedgerFinancialTransaction({
-    entry_id: 3,
+    entry_id: 4,
     amount: -825,
     currency: "USD",
     created_timestamp: 1_752_105_600,
@@ -135,7 +149,7 @@ test("normalizes automated Etsy payment fees, refunds, labels, and standalone ch
   assert.equal(label.shippingLabelAmount, -8.25);
 
   const [listingFee] = toEtsyLedgerFinancialTransaction({
-    entry_id: 4,
+    entry_id: 5,
     amount: -20,
     currency: "USD",
     created_timestamp: 1_752_105_600,

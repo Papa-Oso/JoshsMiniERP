@@ -96,7 +96,7 @@ The local Sales page reads official order APIs and stores normalized reporting t
 `Pull sales` also refreshes a provider-generic, API-only financial ledger:
 
 - eBay Finances supplies current-calendar-year selling fees, non-sale charges, refunds, account activity, and eBay-billed shipping labels. eBay explicitly excludes labels paid through PayPal or another non-eBay payment method, so the UI calls these `Captured label charges`, not total shipping cost.
-- Etsy's payment and shop-ledger APIs supply payment gross, adjusted fees and net, refunds, recognizable account-level charges, and Etsy shipping-label debits. The existing `transactions_r` scope covers this read-only data.
+- Etsy's USD payment-account ledger supplies payment gross, refunds, processing and marketplace charges or credits, and Etsy shipping-label debits. Payment objects remain available for order-refund reconciliation, but their buyer-currency money fields are not mixed into the seller-account totals. The existing `transactions_r` scope covers this read-only data.
 - Shopify Payments balance transactions supply gross, fees, refunds, net activity, and Shopify-billed shipping-label transactions when the optional `read_shopify_payments_payouts` scope is granted. Transfers are excluded so bank payouts do not cancel the activity totals. If Shopify Payments is unavailable, ShopifyQL can supply label costs as a fallback when `read_reports` and Shopify's reporting/protected-data approval are granted.
 
 The automated eBay and Shopify cost pulls start at the local calendar-year boundary so the `This year` period is covered; later successful pulls retain cumulative prior coverage in SQLite. The Sales page warns when an older selected order predates that automated coverage.
