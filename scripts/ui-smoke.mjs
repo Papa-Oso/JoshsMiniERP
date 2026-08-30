@@ -36,6 +36,7 @@ try {
     await expectPanels(page);
     if (tool.label === "Sales") {
       await expectVisible(page.getByLabel("Period"));
+      await page.getByLabel("Period").selectOption("last_year");
       await page.getByLabel("Period").selectOption("custom");
       await expectVisible(page.getByLabel("From", { exact: true }));
       await expectVisible(page.getByLabel("To", { exact: true }));

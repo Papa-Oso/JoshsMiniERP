@@ -5,7 +5,7 @@ import { getSalesDashboard, getSalesReconciliation, refreshSales } from "./sales
 
 export const salesRouter = express.Router();
 const querySchema = z.object({
-  range: z.enum(["month", "30d", "90d", "ytd", "365d", "all", "custom"]).default("90d"),
+  range: z.enum(["month", "30d", "90d", "ytd", "last_year", "365d", "all", "custom"]).default("90d"),
   platform: z.enum(["all", "etsy", "ebay", "shopify"]).default("all"),
   startDate: z.iso.date().optional(),
   endDate: z.iso.date().optional()

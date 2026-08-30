@@ -599,6 +599,13 @@ function dashboardRangeBounds(range: string, startDate?: string, endDate?: strin
       end: now
     };
   }
+  if (range === "last_year") {
+    const year = new Date(now).getUTCFullYear() - 1;
+    return {
+      start: Date.UTC(year, 0, 1),
+      end: Date.UTC(year + 1, 0, 1) - 1
+    };
+  }
   return { start: rangeStart(range, now), end: now };
 }
 function isoDate(value: number) {

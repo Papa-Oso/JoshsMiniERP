@@ -192,6 +192,39 @@ test("sales dashboard accepts an inclusive custom date period", async () => {
   assert.deepEqual(dashboard.period, { startDate: "2025-02-03", endDate: "2025-02-03" });
 });
 
+test("sales dashboard last year covers the complete previous UTC calendar year", async () => {
+  const year = new Date().getUTCFullYear() - 1;
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+  await upsertSalesOrders("shopify", [
+    order({
+      orderId: "last-year-first-day",
+      orderNumber: "#LAST-YEAR-START",
+      createdAt: `${startDate}T00:00:00.000Z`,
+      updatedAt: `${startDate}T00:00:00.000Z`
+    }),
+    order({
+      orderId: "last-year-final-day",
+      orderNumber: "#LAST-YEAR-END",
+      createdAt: `${endDate}T23:59:59.999Z`,
+      updatedAt: `${endDate}T23:59:59.999Z`
+    }),
+    order({
+      orderId: "last-year-outside",
+      orderNumber: "#LAST-YEAR-OUTSIDE",
+      createdAt: `${year + 1}-01-01T00:00:00.000Z`,
+      updatedAt: `${year + 1}-01-01T00:00:00.000Z`
+    })
+  ]);
+
+  const dashboard = await getSalesDashboard({ range: "last_year", platform: "shopify" });
+  const orderIds = new Set(dashboard.recentOrders.map((row) => row.orderId));
+  assert.deepEqual(dashboard.period, { startDate, endDate });
+  assert.equal(orderIds.has("last-year-first-day"), true);
+  assert.equal(orderIds.has("last-year-final-day"), true);
+  assert.equal(orderIds.has("last-year-outside"), false);
+});
+
 test("Etsy ledger refresh removes legacy buyer-currency payment rows", async () => {
   const pull = {
     status: "partial" as const,

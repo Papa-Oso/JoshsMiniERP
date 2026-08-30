@@ -89,6 +89,7 @@ export function SalesPage() {
               <option value="30d">30 days</option>
               <option value="90d">90 days</option>
               <option value="ytd">This year</option>
+              <option value="last_year">Last year</option>
               <option value="365d">1 year</option>
               <option value="all">All saved</option>
               <option value="custom">Custom dates</option>
@@ -450,7 +451,7 @@ function buildTrendSeries(
 }
 
 function rangeUsesMonthlyPoints(range: string, period: SalesDashboardPayload["period"]) {
-  if (["ytd", "365d", "all"].includes(range)) return true;
+  if (["ytd", "last_year", "365d", "all"].includes(range)) return true;
   if (!period.startDate || !period.endDate) return false;
   return (parseDate(period.endDate).getTime() - parseDate(period.startDate).getTime()) / 86_400_000 > 120;
 }

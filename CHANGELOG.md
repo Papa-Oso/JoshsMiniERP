@@ -4,7 +4,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
-- Replace the Sales trend bar strip with an interactive line chart for revenue, orders, and units; add calendar-month and custom date filters, fill no-sale gaps, and group year-scale views by month.
+- Replace the Sales trend bar strip with an interactive line chart for revenue, orders, and units; add calendar-month, previous-calendar-year, and custom date filters, fill no-sale gaps, and group year-scale views by month.
 - Use Etsy's USD payment-account ledger for automated financial totals instead of buyer-currency payment fields, and remove legacy buyer-currency rows on the next Etsy sales refresh.
 - Replace the Sales page's manual eBay cost panel with provider-generic financial activity refreshed automatically by `Pull sales`: eBay Finances, Etsy Payments/ledger, and Shopify Payments/ShopifyQL where their optional scopes are granted. Unsupported label totals remain unavailable instead of displaying a misleading zero.
 - Correct imported eBay transaction-report reconciliation to include `Other fee` charges and retain exact source coverage without presenting the manual report as current payout data.
