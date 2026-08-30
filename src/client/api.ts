@@ -57,8 +57,12 @@ export const api = {
     }>("/api/ebay-reviews/refresh-history", { method: "POST", body: JSON.stringify({ maxPages: 100 }) }),
   acknowledgeFeedback: (feedbackKey: string) =>
     request(`/api/ebay-reviews/feedback/${encodeURIComponent(feedbackKey)}/acknowledge`, { method: "POST" }),
-  sales: (range = "90d", platform: Platform | "all" = "all") =>
-    request<SalesDashboardPayload>(`/api/sales?range=${encodeURIComponent(range)}&platform=${encodeURIComponent(platform)}`),
+  sales: (range = "90d", platform: Platform | "all" = "all", startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams({ range, platform });
+    if (startDate) params.set("startDate", startDate);
+    if (endDate) params.set("endDate", endDate);
+    return request<SalesDashboardPayload>(`/api/sales?${params}`);
+  },
   refreshSales: () =>
     request<{
       results: Array<{

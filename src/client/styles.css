@@ -2654,15 +2654,18 @@ tbody tr.selected,
 }
 .sales-filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .sales-filters label {
   display: grid;
   gap: 5px;
+  margin-bottom: 0;
   color: var(--color-text-muted);
   font-size: 12px;
 }
-.sales-filters select {
+.sales-filters select,
+.sales-filters input {
   min-width: 140px;
   padding: 8px 10px;
   color: var(--color-text);
@@ -2724,30 +2727,145 @@ tbody tr.selected,
   grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.85fr);
   gap: var(--panel-gap);
 }
+.sales-trend-panel {
+  min-width: 0;
+}
 .trend-chart {
-  height: 250px;
-  display: flex;
-  align-items: end;
-  gap: 3px;
-  padding: 16px 2px 2px;
-  border-bottom: 1px solid var(--color-border);
+  display: grid;
+  gap: 10px;
 }
-.trend-bar {
-  height: 100%;
-  flex: 1;
+.trend-chart-header,
+.trend-chart-detail {
   display: flex;
-  align-items: end;
-  min-width: 3px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
-.trend-bar span {
+.trend-chart-header p {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.trend-metric-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+}
+.trend-metric-toggle button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 9px;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 750;
+}
+.trend-metric-toggle button[aria-pressed="true"] {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+.trend-metric-toggle button:focus-visible,
+.trend-plot:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.trend-chart-layout {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  padding-bottom: 23px;
+}
+.trend-y-axis {
+  height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.trend-plot {
+  position: relative;
+  height: 260px;
+  border-left: 1px solid var(--color-border);
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.trend-plot svg {
+  display: block;
   width: 100%;
-  min-height: 3px;
-  background: var(--color-primary);
-  border-radius: 2px 2px 0 0;
-  opacity: 0.82;
+  height: 100%;
+  overflow: visible;
 }
-.trend-bar:hover span {
-  opacity: 1;
+.trend-grid-line {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.trend-area {
+  fill: url(#sales-trend-fill);
+}
+.trend-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.trend-crosshair {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+  vector-effect: non-scaling-stroke;
+}
+.trend-point-marker {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--color-surface-raised);
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.trend-x-axis {
+  position: absolute;
+  inset: calc(100% + 7px) 0 auto;
+  height: 18px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.trend-x-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.trend-x-axis span:first-child {
+  transform: none;
+}
+.trend-x-axis span:last-child {
+  transform: translateX(-100%);
+}
+.trend-chart-detail {
+  min-height: 38px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  padding-top: 9px;
+  border-top: 1px solid var(--color-border);
+  font-size: 12px;
+}
+.trend-chart-detail strong {
+  margin-right: auto;
+}
+.trend-chart-detail span {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .world-map {
   width: 100%;
@@ -2991,7 +3109,8 @@ tbody tr.selected,
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
-  .sales-filters select {
+  .sales-filters select,
+  .sales-filters input {
     width: 100%;
     min-width: 0;
   }
@@ -3005,8 +3124,22 @@ tbody tr.selected,
   .sales-metrics {
     grid-template-columns: 1fr 1fr;
   }
-  .trend-chart {
-    height: 190px;
+  .trend-chart-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .trend-metric-toggle {
+    align-self: start;
+  }
+  .trend-chart-layout {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .trend-y-axis,
+  .trend-plot {
+    height: 210px;
+  }
+  .trend-chart-detail strong {
+    width: 100%;
   }
   .country-list > div {
     grid-template-columns: 45px 1fr auto;

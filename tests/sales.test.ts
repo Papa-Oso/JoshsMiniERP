@@ -172,6 +172,26 @@ test("automated financial availability distinguishes labels from account activit
   assert.equal(dashboard.financialSummaries[0]?.shippingLabels, 7);
 });
 
+test("sales dashboard accepts an inclusive custom date period", async () => {
+  await upsertSalesOrders("shopify", [
+    order({
+      orderId: "custom-period-order",
+      orderNumber: "#CUSTOM",
+      createdAt: "2025-02-03T23:59:59.000Z",
+      updatedAt: "2025-02-03T23:59:59.000Z"
+    })
+  ]);
+  const dashboard = await getSalesDashboard({
+    range: "custom",
+    platform: "shopify",
+    startDate: "2025-02-03",
+    endDate: "2025-02-03"
+  });
+  assert.equal(dashboard.summary.orders, 1);
+  assert.equal(dashboard.trend[0]?.date, "2025-02-03");
+  assert.deepEqual(dashboard.period, { startDate: "2025-02-03", endDate: "2025-02-03" });
+});
+
 test("Etsy ledger refresh removes legacy buyer-currency payment rows", async () => {
   const pull = {
     status: "partial" as const,

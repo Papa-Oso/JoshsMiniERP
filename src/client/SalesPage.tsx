@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { numericToAlpha2 } from "i18n-iso-countries";
 import { BarChart3, Clock3, Globe2, PackageOpen, RefreshCw, ShoppingCart, Store, TrendingUp } from "lucide-react";
@@ -14,6 +14,7 @@ const empty: SalesDashboardPayload = {
   generatedAt: "",
   lastPulledAt: null,
   range: "90d",
+  period: { startDate: null, endDate: null },
   platform: "all",
   summary: { revenue: 0, orders: 0, units: 0, averageOrderValue: 0, currency: "USD" },
   financialSummaries: [],
@@ -32,16 +33,25 @@ export function SalesPage() {
   const [data, setData] = useState(empty);
   const [range, setRange] = useState("90d");
   const [platform, setPlatform] = useState<Platform | "all">("all");
+  const [customStartDate, setCustomStartDate] = useState(firstDayOfCurrentMonth);
+  const [customEndDate, setCustomEndDate] = useState(todayInputValue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     void load();
-  }, [range, platform]);
+  }, [range, platform, customStartDate, customEndDate]);
   async function load() {
     try {
       setError("");
-      setData(await api.sales(range, platform));
+      setData(
+        await api.sales(
+          range,
+          platform,
+          range === "custom" ? customStartDate : undefined,
+          range === "custom" ? customEndDate : undefined
+        )
+      );
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     }
@@ -75,13 +85,37 @@ export function SalesPage() {
           <label>
             Period
             <select value={range} onChange={(event) => setRange(event.target.value)}>
+              <option value="month">This month</option>
               <option value="30d">30 days</option>
               <option value="90d">90 days</option>
               <option value="ytd">This year</option>
               <option value="365d">1 year</option>
               <option value="all">All saved</option>
+              <option value="custom">Custom dates</option>
             </select>
           </label>
+          {range === "custom" ? (
+            <>
+              <label>
+                From
+                <input
+                  type="date"
+                  value={customStartDate}
+                  max={customEndDate}
+                  onChange={(event) => setCustomStartDate(event.target.value)}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  type="date"
+                  value={customEndDate}
+                  min={customStartDate}
+                  onChange={(event) => setCustomEndDate(event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
           <label>
             Platform
             <select value={platform} onChange={(event) => setPlatform(event.target.value as Platform | "all")}>
@@ -128,8 +162,8 @@ export function SalesPage() {
           <p>
             <strong>Orders</strong> counts the included saved orders in the selected period and platform.{" "}
             <strong>Units sold</strong> adds their item quantities. <strong>Average order</strong> is Revenue divided by
-            Orders. If the selection contains multiple currencies, this legacy view shows a warning and does not
-            perform currency conversion; use the currency-separated reconciliation totals for comparison.
+            Orders. If the selection contains multiple currencies, this legacy view shows a warning and does not perform
+            currency conversion; use the currency-separated reconciliation totals for comparison.
           </p>
           <p>
             Comparable net sales will replace Revenue only after the financial backfill and marketplace reconciliation
@@ -156,9 +190,7 @@ export function SalesPage() {
           <section className="sales-metrics marketplace-financial-metrics">
             <Metric
               label="Gross sales"
-              value={
-                summary.accountActivityAvailable ? money(summary.grossSales, summary.currency) : "Unavailable"
-              }
+              value={summary.accountActivityAvailable ? money(summary.grossSales, summary.currency) : "Unavailable"}
             />
             <Metric
               label={`${platformLabels[summary.platform]} fees & charges`}
@@ -172,15 +204,11 @@ export function SalesPage() {
             />
             <Metric
               label="Captured label charges"
-              value={
-                summary.shippingLabels === null ? "Unavailable" : money(summary.shippingLabels, summary.currency)
-              }
+              value={summary.shippingLabels === null ? "Unavailable" : money(summary.shippingLabels, summary.currency)}
             />
             <Metric
               label="Net account activity"
-              value={
-                summary.accountActivityAvailable ? money(summary.netActivity, summary.currency) : "Unavailable"
-              }
+              value={summary.accountActivityAvailable ? money(summary.netActivity, summary.currency) : "Unavailable"}
             />
           </section>
           {summary.limitations.map((limitation) => (
@@ -191,8 +219,8 @@ export function SalesPage() {
         </Panel>
       ))}
       <section className="sales-primary-grid">
-        <Panel title="Sales trend" icon={<TrendingUp size={17} />}>
-          <TrendChart data={data.trend} money={money} />
+        <Panel title="Sales trend" icon={<TrendingUp size={17} />} className="sales-trend-panel">
+          <TrendChart data={data.trend} money={money} period={data.period} range={data.range} />
         </Panel>
         <Panel title="Sales around the world" icon={<Globe2 size={17} />}>
           <WorldSalesMap locations={data.locations} countries={data.countries} money={money} />
@@ -257,23 +285,203 @@ export function SalesPage() {
   );
 }
 
-function TrendChart({ data, money }: { data: SalesDashboardPayload["trend"]; money: (value: number) => string }) {
-  const values = data.slice(-45);
-  const max = Math.max(1, ...values.map((row) => row.revenue));
-  if (!values.length) return <p className="empty">No sales in this period.</p>;
+type TrendMetric = "revenue" | "orders" | "units";
+type TrendPoint = SalesDashboardPayload["trend"][number] & { key: string; label: string };
+
+function TrendChart({
+  data,
+  money,
+  period,
+  range
+}: {
+  data: SalesDashboardPayload["trend"];
+  money: (value: number) => string;
+  period: SalesDashboardPayload["period"];
+  range: string;
+}) {
+  const [metric, setMetric] = useState<TrendMetric>("revenue");
+  const values = useMemo(() => buildTrendSeries(data, period, range), [data, period, range]);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const max = Math.max(1, ...values.map((row) => row[metric]));
+  const currentIndex = activeIndex === null ? values.length - 1 : Math.min(activeIndex, values.length - 1);
+  const active = values[currentIndex];
+  const line = values.map((row, index) => chartPoint(row[metric], index, values.length, max));
+  const linePath =
+    line.length === 1
+      ? `M0,${line[0][1]} L1000,${line[0][1]}`
+      : line.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ");
+  const areaPath = line.length ? `${linePath} L1000,300 L0,300 Z` : "";
+  const tickIndexes = chartTickIndexes(values.length);
+  const grouping = rangeUsesMonthlyPoints(range, period) ? "Monthly" : "Daily";
+
+  if (!data.length) return <p className="empty">No sales in this period.</p>;
   return (
-    <div className="trend-chart" aria-label="Daily sales revenue chart">
-      {values.map((row) => (
-        <div
-          className="trend-bar"
-          key={row.date}
-          title={`${formatDate(row.date)} · ${money(row.revenue)} · ${row.orders} orders`}
-        >
-          <span style={{ height: `${Math.max(3, (row.revenue / max) * 100)}%` }} />
+    <div className="trend-chart">
+      <div className="trend-chart-header">
+        <p>{grouping} totals · hover, tap, or use arrow keys to inspect</p>
+        <div className="trend-metric-toggle" role="group" aria-label="Chart value">
+          {(["revenue", "orders", "units"] as const).map((value) => (
+            <button
+              type="button"
+              key={value}
+              aria-pressed={metric === value}
+              onClick={() => {
+                setMetric(value);
+                setActiveIndex(null);
+              }}
+            >
+              {value === "revenue" ? "Revenue" : value === "orders" ? "Orders" : "Units"}
+            </button>
+          ))}
         </div>
-      ))}
+      </div>
+      <div className="trend-chart-layout">
+        <div className="trend-y-axis" aria-hidden="true">
+          {[1, 0.75, 0.5, 0.25, 0].map((portion) => (
+            <span key={portion}>{formatTrendValue(max * portion, metric, money)}</span>
+          ))}
+        </div>
+        <div
+          className="trend-plot"
+          tabIndex={0}
+          role="img"
+          aria-label={`${grouping} ${metric} line chart. ${active ? trendPointLabel(active, money) : ""}`}
+          onPointerMove={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+            setActiveIndex(Math.round(ratio * (values.length - 1)));
+          }}
+          onPointerLeave={() => setActiveIndex(null)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const direction = event.key === "ArrowLeft" ? -1 : 1;
+            setActiveIndex((index) =>
+              Math.max(0, Math.min(values.length - 1, (index ?? values.length - 1) + direction))
+            );
+          }}
+        >
+          <svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="sales-trend-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+            {[0, 75, 150, 225, 300].map((y) => (
+              <line className="trend-grid-line" x1="0" x2="1000" y1={y} y2={y} key={y} />
+            ))}
+            <path className="trend-area" d={areaPath} />
+            <path className="trend-line" d={linePath} />
+            {active ? (
+              <line className="trend-crosshair" x1={line[currentIndex][0]} x2={line[currentIndex][0]} y1="0" y2="300" />
+            ) : null}
+          </svg>
+          {active ? (
+            <span
+              className="trend-point-marker"
+              aria-hidden="true"
+              style={{ left: `${line[currentIndex][0] / 10}%`, top: `${line[currentIndex][1] / 3}%` }}
+            />
+          ) : null}
+          <div className="trend-x-axis" aria-hidden="true">
+            {tickIndexes.map((index) => (
+              <span key={values[index].key} style={{ left: `${line[index][0] / 10}%` }}>
+                {values[index].label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+      {active ? (
+        <div className="trend-chart-detail" aria-live="polite">
+          <strong>{active.label}</strong>
+          <span>{money(active.revenue)} revenue</span>
+          <span>
+            {active.orders} {active.orders === 1 ? "order" : "orders"}
+          </span>
+          <span>
+            {active.units} {active.units === 1 ? "unit" : "units"}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function buildTrendSeries(
+  data: SalesDashboardPayload["trend"],
+  period: SalesDashboardPayload["period"],
+  range: string
+): TrendPoint[] {
+  if (!data.length) return [];
+  const monthly = rangeUsesMonthlyPoints(range, period);
+  const startDate = period.startDate ?? data[0].date;
+  const endDate = period.endDate ?? data.at(-1)?.date ?? startDate;
+  const groups = new Map<string, TrendPoint>();
+  for (const row of data) {
+    const key = monthly ? row.date.slice(0, 7) : row.date;
+    const existing = groups.get(key) ?? {
+      key,
+      date: key,
+      label: trendDateLabel(key, monthly),
+      revenue: 0,
+      orders: 0,
+      units: 0
+    };
+    existing.revenue += row.revenue;
+    existing.orders += row.orders;
+    existing.units += row.units;
+    groups.set(key, existing);
+  }
+  const cursor = parseDate(startDate);
+  const end = parseDate(endDate);
+  const values: TrendPoint[] = [];
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    const key = monthly ? date.slice(0, 7) : date;
+    values.push(
+      groups.get(key) ?? { key, date: key, label: trendDateLabel(key, monthly), revenue: 0, orders: 0, units: 0 }
+    );
+    if (monthly) cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
+    else cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return values;
+}
+
+function rangeUsesMonthlyPoints(range: string, period: SalesDashboardPayload["period"]) {
+  if (["ytd", "365d", "all"].includes(range)) return true;
+  if (!period.startDate || !period.endDate) return false;
+  return (parseDate(period.endDate).getTime() - parseDate(period.startDate).getTime()) / 86_400_000 > 120;
+}
+function parseDate(value: string) {
+  return new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+}
+function trendDateLabel(value: string, monthly: boolean) {
+  const date = parseDate(monthly ? `${value}-01` : value);
+  return new Intl.DateTimeFormat(
+    undefined,
+    monthly
+      ? { month: "short", year: "numeric", timeZone: "UTC" }
+      : { month: "short", day: "numeric", timeZone: "UTC" }
+  ).format(date);
+}
+function chartPoint(value: number, index: number, length: number, max: number): [number, number] {
+  return [length === 1 ? 500 : (index / (length - 1)) * 1000, 300 - (value / max) * 286];
+}
+function chartTickIndexes(length: number) {
+  if (length <= 1) return [0];
+  const tickCount = Math.min(6, length);
+  return [
+    ...new Set(Array.from({ length: tickCount }, (_, index) => Math.round((index / (tickCount - 1)) * (length - 1))))
+  ];
+}
+function formatTrendValue(value: number, metric: TrendMetric, money: (value: number) => string) {
+  if (metric === "revenue") return money(value);
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+function trendPointLabel(point: TrendPoint, money: (value: number) => string) {
+  return `${point.label}: ${money(point.revenue)}, ${point.orders} orders, ${point.units} units`;
 }
 
 const countryCentroids: Record<string, [number, number]> = {
@@ -487,8 +695,7 @@ function OrderStatus({ order }: { order: SalesOrder }) {
   const canceled = Boolean(order.canceledAt) || status.includes("cancel");
   const refunded = status.includes("refund");
   const paid = status.includes("paid") || status.includes("complete");
-  const fulfilled =
-    status.includes("fulfilled") && !status.includes("unfulfilled") && !status.includes("not_started");
+  const fulfilled = status.includes("fulfilled") && !status.includes("unfulfilled") && !status.includes("not_started");
   const label = canceled
     ? "Canceled"
     : refunded
@@ -556,4 +763,18 @@ function formatDateTime(value: string) {
         hour: "numeric",
         minute: "2-digit"
       }).format(date);
+}
+function todayInputValue() {
+  return localDateInputValue(new Date());
+}
+function firstDayOfCurrentMonth() {
+  const date = new Date();
+  date.setDate(1);
+  return localDateInputValue(date);
+}
+function localDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

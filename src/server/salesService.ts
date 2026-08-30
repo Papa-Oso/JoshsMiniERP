@@ -57,8 +57,15 @@ export async function refreshSales(selected: Platform[] = platforms) {
 
 export async function getSalesDashboard({
   range = "90d",
-  platform = "all"
-}: { range?: string; platform?: Platform | "all" } = {}): Promise<SalesDashboardPayload> {
+  platform = "all",
+  startDate,
+  endDate
+}: {
+  range?: string;
+  platform?: Platform | "all";
+  startDate?: string;
+  endDate?: string;
+} = {}): Promise<SalesDashboardPayload> {
   const [allOrders, pulls, allFinancials, financialPulls, products] = await Promise.all([
     loadSalesOrders(),
     loadSalesPulls(),
@@ -66,11 +73,12 @@ export async function getSalesDashboard({
     loadMarketplaceFinancialPulls(),
     loadCanonicalProducts()
   ]);
-  const start = rangeStart(range);
+  const bounds = dashboardRangeBounds(range, startDate, endDate);
   const orders = allOrders.filter(
     (order) =>
       (platform === "all" || order.platform === platform) &&
-      (!start || Date.parse(order.createdAt) >= start) &&
+      (!bounds.start || Date.parse(order.createdAt) >= bounds.start) &&
+      (!bounds.end || Date.parse(order.createdAt) <= bounds.end) &&
       !isExcludedOrder(order)
   );
   const currencies = [...new Set(orders.map((order) => order.currency).filter(Boolean))];
@@ -80,7 +88,8 @@ export async function getSalesDashboard({
   const financialRows = allFinancials.filter(
     (row) =>
       (platform === "all" || row.platform === platform) &&
-      (!start || Date.parse(row.transactionDate) >= start)
+      (!bounds.start || Date.parse(row.transactionDate) >= bounds.start) &&
+      (!bounds.end || Date.parse(row.transactionDate) <= bounds.end)
   );
   const financialSummaries = summarizeMarketplaceFinancials(financialRows, financialPulls);
   const warnings: string[] = [];
@@ -134,6 +143,10 @@ export async function getSalesDashboard({
     generatedAt: new Date().toISOString(),
     lastPulledAt: pulls[0] ? String(pulls[0].pulled_at) : null,
     range,
+    period: {
+      startDate: bounds.start ? isoDate(bounds.start) : orders.at(-1)?.createdAt.slice(0, 10) ?? null,
+      endDate: bounds.end ? isoDate(bounds.end) : orders[0]?.createdAt.slice(0, 10) ?? null
+    },
     platform,
     summary: {
       revenue,
@@ -570,6 +583,26 @@ function rangeStart(range: string, now = Date.now()) {
   }
   const days = Number(range.replace(/d$/, ""));
   return Number.isFinite(days) && days > 0 ? now - days * 86_400_000 : now - 90 * 86_400_000;
+}
+function dashboardRangeBounds(range: string, startDate?: string, endDate?: string, now = Date.now()) {
+  if (range === "custom" && startDate && endDate) {
+    return {
+      start: Date.parse(`${startDate}T00:00:00.000Z`),
+      end: Date.parse(`${endDate}T23:59:59.999Z`)
+    };
+  }
+  if (range === "all") return { start: null, end: null };
+  if (range === "month") {
+    const current = new Date(now);
+    return {
+      start: Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1),
+      end: now
+    };
+  }
+  return { start: rangeStart(range, now), end: now };
+}
+function isoDate(value: number) {
+  return new Date(value).toISOString().slice(0, 10);
 }
 function isExcludedOrder(order: SalesOrder) {
   return order.platform === "etsy" && order.status.trim().toLowerCase() === "canceled";

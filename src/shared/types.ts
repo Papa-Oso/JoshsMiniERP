@@ -87,6 +87,7 @@ export interface SalesDashboardPayload {
   generatedAt: string;
   lastPulledAt: string | null;
   range: string;
+  period: { startDate: string | null; endDate: string | null };
   platform: Platform | "all";
   summary: { revenue: number; orders: number; units: number; averageOrderValue: number; currency: string };
   financialSummaries: MarketplaceFinancialSummary[];

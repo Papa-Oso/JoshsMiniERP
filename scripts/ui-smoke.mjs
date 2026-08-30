@@ -34,6 +34,13 @@ try {
 
     await expectHeading(page, tool.h1);
     await expectPanels(page);
+    if (tool.label === "Sales") {
+      await expectVisible(page.getByLabel("Period"));
+      await page.getByLabel("Period").selectOption("custom");
+      await expectVisible(page.getByLabel("From", { exact: true }));
+      await expectVisible(page.getByLabel("To", { exact: true }));
+      await page.getByLabel("Period").selectOption("month");
+    }
     await page.screenshot({ path: path.join(outputDir, `${slug(tool.label)}-desktop.png`), fullPage: true });
   }
 
@@ -47,6 +54,7 @@ try {
   await mobile.waitForTimeout(500);
   await expectHeading(mobile, "Sales");
   await expectPanels(mobile);
+  await mobile.getByLabel("Period").selectOption("month");
   await mobile.getByText("How these totals are calculated").click();
   await expectVisible(mobile.getByText(/Comparable net sales will replace Revenue/));
   await expectVisible(mobile.getByText(/currency-separated reconciliation totals/));
