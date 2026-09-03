@@ -5,6 +5,7 @@ import type { Database, SqlValue } from "sql.js";
 import type { Platform, SalesFinancialSource, SalesOrder, SalesRefund } from "../shared/types";
 import { config } from "./config";
 import { sqliteDatabase } from "./sqliteDatabase";
+import { loadProductImages } from "./productImages";
 
 const database = sqliteDatabase(config.databaseFile);
 const legacySalesFile = path.resolve(process.env.SALES_DATABASE_FILE || "data/sales.sqlite");
@@ -317,6 +318,7 @@ export async function loadSalesPulls() {
 
 export async function loadCanonicalProducts() {
   await ensureLegacySalesMigrated();
+  const images = await loadProductImages();
   return database.read((db) => {
     ensureSchema(db);
     const inventoryExists =
@@ -325,7 +327,7 @@ export async function loadCanonicalProducts() {
       ? queryRows(db, "SELECT sku, name, image_path FROM inventory_items WHERE active = 1").map((row) => ({
           sku: String(row.sku),
           name: String(row.name),
-          imagePath: String(row.image_path ?? "")
+          imagePath: String(row.image_path || images.get(String(row.sku).toLowerCase()) || "")
         }))
       : [];
     const bySku = new Map(products.map((product) => [product.sku.toLowerCase(), product]));
@@ -337,6 +339,10 @@ export async function loadCanonicalProducts() {
         const product = bySku.get(String(row.sku).trim().toLowerCase());
         if (product) byTitle.set(String(row.title).trim().toLowerCase(), product);
       }
+    }
+    // Historical/new sales can have a local photo before they have an inventory item.
+    for (const [sku, imagePath] of images) {
+      if (!bySku.has(sku)) bySku.set(sku, { sku: sku.toUpperCase(), name: "", imagePath });
     }
     return { bySku, byTitle };
   });

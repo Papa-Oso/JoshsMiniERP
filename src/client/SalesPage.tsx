@@ -636,8 +636,8 @@ function WorldSalesMap({
         </g>
       </svg>
       <div className="map-legend">
-        <span className="map-shade" aria-hidden="true" /> Darker countries have more orders{" "}
-        <span className="map-pin" aria-hidden="true" /> Larger pins have more regional orders · approximate centroids
+        <span className="map-shade" aria-hidden="true" />{"Darker countries have more orders "}
+        <span className="map-pin" aria-hidden="true" />{"Larger pins have more regional orders · approximate centroids"}
       </div>
     </>
   );

@@ -35,6 +35,7 @@ JSON files are export, backup, or migration formats. Timestamped `*.sqlite.migra
 - Foreign keys and indexes support common joins and dashboard filters.
 - Bulk imports and migrations require a backup and post-write row-count/integrity checks.
 - Inventory items may store a safe relative `image_path`; product photo files remain under `data/product photos/` and are included in operational backups.
+- Sales also resolves local photos by exact SKU when an inventory image or item is missing. Use `SKU.png` (or `.jpg`, `.jpeg`, `.webp`); optional `-front` and `-rear` suffixes are supported, with the unsuffixed photo preferred, then front, then rear. This display fallback does not create inventory items or marketplace mappings.
 - CSV files are transient import/export artifacts, never working storage. Successful marketplace-history imports are retained in SQLite and their source CSVs may be deleted after verification.
 
 ## Useful Queries
