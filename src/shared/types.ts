@@ -92,6 +92,7 @@ export interface SalesDashboardPayload {
   summary: { revenue: number; orders: number; units: number; averageOrderValue: number; currency: string };
   financialSummaries: MarketplaceFinancialSummary[];
   trend: Array<{ date: string; revenue: number; orders: number; units: number }>;
+  projectionHistory?: Array<{ month: string; days: number; revenue: number; orders: number; units: number }>;
   platforms: Array<{ platform: Platform; revenue: number; orders: number; units: number }>;
   countries: Array<{ countryCode: string; revenue: number; orders: number; units: number }>;
   locations: Array<{ countryCode: string; regionCode: string; revenue: number; orders: number; units: number }>;

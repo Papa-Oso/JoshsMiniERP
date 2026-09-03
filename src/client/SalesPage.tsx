@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { numericToAlpha2 } from "i18n-iso-countries";
 import { BarChart3, Clock3, Globe2, PackageOpen, RefreshCw, ShoppingCart, Store, TrendingUp } from "lucide-react";
@@ -7,6 +7,7 @@ import type { FeatureCollection, Geometry } from "geojson";
 import world from "world-atlas/countries-110m.json";
 import { api } from "./api";
 import { Metric, Panel } from "./ui";
+import { projectCurrentMonth } from "./salesProjection";
 import type { Platform, SalesDashboardPayload, SalesOrder } from "../shared/types";
 import { platformLabels, platforms } from "../shared/types";
 
@@ -37,23 +38,24 @@ export function SalesPage() {
   const [customEndDate, setCustomEndDate] = useState(todayInputValue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const loadVersion = useRef(0);
 
   useEffect(() => {
     void load();
   }, [range, platform, customStartDate, customEndDate]);
   async function load() {
+    const version = ++loadVersion.current;
     try {
       setError("");
-      setData(
-        await api.sales(
-          range,
-          platform,
-          range === "custom" ? customStartDate : undefined,
-          range === "custom" ? customEndDate : undefined
-        )
+      const nextData = await api.sales(
+        range,
+        platform,
+        range === "custom" ? customStartDate : undefined,
+        range === "custom" ? customEndDate : undefined
       );
+      if (version === loadVersion.current) setData(nextData);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
+      if (version === loadVersion.current) setError(nextError instanceof Error ? nextError.message : String(nextError));
     }
   }
   async function refresh() {
@@ -221,7 +223,15 @@ export function SalesPage() {
       ))}
       <section className="sales-primary-grid">
         <Panel title="Sales trend" icon={<TrendingUp size={17} />} className="sales-trend-panel">
-          <TrendChart data={data.trend} money={money} period={data.period} range={data.range} />
+          <TrendChart
+            data={data.trend}
+            money={money}
+            period={data.period}
+            range={data.range}
+            generatedAt={data.generatedAt}
+            lastPulledAt={data.lastPulledAt}
+            projectionHistory={data.projectionHistory}
+          />
         </Panel>
         <Panel title="Sales around the world" icon={<Globe2 size={17} />}>
           <WorldSalesMap locations={data.locations} countries={data.countries} money={money} />
@@ -293,17 +303,25 @@ function TrendChart({
   data,
   money,
   period,
-  range
+  range,
+  generatedAt,
+  lastPulledAt,
+  projectionHistory
 }: {
   data: SalesDashboardPayload["trend"];
   money: (value: number) => string;
   period: SalesDashboardPayload["period"];
   range: string;
+  generatedAt: string;
+  lastPulledAt: string | null;
+  projectionHistory: SalesDashboardPayload["projectionHistory"];
 }) {
   const [metric, setMetric] = useState<TrendMetric>("revenue");
   const values = useMemo(() => buildTrendSeries(data, period, range), [data, period, range]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const max = Math.max(1, ...values.map((row) => row[metric]));
+  const projection = projectCurrentMonth({ trend: data, period, range, generatedAt, lastPulledAt, projectionHistory });
+  const projectedIndex = projection ? values.findIndex((row) => row.key === projection.monthKey) : -1;
+  const max = Math.max(1, ...values.map((row) => row[metric]), projectedIndex >= 0 ? projection![metric] : 0);
   const currentIndex = activeIndex === null ? values.length - 1 : Math.min(activeIndex, values.length - 1);
   const active = values[currentIndex];
   const line = values.map((row, index) => chartPoint(row[metric], index, values.length, max));
@@ -314,6 +332,11 @@ function TrendChart({
   const areaPath = line.length ? `${linePath} L1000,300 L0,300 Z` : "";
   const tickIndexes = chartTickIndexes(values.length);
   const grouping = rangeUsesMonthlyPoints(range, period) ? "Monthly" : "Daily";
+  const projectedPoint = projection && projectedIndex >= 0
+    ? chartPoint(projection[metric], projectedIndex, values.length, max) : null;
+  const projectedStart = projectedPoint ? line[Math.max(0, projectedIndex - 1)] : null;
+  const projectionLabel = projection
+    ? `Projected month end: ${money(projection.revenue)} revenue, ${projection.orders} orders, ${projection.units} units. Pace estimate, not actual sales.` : "";
 
   if (!data.length) return <p className="empty">No sales in this period.</p>;
   return (
@@ -346,7 +369,7 @@ function TrendChart({
           className="trend-plot"
           tabIndex={0}
           role="img"
-          aria-label={`${grouping} ${metric} line chart. ${active ? trendPointLabel(active, money) : ""}`}
+          aria-label={`${grouping} ${metric} line chart. ${active ? trendPointLabel(active, money) : ""} ${projectedPoint ? projectionLabel : ""}`}
           onPointerMove={(event) => {
             const bounds = event.currentTarget.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
@@ -374,10 +397,25 @@ function TrendChart({
             ))}
             <path className="trend-area" d={areaPath} />
             <path className="trend-line" d={linePath} />
+            {projectedPoint && projectedStart ? (
+              <path
+                className="trend-line trend-projected-line"
+                d={`M${projectedStart[0]},${projectedStart[1]} L${projectedPoint[0]},${projectedPoint[1]}`}
+              />
+            ) : null}
             {active ? (
               <line className="trend-crosshair" x1={line[currentIndex][0]} x2={line[currentIndex][0]} y1="0" y2="300" />
             ) : null}
           </svg>
+          {projectedPoint ? (
+            <span
+              className="trend-projected-marker"
+              aria-hidden="true"
+              style={{ left: `${projectedPoint[0] / 10}%`, top: `${projectedPoint[1] / 3}%` }}
+            >
+              Projected
+            </span>
+          ) : null}
           {active ? (
             <span
               className="trend-point-marker"
@@ -404,6 +442,26 @@ function TrendChart({
           <span>
             {active.units} {active.units === 1 ? "unit" : "units"}
           </span>
+        </div>
+      ) : null}
+      {projection ? (
+        <div className="trend-projection">
+          <div className="trend-chart-detail">
+            <strong>Projected month end</strong>
+            <span>{money(projection.revenue)} revenue</span>
+            <span>{projection.orders} orders</span>
+            <span>{projection.units} units</span>
+          </div>
+          <p>
+            {projectedPoint ? "Solid = actual · Dashed = projected. " : ""}
+            Pace through {new Intl.DateTimeFormat(undefined, {
+              month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC", timeZoneName: "short"
+            }).format(new Date(projection.through))}: {projection.elapsedDays.toFixed(1)} of {projection.daysInMonth} days.
+            {projection.historyMonths.length
+              ? ` Remaining days blend ${Math.round(projection.currentWeight * 100)}% this month's pace with ${100 - Math.round(projection.currentWeight * 100)}% recent history (${projection.historyMonths.length} months, newest weighted most).`
+              : " No complete recent months available; using this month's pace only."}
+            {" Estimate, not guaranteed sales."}
+          </p>
         </div>
       ) : null}
     </div>
