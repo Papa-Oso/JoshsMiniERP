@@ -4,6 +4,7 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
+- Show a separate month-end projection for Sales revenue, orders, and units, with a dashed forecast on monthly trend charts. Blend current pace with the last three complete saved months (newest weighted most); current-month influence increases as days elapse. Estimates use elapsed UTC time through the latest sales pull and leave actual totals unchanged.
 - Replace the Sales trend bar strip with an interactive line chart for revenue, orders, and units; add calendar-month, previous-calendar-year, and custom date filters, fill no-sale gaps, and group year-scale views by month.
 - Use Etsy's USD payment-account ledger for automated financial totals instead of buyer-currency payment fields, and remove legacy buyer-currency rows on the next Etsy sales refresh.
 - Replace the Sales page's manual eBay cost panel with provider-generic financial activity refreshed automatically by `Pull sales`: eBay Finances, Etsy Payments/ledger, and Shopify Payments/ShopifyQL where their optional scopes are granted. Unsupported label totals remain unavailable instead of displaying a misleading zero.

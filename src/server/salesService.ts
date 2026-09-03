@@ -157,6 +157,9 @@ export async function getSalesDashboard({
     },
     financialSummaries,
     trend: aggregateTrend(orders),
+    projectionHistory: aggregateProjectionHistory(
+      allOrders.filter((order) => (platform === "all" || order.platform === platform) && !isExcludedOrder(order))
+    ),
     platforms: platforms.map((source) => aggregatePlatform(orders, source)),
     countries: aggregateCountries(orders),
     locations: aggregateLocations(orders),
@@ -473,6 +476,25 @@ function summarizeMarketplaceFinancials(
       };
     })
     .sort((left, right) => platforms.indexOf(left.platform) - platforms.indexOf(right.platform));
+}
+
+export function aggregateProjectionHistory(orders: SalesOrder[], now = Date.now()) {
+  const current = new Date(now);
+  const earliest = orders.reduce((date, order) => order.createdAt < date ? order.createdAt : date, "9999");
+  const history: NonNullable<SalesDashboardPayload["projectionHistory"]> = [];
+  for (let offset = 3; offset >= 1; offset--) {
+    const start = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - offset, 1));
+    const end = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - offset + 1, 1));
+    // Do not treat the partial month where saved history begins as a complete baseline.
+    if (earliest.slice(0, 10) > start.toISOString().slice(0, 10)) continue;
+    const matching = orders.filter((order) => order.createdAt >= start.toISOString() && order.createdAt < end.toISOString());
+    history.push({
+      month: start.toISOString().slice(0, 7), days: (end.getTime() - start.getTime()) / 86_400_000,
+      revenue: sum(matching.map(revenueAmount)), orders: matching.length,
+      units: sum(matching.map((order) => order.itemCount))
+    });
+  }
+  return history;
 }
 
 function aggregateTrend(orders: SalesOrder[]) {

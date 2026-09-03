@@ -70,6 +70,18 @@ Do not combine a visual redesign with inventory, printing, or sync behavior chan
 
 See `docs/TESTING.md` for check selection and external-service boundaries.
 
+## Sales projections
+
+The chart keeps actual totals separate from the month-end estimate. For each metric, it forecasts only the remaining days and adds sales already recorded:
+
+`estimate = actual + remainingDays × (actual + 7 × historicalDailyRate) / (elapsedDays + 7)`
+
+Historical daily rates use up to the previous three complete saved calendar months, weighted 1:2:3 from oldest to newest and normalized by each month's length. The server supplies this history for the selected platform independently of the visible date range. The partial month where saved history begins is excluded; later no-sale months count as zero. History reflects the saved ledger, not independently verified marketplace completeness.
+
+Seven days is a transparent starting strength for the historical baseline, not a fitted accuracy guarantee. Current-pace weight is `elapsedDays / (elapsedDays + 7)`; it increases as evidence arrives. This uses the shrinkage principle illustrated by [Poisson–Gamma posterior means](https://people.eecs.berkeley.edu/~jordan/courses/260-spring10/lectures/lecture4.pdf); the same weighted-rate heuristic is applied to revenue and units without claiming a Poisson revenue model or calibrated confidence interval. Seasonality, promotions, and changes in product mix are not modeled.
+
+Elapsed days use UTC time through the latest saved sales pull, including partial days and no-sale days. At least one elapsed day and an unclipped current month are required. Without complete recent history, the chart falls back to current pace and labels that limitation. Estimates preserve the existing Revenue definition and currency limitations and never change ledger, inventory, or marketplace state.
+
 ## Environment
 
 Copy `.env.example` to `.env` and fill only the integrations being used. `.env` and `data/` are ignored by Git. Never paste their contents into issues, commits, logs, or AI conversations.

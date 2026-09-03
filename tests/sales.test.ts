@@ -16,7 +16,7 @@ const {
   upsertSalesOrders,
   upsertSalesRefunds
 } = await import("../src/server/salesStore.ts");
-const { getSalesDashboard } = await import("../src/server/salesService.ts");
+const { getSalesDashboard, aggregateProjectionHistory } = await import("../src/server/salesService.ts");
 const { SQLiteInventoryStore } = await import("../src/server/sqliteStore.ts");
 const { replaceReviewProductAliases } = await import("../src/server/ebayReviews/feedbackStore.ts");
 
@@ -460,6 +460,33 @@ test("Top Products uses exact SKU photos for new products without creating inven
   assert.equal(dashboard.products.find((row) => row.sku === skus[1])?.title, "S-R7 Freecom");
   assert.equal(dashboard.products.find((row) => row.sku === skus[2])?.imageUrl, undefined);
   assert.deepEqual(await inventory.read(), before);
+});
+
+test("projection baseline uses complete recent months, including zero-sale months and varying month lengths", () => {
+  const history = aggregateProjectionHistory([
+    order({ createdAt: "2026-05-15T12:00:00.000Z" }),
+    order({ createdAt: "2026-07-10T12:00:00.000Z", grossAmount: 310, itemCount: 3 }),
+    order({ createdAt: "2026-08-10T12:00:00.000Z", grossAmount: 620, itemCount: 6 }),
+    order({ createdAt: "2026-09-02T12:00:00.000Z", grossAmount: 99999 })
+  ], Date.parse("2026-09-03T12:00:00Z"));
+  assert.deepEqual(history, [
+    { month: "2026-06", days: 30, revenue: 0, orders: 0, units: 0 },
+    { month: "2026-07", days: 31, revenue: 310, orders: 1, units: 3 },
+    { month: "2026-08", days: 31, revenue: 620, orders: 1, units: 6 }
+  ]);
+  assert.deepEqual(aggregateProjectionHistory([order({ createdAt: "2026-08-10T12:00:00.000Z" })], Date.parse("2026-09-03")), []);
+});
+
+test("projection history remains available outside the selected period and respects the platform filter", async () => {
+  const now = new Date();
+  const createdAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 4, 1)).toISOString();
+  await upsertSalesOrders("shopify", [order({ orderId: "projection-coverage", createdAt })]);
+  const all = await getSalesDashboard({ range: "all", platform: "shopify" });
+  const month = await getSalesDashboard({ range: "month", platform: "shopify" });
+  assert.equal(month.projectionHistory?.length, 3);
+  assert.deepEqual(month.projectionHistory, all.projectionHistory);
+  const eligible = (await loadSalesOrders()).filter((row) => row.platform === "shopify");
+  assert.deepEqual(month.projectionHistory, aggregateProjectionHistory(eligible));
 });
 
 function order(overrides: Partial<SalesOrder> = {}): SalesOrder {
