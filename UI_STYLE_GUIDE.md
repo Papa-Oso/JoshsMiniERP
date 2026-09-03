@@ -144,7 +144,8 @@ The icon should sit near the page title or primary page header. Do not rely on n
 
 - Use the short canonical name from Inventory wherever a marketplace record resolves to a local SKU or item.
 - Keep long marketplace listing titles in storage and reporting/export data, not as the primary operational UI label.
-- Use a marketplace title in the UI only when no canonical inventory match exists.
+- Sales uses exact-SKU short-name fallbacks (`S-R7 Edge`, `S-R7 Freecom`) for the S-R7 products until they have canonical Inventory names. Inventory names take precedence; photo availability does not affect name selection.
+- Use a marketplace title in the UI only when no canonical inventory name or explicit short-name fallback exists.
 
 ## Feedback
 

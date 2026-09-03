@@ -410,6 +410,34 @@ test("Top Products resolves missing historical SKUs through product title aliase
   assert.equal(product?.imageUrl, "/api/product-images/SKU-1.png");
 });
 
+test("Top Products uses short S-R7 names without photos while preserving canonical names and source titles", async () => {
+  const inventory = new SQLiteInventoryStore(process.env.DATABASE_FILE);
+  const before = await inventory.read();
+  const title = "Alpinestars S-R7 Helmet Adapter for Cardo Packtalk Edge – 3D Printed Carbon Fiber Mount";
+  const lines = ["JW-AR7-EDGE-001", "jw-ar7-freecom-001", "JW-AR7-EDGE-002"].map((sku) => ({
+    platform: "etsy" as const, orderId: "short-names", lineId: sku, sku, title, quantity: 1, amount: 10
+  }));
+  await upsertSalesOrders("etsy", [order({ platform: "etsy", orderId: "short-names", lineItems: lines })]);
+  let dashboard = await getSalesDashboard({ range: "all", platform: "etsy" });
+  assert.equal(dashboard.products.find((row) => row.sku === lines[0].sku)?.title, "S-R7 Edge");
+  assert.equal(dashboard.products.find((row) => row.sku === lines[1].sku)?.title, "S-R7 Freecom");
+  assert.equal(dashboard.products.find((row) => row.sku === lines[2].sku)?.title, title);
+  const savedLines = (await loadSalesOrders()).find((row) => row.orderId === "short-names")?.lineItems;
+  assert.ok(savedLines);
+  for (const line of lines) assert.deepEqual(savedLines.find((saved) => saved.lineId === line.lineId), line);
+  assert.deepEqual(await inventory.read(), before);
+
+  await inventory.mutate((data) => {
+    data.items.push({ ...data.items[0], id: "short-name-override", sku: lines[0].sku, name: "Custom S-R7 Edge", active: true });
+  });
+  try {
+    dashboard = await getSalesDashboard({ range: "all", platform: "etsy" });
+    assert.equal(dashboard.products.find((row) => row.sku === lines[0].sku)?.title, "Custom S-R7 Edge");
+  } finally {
+    await inventory.mutate((data) => { data.items = data.items.filter((item) => item.id !== "short-name-override"); });
+  }
+});
+
 test("Top Products uses exact SKU photos for new products without creating inventory", async () => {
   const photos = path.join(directory, "product photos");
   await fs.mkdir(photos, { recursive: true });
@@ -428,6 +456,8 @@ test("Top Products uses exact SKU photos for new products without creating inven
   const dashboard = await getSalesDashboard({ range: "all", platform: "shopify" });
   assert.equal(dashboard.products.find((row) => row.sku === skus[0])?.imageUrl, "/api/product-images/JW-AR7-EDGE-001-front.png");
   assert.equal(dashboard.products.find((row) => row.sku === skus[1])?.imageUrl, "/api/product-images/JW-AR7-FREECOM-001.png");
+  assert.equal(dashboard.products.find((row) => row.sku === skus[0])?.title, "S-R7 Edge");
+  assert.equal(dashboard.products.find((row) => row.sku === skus[1])?.title, "S-R7 Freecom");
   assert.equal(dashboard.products.find((row) => row.sku === skus[2])?.imageUrl, undefined);
   assert.deepEqual(await inventory.read(), before);
 });

@@ -529,6 +529,12 @@ function aggregateLocations(orders: SalesOrder[]) {
   return [...groups.values()].sort((a, b) => b.orders - a.orders || b.revenue - a.revenue);
 }
 
+// Display names for sold products that do not yet have canonical inventory names.
+const salesProductNames = new Map([
+  ["JW-AR7-EDGE-001", "S-R7 Edge"],
+  ["JW-AR7-FREECOM-001", "S-R7 Freecom"]
+]);
+
 function aggregateProducts(
   orders: SalesOrder[],
   products: {
@@ -550,7 +556,7 @@ function aggregateProducts(
       const key = resolvedSku || line.title || "Unknown product";
       const group = groups.get(key) ?? {
         sku: resolvedSku,
-        title: product?.name || line.title,
+        title: product?.name || salesProductNames.get(resolvedSku.toUpperCase()) || line.title,
         imageUrl: product?.imagePath ? `/api/product-images/${encodeURIComponent(product.imagePath)}` : undefined,
         revenue: 0,
         orders: new Set(),
