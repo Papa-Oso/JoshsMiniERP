@@ -7,6 +7,7 @@ import type { SalesOrder } from "../src/shared/types";
 
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), "joshs-erp-sales-"));
 process.env.DATABASE_FILE = path.join(directory, "inventory.sqlite");
+process.env.DATA_FILE = path.join(directory, "inventory.json");
 process.env.SALES_DATABASE_FILE = path.join(directory, "legacy-sales.sqlite");
 const {
   applySalesImport,
@@ -407,6 +408,28 @@ test("Top Products resolves missing historical SKUs through product title aliase
   const product = dashboard.products.find((row) => row.sku === "SKU-1");
   assert.equal(product?.title, "Product");
   assert.equal(product?.imageUrl, "/api/product-images/SKU-1.png");
+});
+
+test("Top Products uses exact SKU photos for new products without creating inventory", async () => {
+  const photos = path.join(directory, "product photos");
+  await fs.mkdir(photos, { recursive: true });
+  await fs.writeFile(path.join(photos, "JW-AR7-EDGE-001-front.png"), "fixture");
+  await fs.writeFile(path.join(photos, "JW-AR7-FREECOM-001.png"), "fixture");
+  const inventory = new SQLiteInventoryStore(process.env.DATABASE_FILE);
+  const before = await inventory.read();
+  const skus = ["JW-AR7-EDGE-001", "JW-AR7-FREECOM-001", "JW-AR7-EDGE-002"];
+  await upsertSalesOrders("shopify", [order({
+    orderId: "new-products",
+    lineItems: skus.map((sku) => ({
+      platform: "shopify", orderId: "new-products", lineId: sku, sku,
+      title: `Marketplace ${sku}`, quantity: 1, amount: 10
+    }))
+  })]);
+  const dashboard = await getSalesDashboard({ range: "all", platform: "shopify" });
+  assert.equal(dashboard.products.find((row) => row.sku === skus[0])?.imageUrl, "/api/product-images/JW-AR7-EDGE-001-front.png");
+  assert.equal(dashboard.products.find((row) => row.sku === skus[1])?.imageUrl, "/api/product-images/JW-AR7-FREECOM-001.png");
+  assert.equal(dashboard.products.find((row) => row.sku === skus[2])?.imageUrl, undefined);
+  assert.deepEqual(await inventory.read(), before);
 });
 
 function order(overrides: Partial<SalesOrder> = {}): SalesOrder {

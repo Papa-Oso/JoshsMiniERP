@@ -2,7 +2,7 @@ import express from "express";
 import path from "node:path";
 import { z } from "zod";
 import type { DashboardPayload } from "../shared/types";
-import { config, getPlatformStatuses } from "./config";
+import { getPlatformStatuses } from "./config";
 import { adjustInventory, createItem, deleteItem, listData, updateItem, updateSchedule } from "./inventoryService";
 import { ebayReviewsRouter } from "./ebayReviewRoutes";
 import { refreshScheduler } from "./scheduler";
@@ -11,6 +11,7 @@ import { printingRouter } from "./printingRoutes";
 import { getOperationsReport } from "./reportingService";
 import { getEbayDeletionNoticeStatus } from "./ebayDeletionNotices";
 import { salesRouter } from "./salesRoutes";
+import { productPhotoDirectory } from "./productImages";
 
 export const router = express.Router();
 router.use("/ebay-reviews", ebayReviewsRouter);
@@ -79,7 +80,7 @@ router.get("/product-images/:filename", (req, res, next) => {
     res.status(400).json({ error: "Invalid product image filename." });
     return;
   }
-  res.sendFile(filename, { root: path.join(path.dirname(config.dataFile), "product photos") }, (error) => {
+  res.sendFile(filename, { root: productPhotoDirectory }, (error) => {
     if (error) next(error);
   });
 });
