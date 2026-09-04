@@ -24,6 +24,8 @@ The normal suite uses temporary files, temporary SQLite databases, and fake mark
 
 UI smoke tests expect the local app to be running at `http://127.0.0.1:5175` unless `UI_SMOKE_URL` is set. Screenshots are written under ignored `data/ui-smoke/`.
 
+After a build, `node scripts/catalog-smoke.mjs` exercises missing-product enrollment, failed print setup, retry without duplication, and Inventory/Printing selection at desktop and mobile widths. It serves the built client temporarily with synthetic API responses and writes screenshots under ignored `dist/catalog-smoke/`. It is also included in `npm run check:ui`.
+
 ## Safety-Critical Coverage
 
 Changes to these areas should include focused regression tests:

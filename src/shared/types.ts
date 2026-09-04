@@ -10,6 +10,11 @@ export const platformLabels: Record<Platform, string> = {
 
 export const defaultMaxInventory = 100;
 
+export interface MissingInventoryProduct {
+  sku: string;
+  name: string;
+}
+
 export interface SalesLineItem {
   platform: Platform;
   orderId: string;

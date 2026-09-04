@@ -5,6 +5,7 @@ import type {
   DashboardPayload,
   AdjustInstructionInput,
   InventoryItem,
+  MissingInventoryProduct,
   OperationsReportPayload,
   PrinterInfo,
   PrintingPayload,
@@ -39,6 +40,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   dashboard: () => request<DashboardPayload>("/api/dashboard"),
+  missingInventoryProducts: () => request<MissingInventoryProduct[]>("/api/catalog/missing"),
   createItem: (input: CreateItemInput) =>
     request<InventoryItem>("/api/items", { method: "POST", body: JSON.stringify(input) }),
   updateItem: (id: string, input: UpdateItemInput) =>

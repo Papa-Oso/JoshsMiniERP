@@ -16,7 +16,7 @@
     "format:check": "prettier --check README.md PLAN.md KANBAN.md AGENTS.md UI_STYLE_GUIDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs .github package.json eslint.config.js .prettierrc.json",
     "smoke:ui": "node scripts/ui-smoke.mjs",
     "check": "npm run format:check && npm run lint && npm run build && npm test && npm run shopify:typecheck && npm run shopify:lint",
-    "check:ui": "npm run smoke:ui",
+    "check:ui": "npm run smoke:ui && node scripts/catalog-smoke.mjs",
     "check:worker": "node workers/ebay-account-deletion/test-worker.mjs",
     "check:all": "npm run check && npm run check:worker && npm run check:ui",
     "start": "tsx src/server/index.ts",
