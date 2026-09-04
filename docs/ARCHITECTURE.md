@@ -27,6 +27,10 @@ Related local data:
 
 ## Inventory and Sync Model
 
+The canonical product catalog is `inventory_items`, created through Item Management, the item API/CLI, or a reviewed inventory import. Inventory, stock adjustments, and Printing use the same dashboard item list; active items are selectable even at zero stock and without print assets or marketplace mappings. Item Management includes inactive items for reactivation. Navigation reloads the dashboard, and item saves refresh it before optional print setup so a failed upload cannot hide a saved item.
+
+Saved sales, review aliases, and product photos are observations or supporting assets, not product enrollment. Item Management's **Missing from Inventory** selector uses `/api/catalog/missing` to discover exact SKUs across all saved sales, independently of Sales date filters and its top-product limit. It excludes existing active and inactive SKUs and deduplicates case-insensitively. Selecting a suggestion fills the normal Add SKU form; the operator reviews its name and starting stock before saving. Discovery never creates stock, activates products, connects mappings, or writes to marketplaces. Canonical Inventory names take precedence over shared transitional display-name suggestions.
+
 Local adjustments create inventory events. Marketplace sales are detected by comparing a successful previous remote baseline with the current remote quantity.
 
 New mappings establish a baseline first. The first read must not subtract inventory or push local quantity. This prevents a newly connected marketplace from being mistaken for a sale.

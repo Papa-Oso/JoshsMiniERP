@@ -125,8 +125,8 @@ export function App() {
   );
 
   useEffect(() => {
-    void load();
-  }, []);
+    void load().catch((error) => setNotice(error instanceof Error ? error.message : String(error)));
+  }, [page]);
 
   useEffect(() => {
     if (!toolSwitcherOpen) return;

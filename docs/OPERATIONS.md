@@ -30,6 +30,8 @@ npm run inv -- subtract EXAMPLE-SKU-001 1 "Damaged"
 
 Inventory adjustments create durable events. Do not edit SQLite or exported JSON manually to perform ordinary inventory work.
 
+If a product appears in Sales but is missing from the Inventory or Printing selector, open **Item Management → Missing from Inventory**. Choose its SKU, review the name and starting stock, and use **Save SKU**. Products without sales can be entered directly in Add SKU. A saved active item becomes available in Inventory and Printing even with zero stock and no label file; printing remains disabled until its required asset is configured. Inactive items stay in Item Management and can be reactivated there. Adding local stock does not establish marketplace mappings.
+
 ## CSV Import
 
 ```powershell

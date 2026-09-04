@@ -4,6 +4,8 @@ Significant user-visible changes are recorded here. Dates use ISO `YYYY-MM-DD` f
 
 ## Unreleased
 
+- Show saved-sales SKUs missing from Inventory in Item Management for reviewed enrollment through Add SKU. Refresh the shared item list on navigation and before optional print setup, so saved products remain selectable after upload failures.
+
 - Replace the Sales trend bar strip with an interactive line chart for revenue, orders, and units; add calendar-month, previous-calendar-year, and custom date filters, fill no-sale gaps, and group year-scale views by month.
 - Use Etsy's USD payment-account ledger for automated financial totals instead of buyer-currency payment fields, and remove legacy buyer-currency rows on the next Etsy sales refresh.
 - Replace the Sales page's manual eBay cost panel with provider-generic financial activity refreshed automatically by `Pull sales`: eBay Finances, Etsy Payments/ledger, and Shopify Payments/ShopifyQL where their optional scopes are granted. Unsupported label totals remain unavailable instead of displaying a misleading zero.

@@ -12,6 +12,7 @@ import { getOperationsReport } from "./reportingService";
 import { getEbayDeletionNoticeStatus } from "./ebayDeletionNotices";
 import { salesRouter } from "./salesRoutes";
 import { productPhotoDirectory } from "./productImages";
+import { listMissingInventoryProducts } from "./productCatalog";
 
 export const router = express.Router();
 router.use("/ebay-reviews", ebayReviewsRouter);
@@ -94,6 +95,13 @@ router.get(
       platformStatuses: getPlatformStatuses()
     };
     res.json(payload);
+  })
+);
+
+router.get(
+  "/catalog/missing",
+  asyncHandler(async (_req, res) => {
+    res.json(await listMissingInventoryProducts());
   })
 );
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileText, PackagePlus, Plus, Save, Tags, Upload } from "lucide-react";
 import { api } from "./api";
-import type { DashboardPayload, InventoryItem, PrintAsset, PrintInstruction, PrintingPayload } from "../shared/types";
+import type { DashboardPayload, InventoryItem, MissingInventoryProduct, PrintAsset, PrintInstruction, PrintingPayload } from "../shared/types";
 import { defaultMaxInventory } from "../shared/types";
 
 const emptyPrinting: PrintingPayload = {
@@ -41,6 +41,11 @@ export function ItemManagementPage({
   const [instructionLabel, setInstructionLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [missingProducts, setMissingProducts] = useState<MissingInventoryProduct[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+  const availableProducts = missingProducts.filter(
+    (product) => !dashboard.items.some((item) => item.sku.trim().toUpperCase() === product.sku)
+  );
 
   const sortedItems = useMemo(
     () =>
@@ -53,7 +58,10 @@ export function ItemManagementPage({
   const selectedItem = sortedItems.find((item) => item.id === selectedItemId) ?? null;
 
   useEffect(() => {
-    void loadPrinting();
+    void loadPrinting().catch((error) => setNotice(error instanceof Error ? error.message : String(error)));
+    void api.missingInventoryProducts().then(setMissingProducts).catch((error) =>
+      setCatalogError(error instanceof Error ? error.message : String(error))
+    );
   }, []);
 
   useEffect(() => {
@@ -99,7 +107,11 @@ export function ItemManagementPage({
     setBusy(true);
     setNotice("");
 
+    let savedItem: InventoryItem | undefined;
     try {
+      if (instructionChoice === "upload" && !instructionFile) {
+        throw new Error("Choose an instruction document to upload.");
+      }
       const sku = draft.sku.trim().toUpperCase();
       const saved = selectedItem
         ? await api.updateItem(selectedItem.id, {
@@ -117,16 +129,17 @@ export function ItemManagementPage({
             maxInventory: Number(draft.maxInventory)
           });
 
+      savedItem = saved;
+      // Publish the durable item before optional print setup can fail.
+      await onDashboardChange();
+      setSelectedItemId(saved.id);
+
       if (labelFile) {
         await api.uploadLabel({
           sku,
           filename: labelFile.name,
           contentBase64: await fileToBase64(labelFile)
         });
-      }
-
-      if (instructionChoice === "upload" && !instructionFile) {
-        throw new Error("Choose an instruction document to upload.");
       }
 
       if (instructionChoice === "none") {
@@ -154,7 +167,12 @@ export function ItemManagementPage({
       setSelectedItemId(saved.id);
       setNotice(`${saved.sku} saved.`);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setNotice(savedItem ? `${savedItem.sku} saved. Setup or refresh failed: ${message}` : message);
+      if (savedItem) {
+        setSelectedItemId(savedItem.id);
+        await onDashboardChange().catch(() => undefined);
+      }
     } finally {
       setBusy(false);
     }
@@ -174,6 +192,30 @@ export function ItemManagementPage({
               </button>
             ) : null}
           </header>
+
+          {catalogError ? <p className="notice">Could not check for missing inventory products: {catalogError}</p> : null}
+          {!selectedItem && availableProducts.length ? (
+            <label>
+              Missing from Inventory ({availableProducts.length})
+              <select
+                aria-label="Missing from Inventory"
+                value={availableProducts.some((product) => product.sku === draft.sku) ? draft.sku : ""}
+                disabled={busy}
+                onChange={(event) => {
+                  const product = availableProducts.find((candidate) => candidate.sku === event.target.value);
+                  if (!product) return;
+                  startNewItem();
+                  setDraft((current) => ({ ...current, sku: product.sku, name: product.name }));
+                }}
+              >
+                <option value="">Choose a product found in saved sales</option>
+                {availableProducts.map((product) => (
+                  <option key={product.sku} value={product.sku}>{product.sku} - {product.name}</option>
+                ))}
+              </select>
+              <small>Review the name and starting stock, then Save SKU to make it available in Inventory and Printing.</small>
+            </label>
+          ) : null}
 
           <div className="item-create-grid">
             <label>
